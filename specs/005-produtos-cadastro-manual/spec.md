@@ -1,0 +1,179 @@
+# Spec 005 — Produtos: Modelo, Cadastro Manual e Administração
+
+**Domínio:** Products
+**Fase:** 1 — Backoffice
+**Status:** Draft
+**Depende de:** [003-categorias](../003-categorias/spec.md), [004-sku](../004-sku/spec.md)
+
+## 1. Visão geral
+
+Modelo completo de produto (peça única de brechó) e fluxo de cadastro/edição/administração
+manual pelo backoffice. Este é o modelo de dados canônico também consumido pelo cadastro
+assistido por IA ([006](../006-produtos-cadastro-ia/spec.md)).
+
+## 2. Modelo de dados
+
+Collection `products`:
+
+```json
+{
+  "_id": "ObjectId",
+  "sku": "BVI-BERM-000025",
+  "status": "disponivel",
+  "identificacao": {
+    "nome": "Bermuda Jeans Stretch Masculina Azul Tamanho 32",
+    "descricao": "Bermuda jeans masculina em denim azul...",
+    "peca_unica": true,
+    "quantidade": 1,
+    "data_cadastro": "ISODate"
+  },
+  "classificacao": {
+    "categoria_codigo": "BERM",
+    "categoria": "Bermudas",
+    "subcategoria": "Bermuda Jeans",
+    "departamento": "Masculino",
+    "estilo": ["Casual", "Básico", "Urbano"],
+    "ocasiao": ["Dia a dia", "Passeio", "Lazer"],
+    "estacao": ["Primavera", "Verão"]
+  },
+  "marca": { "nome": null, "original": null },
+  "caracteristicas": {
+    "tamanho_etiqueta": "32",
+    "tamanho_equivalente": null,
+    "cor_principal": "Azul Jeans",
+    "cores_secundarias": [],
+    "estampa": "Lisa",
+    "material": ["Jeans", "Denim Stretch"],
+    "composicao": null,
+    "lavagem": "Média",
+    "modelagem": "Reta",
+    "elasticidade": "Stretch",
+    "fechamento": ["Botão", "Zíper"]
+  },
+  "medidas": {
+    "unidade": "cm",
+    "cintura": null, "quadril": null, "gancho": null,
+    "comprimento": null, "largura_barra": null
+  },
+  "condicao": {
+    "estado": "novo",
+    "nota": 10,
+    "possui_etiqueta": true,
+    "possui_defeitos": false,
+    "defeitos": [],
+    "observacoes": "Peça nova com etiquetas."
+  },
+  "preco": {
+    "preco_original_estimado": null,
+    "custo_aquisicao": null,
+    "preco_venda": null,
+    "preco_promocional": null,
+    "moeda": "BRL"
+  },
+  "estoque": {
+    "quantidade": 1,
+    "localizacao": { "loja": "Loja Principal", "setor": "Masculino", "arara": null, "posicao": null }
+  },
+  "imagens": { "principal": null, "galeria": [] },
+  "ecommerce": {
+    "publicado": false,
+    "slug": "bermuda-jeans-stretch-masculina-azul-tamanho-32",
+    "titulo_seo": "Bermuda Jeans Stretch Masculina Azul Tamanho 32 Nova",
+    "tags": ["bermuda masculina", "bermuda jeans", "jeans masculino", "bermuda stretch", "tamanho 32"]
+  },
+  "marketplaces": {
+    "mercado_livre": { "publicado": false, "id_anuncio": null },
+    "shopee": { "publicado": false, "id_anuncio": null }
+  },
+  "venda": { "vendido": false, "data_venda": null, "canal_venda": null, "valor_venda": null },
+  "ai_metadata": { "generated": true, "model": null, "generated_at": null, "fields": {} },
+  "auditoria": {
+    "criado_por": "ObjectId", "criado_em": "ISODate",
+    "atualizado_por": "ObjectId", "atualizado_em": "ISODate"
+  }
+}
+```
+
+`marketplaces` e integrações associadas existem no schema para compatibilidade futura, mas
+não têm funcionalidade ativa no MVP (fora de escopo, ver seção 8).
+
+## 3. Status do produto
+
+`rascunho | em_revisao | disponivel | reservado | vendido | inativo`
+
+Fluxo normal:
+
+```
+rascunho → em_revisao → disponivel → reservado → vendido
+```
+
+`inativo` é usado para exclusão lógica, alcançável a partir de qualquer estado por ação
+explícita de um `admin`.
+
+## 4. Cadastro manual
+
+```
+Produtos → Novo Produto → Cadastro Manual
+```
+
+Formulário reflete integralmente o modelo de dados acima. Campos calculados/gerados pelo
+sistema (`sku`, `auditoria.*`, `ecommerce.slug` se não informado) não são editáveis
+diretamente pelo usuário.
+
+## 5. Administração de produtos
+
+Tela "Produtos" com: busca, filtros, ordenação, paginação, novo produto, edição,
+visualização, ativação, desativação, publicação, marcação como vendido.
+
+### Filtros suportados
+SKU, nome, categoria, subcategoria, departamento, marca, tamanho, cor, estado da peça,
+status, faixa de preço, data de cadastro.
+
+### Layout de referência
+
+```
+Produtos
+[Buscar pelo nome ou SKU...]
+Categoria [Todos]  Status [Disponível]  Tamanho [Todos]
+-----------------------------------------------------
+Foto   SKU                 Produto              Preço
+       BVI-BERM-000025     Bermuda Jeans        R$129,90
+       BVI-POLO-000018     Polo Masculina       R$89,90
+-----------------------------------------------------
+                    [+ Novo Produto]
+```
+
+## 6. API
+
+```
+GET    /api/products
+GET    /api/products/:id
+POST   /api/products
+PATCH  /api/products/:id
+DELETE /api/products/:id
+```
+
+`DELETE` deve preferencialmente realizar exclusão lógica (`status = inativo`).
+`POST /api/products` aceita `role ∈ {admin, operator}`.
+
+## 7. Índices MongoDB
+
+```javascript
+{ sku: 1 }  // unique: true
+{ "classificacao.categoria_codigo": 1, status: 1 }
+{ "classificacao.departamento": 1, "caracteristicas.tamanho_etiqueta": 1, status: 1 }
+```
+
+## 8. Fora de escopo
+
+Carrinho, checkout, gateway de pagamento, publicação real em Mercado Livre/Shopee (os campos
+`marketplaces.*` existem no schema, mas a integração é uma fase futura) — ver constituição,
+seção "Escopo do MVP".
+
+## 9. Conformidade constitucional
+
+`sku` é sempre atribuído via [004-sku](../004-sku/spec.md) (princípio III), nunca informado
+manualmente pelo formulário. Exclusão via `DELETE` segue o princípio VIII (lógica, não
+física). Toda criação/edição/publicação/venda gera auditoria
+(`PRODUCT_CREATE`, `PRODUCT_UPDATE`, `PRODUCT_DISABLE`, `PRODUCT_PUBLISH`, `PRODUCT_SOLD`,
+`PRICE_UPDATE`) — ver [008-auditoria](../008-auditoria/spec.md).
