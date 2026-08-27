@@ -1,7 +1,8 @@
 # Constituição do Projeto — ERP da Vovó Isabel
 
-**Versão:** 1.0
+**Versão:** 1.2
 **Data de ratificação:** 2026-08-21
+**Última alteração:** 2026-08-22
 **Fonte:** Especificação Funcional e Técnica — Brechó da Vovó Isabel (v1.0, 20/08/2026)
 
 Este documento define os princípios inegociáveis do projeto. Toda spec em `specs/` e toda
@@ -47,7 +48,7 @@ distribuídas nesta fase. Esses componentes só entram quando houver uma necessi
 demonstrada — nunca por antecipação.
 
 ### VI. Integrações externas são abstraídas
-Provedor de IA, provedor de imagens (Cloudinary) e o repositório de dados (MongoDB) devem ser
+Provedor de IA, provedor de imagens (Azure Blob Storage) e o repositório de dados (MongoDB) devem ser
 acessados através de camadas de abstração (interfaces/ports), permitindo substituição futura
 sem reescrever regras de negócio. Cadeia de dependência obrigatória:
 
@@ -92,7 +93,7 @@ Cada peça física possui um SKU único e imutável, mesmo havendo peças aparen
 | Frontend | React + Vite 8 + TypeScript + React Router + TanStack Query + React Hook Form + Zod + CSS Modules/Tailwind |
 | Backend | Node.js + TypeScript + Fastify + Zod + MongoDB Driver oficial |
 | Banco de dados | MongoDB Atlas |
-| Imagens | Cloudinary (MongoDB armazena apenas id, URL, metadados, ordem e tipo — nunca binário) |
+| Imagens | Azure Blob Storage (MongoDB armazena apenas id, URL, metadados, ordem e tipo — nunca binário) |
 | IA | Modelo multimodal (texto + imagens → structured output), acessado exclusivamente pelo backend |
 
 Mudança de stack requer atualização desta constituição com justificativa registrada.
@@ -143,8 +144,22 @@ fase (ver roadmap na especificação funcional original).
 - Nenhuma funcionalidade nova é implementada sem uma spec correspondente em `specs/`.
 - Toda spec deve declarar explicitamente conformidade com os princípios I a X desta
   constituição, ou justificar e registrar formalmente o desvio.
-- Alterações nesta constituição exigem atualização de versão e data, e devem ser propagadas
-  para as specs afetadas.
+- Alterações nesta constituição exigem atualização de versão e data, devem ser registradas em
+  [decisions.md](decisions.md) quando decorrerem de uma decisão técnica com trade-offs, e
+  devem ser propagadas para as specs afetadas seguindo
+  [constitution_update_checklist.md](constitution_update_checklist.md).
 - O documento fonte completo (`Especificação Funcional e Técnica — Brechó da Vovó Isabel.md`,
-  na raiz do projeto) permanece como referência histórica; em caso de conflito, esta
-  constituição e as specs em `specs/` prevalecem por serem a versão viva do projeto.
+  na raiz do projeto) permanece como referência histórica **imutável**; em caso de conflito,
+  esta constituição e as specs em `specs/` prevalecem por serem a versão viva do projeto.
+  Quando uma decisão contradiz o documento fonte, gera-se uma nova versão numerada do
+  documento (ex.: `(v1.1).md`) em vez de editar o original.
+- Terminologia de domínio usada nesta constituição e nas specs segue
+  [glossary.md](glossary.md).
+
+## 7. Outros artefatos de `memory/`
+
+| Arquivo | Propósito |
+|---|---|
+| [glossary.md](glossary.md) | Vocabulário de domínio compartilhado entre constituição, specs, plans e tasks. |
+| [decisions.md](decisions.md) | Registro de decisões arquiteturais (ADR) — histórico de escolhas técnicas pontuais, mantido separado da constituição para não misturar princípios estáveis com decisões específicas. |
+| [constitution_update_checklist.md](constitution_update_checklist.md) | Checklist a seguir sempre que esta constituição for alterada, para manter specs/plans/tasks sincronizados. |
