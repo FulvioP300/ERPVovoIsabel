@@ -15,15 +15,20 @@
 - [ ] T003 Teste unitário `backend/src/services/image.service.test.ts`: rejeita MIME type
       inválido; rejeita arquivo acima do tamanho máximo; rejeita upload além do limite de
       imagens por peça — **antes** de qualquer chamada ao provedor externo.
-- [ ] T004 Teste de integração `backend/tests/integration/images.spec.ts` (adapter Cloudinary
+- [ ] T004 Teste de integração `backend/tests/integration/images.spec.ts` (adapter Azure Blob
       mockado): `POST /api/images` sem autenticação retorna 401; upload válido retorna
       metadado completo (`id`, `url`, `ordem`, `tipo`) sem o binário.
 
 ## Fase 2 — Implementação core (backend)
 
-- [ ] T005 Implementar `backend/src/plugins/images/cloudinary.adapter.ts`
-      (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`) — depende de
-      T001.
+- [ ] T005 Implementar `backend/src/plugins/images/azure-blob.adapter.ts` com
+      `@azure/storage-blob` (`AZURE_STORAGE_CONNECTION_STRING`,
+      `AZURE_STORAGE_CONTAINER_NAME`); `upload` grava blob `{uuid}.{ext}` e retorna a URL
+      (pública do container ou via SAS, conforme decisão do plan.md); `remove` chama
+      `deleteIfExists()` — depende de T001.
+- [ ] T005a Adicionar `@azure/storage-blob` às dependências de `backend/package.json` e
+      `AZURE_STORAGE_CONNECTION_STRING`, `AZURE_STORAGE_CONTAINER_NAME` a
+      `backend/.env.example`.
 - [ ] T006 Implementar `backend/src/services/image.service.ts` (valida MIME/extensão/
       tamanho/quantidade via T002, delega upload/remoção ao adapter T005) — depende de T002,
       T005 — faz T003 passar.
@@ -46,6 +51,7 @@
 ## Dependências entre tarefas
 
 ```
+T005a → T005 (adapter precisa do SDK e das env vars)
 T001,T002 → T005,T006 → T007 → T008
 T009 → T010 → T011
 ```

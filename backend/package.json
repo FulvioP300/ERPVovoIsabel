@@ -20,7 +20,8 @@
     "mongodb": "^6.0.0",
     "zod": "^3.23.0",
     "argon2": "^0.41.0",
-    "dotenv": "^16.4.0"
+    "dotenv": "^16.4.0",
+    "@azure/storage-blob": "^12.24.0"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

@@ -12,13 +12,26 @@ manual/edição quanto como entrada do cadastro assistido por IA.
 
 ## 2. Armazenamento
 
-Provedor preferencial: **Cloudinary**. Alternativas futuras: AWS S3, Cloudflare R2 — acesso
+Provedor: **Azure Blob Storage** (Blob Container dedicado, ex. `product-images`). Acesso
 sempre através de uma abstração de provedor de imagens (constituição, princípio VI), para
-permitir troca futura sem impacto nas regras de negócio.
+permitir troca futura de provedor sem impacto nas regras de negócio.
+
+Cada imagem é enviada como um blob (nome sugerido: `{productId ou uploadId}/{uuid}.{ext}`)
+no container configurado. A URL pública/assinada retornada pelo Azure é o valor persistido
+em `products.imagens.*.url`.
 
 O MongoDB (embutido em `products.imagens`) armazena **apenas**: identificador, URL,
 metadados, ordem e tipo da imagem. Os arquivos binários nunca são armazenados diretamente
 nos documentos de produto.
+
+### Acesso e segurança do blob
+
+- Container configurado como privado; leitura das imagens é feita via URL com **SAS token**
+  de leitura (com expiração) gerada pelo backend, ou via CDN/Front Door na frente do storage
+  account, quando publicação de e-commerce exigir URLs públicas de longa duração
+  (fase futura — fora do MVP).
+- Escrita (upload) e exclusão de blobs ocorrem **exclusivamente** pelo backend, autenticado
+  com a connection string / credencial do storage account — nunca exposta ao frontend.
 
 ## 3. API
 
@@ -69,10 +82,13 @@ orientar o usuário nesta ordem/checklist tanto no cadastro manual quanto no cad
 
 ## 8. Fora de escopo
 
-Edição de imagem (crop/filtros) no backoffice, CDN próprio — usar os recursos nativos do
-provedor de imagens.
+Edição de imagem (crop/filtros) no backoffice, CDN/Front Door próprio na frente do Blob
+Storage — usar os recursos nativos do provedor enquanto não houver necessidade concreta de
+URLs públicas de longa duração (ex. e-commerce público, fase 3 do roadmap).
 
 ## 9. Conformidade constitucional
 
 Aplica o princípio VI (abstração de integrações externas) e a regra de segurança de upload
-do princípio VII da [constituição](../../memory/constitution.md).
+do princípio VII da [constituição](../../memory/constitution.md). A escolha de Azure Blob
+Storage substitui a sugestão original de Cloudinary do documento fonte (seção 4.4) — registro
+da decisão em [constituição, seção 7](../../memory/constitution.md#7-registro-de-decisões-alterações-desta-constituição).

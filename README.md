@@ -45,7 +45,7 @@ ERP/
 ```bash
 # Backend
 cd backend
-cp .env.example .env   # preencher MONGODB_URI, JWT secrets, AI_API_KEY, Cloudinary
+cp .env.example .env   # preencher MONGODB_URI, JWT secrets, AI_API_KEY, Azure Storage
 npm install
 npm run dev             # http://localhost:3333
 
