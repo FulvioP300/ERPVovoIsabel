@@ -36,8 +36,13 @@ no cadastro manual quanto como vocabulário permitido para a IA — ver
 [003-categorias](../specs/003-categorias/spec.md).
 
 **Departamento**
-Agrupamento amplo de categorias por público (ex.: Masculino, Feminino, Infantil). Campo
-`classificacao.departamento` do produto; distinto de `categoria`.
+Agrupamento amplo por público (ex.: Masculino, Feminino, Unissexo). Campo `department` da
+**categoria** (`categories.department`, obrigatório na criação — ver
+[003-categorias](../specs/003-categorias/spec.md), seções 2 e 5), não um campo independente
+do produto. Versão anterior deste glossário descrevia `departamento` como campo do produto
+(`classificacao.departamento`) — corrigido para bater com o modelo de dados real de 003;
+quando 005-produtos for implementada, o departamento exibido/filtrado no produto deriva da
+categoria selecionada, em vez de ser digitado separadamente.
 
 **Subcategoria**
 Refinamento textual livre dentro de uma categoria (ex.: "Bermuda Jeans" dentro de

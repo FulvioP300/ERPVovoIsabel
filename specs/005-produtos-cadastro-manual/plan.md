@@ -37,8 +37,10 @@ backend/src/
 frontend/src/
 ├── schemas/product.schema.ts          # importa de shared/schemas
 ├── services/product.service.ts        # chamadas /api/products/*
+├── services/image.service.ts          # POST/DELETE /api/images (007)
 ├── hooks/useProducts.ts               # list com filtros (TanStack Query)
 ├── hooks/useProduct.ts                # detalhe/edição
+├── hooks/useImageUpload.ts            # mutations de upload/remoção de foto (007)
 ├── pages/products/ProductsPage.tsx    # listagem com busca/filtros/paginação
 ├── pages/products/ProductFormPage.tsx # cadastro manual / edição
 ├── features/products/ProductForm.tsx  # formulário completo (RHF + Zod), reutilizado por 006
@@ -47,7 +49,8 @@ frontend/src/
 ├── components/Pagination.tsx
 ├── components/SearchInput.tsx
 ├── components/Card.tsx
-└── components/ProductCard.tsx
+├── components/ProductCard.tsx
+└── components/ImageUploader.tsx       # upload/preview/remoção de fotos (007), usado no ProductForm
 ```
 
 ## 4. Fluxo de execução (camadas)
@@ -89,6 +92,12 @@ ProductFormPage (RHF + Zod)
    `{ "classificacao.departamento": 1, "caracteristicas.tamanho_etiqueta": 1, status: 1 }`.
 7. Frontend: `ProductsPage` (tabela + filtros + paginação), `ProductForm` reutilizável tanto
    no cadastro manual quanto — pré-preenchido — no fluxo de IA (006).
+8. Fotos (007, integrado aqui): `ProductForm` embute `ImageUploader` numa seção "Fotos" —
+   cada arquivo selecionado sobe imediatamente via `POST /api/images` (Azure Blob), o
+   formulário só guarda `{id, url}` retornado; remover uma foto chama
+   `DELETE /api/images/:id` e atualiza a lista local. No submit (criação ou edição), a galeria
+   inteira (já resultante do upload/remoção) é enviada em `imagens` — a primeira foto vira
+   `imagens.principal` automaticamente (`toProductPayload`, `frontend/src/schemas/product.schema.ts`).
 
 ## 6. Testes planejados
 

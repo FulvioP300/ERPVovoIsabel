@@ -1,8 +1,8 @@
 # Constituição do Projeto — ERP da Vovó Isabel
 
-**Versão:** 1.2
+**Versão:** 1.3
 **Data de ratificação:** 2026-08-21
-**Última alteração:** 2026-08-22
+**Última alteração:** 2026-09-14
 **Fonte:** Especificação Funcional e Técnica — Brechó da Vovó Isabel (v1.0, 20/08/2026)
 
 Este documento define os princípios inegociáveis do projeto. Toda spec em `specs/` e toda
@@ -90,13 +90,16 @@ Cada peça física possui um SKU único e imutável, mesmo havendo peças aparen
 
 | Camada | Tecnologia |
 |---|---|
-| Frontend | React + Vite 8 + TypeScript + React Router + TanStack Query + React Hook Form + Zod + CSS Modules/Tailwind |
+| Frontend | React + Vite 8 + TypeScript + React Router + TanStack Query + React Hook Form + Zod + Tailwind CSS v4 (CSS-first, `@theme`) |
 | Backend | Node.js + TypeScript + Fastify + Zod + MongoDB Driver oficial |
 | Banco de dados | MongoDB Atlas |
 | Imagens | Azure Blob Storage (MongoDB armazena apenas id, URL, metadados, ordem e tipo — nunca binário) |
 | IA | Modelo multimodal (texto + imagens → structured output), acessado exclusivamente pelo backend |
 
-Mudança de stack requer atualização desta constituição com justificativa registrada.
+Mudança de stack requer atualização desta constituição com justificativa registrada. Tailwind
+CSS definido como o único caminho de estilo do frontend (antes listado como opção junto de
+CSS Modules) — decisão e paleta/tipografia associadas em
+[ADR-005](decisions.md#adr-005--identidade-visual-do-frontend-paleta-e-tipografia-inspiradas-no-site-institucional).
 
 ---
 

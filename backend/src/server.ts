@@ -1,15 +1,16 @@
 import "dotenv/config";
-import Fastify from "fastify";
+import { buildApp } from "./app.js";
+import { connectMongo } from "./database/mongo.client.js";
 
-const server = Fastify({ logger: true });
+async function bootstrap() {
+  await connectMongo();
+  const app = await buildApp();
 
-server.get("/api/health", async () => ({ status: "ok" }));
+  const port = Number(process.env.PORT ?? 3333);
+  await app.listen({ port, host: "0.0.0.0" });
+}
 
-const port = Number(process.env.PORT ?? 3333);
-
-server
-  .listen({ port, host: "0.0.0.0" })
-  .catch((err) => {
-    server.log.error(err);
-    process.exit(1);
-  });
+bootstrap().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

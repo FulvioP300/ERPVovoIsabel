@@ -6,28 +6,38 @@
 
 ## Fase 1 — Testes (a mais crítica do MVP — priorizar)
 
-- [ ] T001 [P] Teste unitário `backend/src/services/sku.service.test.ts`: dado
+- [x] T001 [P] Teste unitário `backend/src/services/sku.service.test.ts`: dado
       `BERM.currentValue = 24`, `generateNextSku("BERM")` retorna `BVI-BERM-000025` e
-      persiste `currentValue = 25`.
-- [ ] T002 Teste de **concorrência** `backend/tests/integration/sku-concurrency.spec.ts`:
-      disparar N (ex. 20) chamadas simultâneas de `generateNextSku("BERM")` contra o MongoDB
-      de teste e assertar N SKUs distintos, sequenciais, sem colisão. Este teste é o
-      critério de aceite "concorrência" da spec — não pode ser pulado nem simplificado.
-- [ ] T003 Teste de integração: inserir produto com `sku` já existente deve ser rejeitado
-      pelo índice único de `products.sku` (depende do índice criado em
-      [005](../005-produtos-cadastro-manual/tasks.md)).
+      persiste `currentValue = 25`. 3 casos cobertos (geração simples, categoria inválida
+      rejeitada antes de incrementar, zero-padding).
+- [x] T002 Teste de **concorrência** `backend/tests/integration/sku-concurrency.spec.ts`:
+      disparar N (20) chamadas simultâneas de `generateNextSku("BERM")` contra MongoDB real
+      (`mongodb-memory-server`) e assertar N SKUs distintos, sequenciais, sem colisão. **2/2
+      passando** — validado também manualmente contra o Mongo de dev real (3 chamadas
+      sequenciais para BERM + 1 para VEST, sequências independentes confirmadas).
+- [x] T003 `backend/tests/integration/sku-concurrency.spec.ts` (novo `describe` no mesmo
+      arquivo): inserir um segundo produto com `sku` já existente é rejeitado pelo índice
+      único de `products.sku` (`código 11000`) — retomada agora que 005 criou o índice
+      (`mongo.client.ts`/`ensureIndexes`). Testa a garantia de última instância no banco, não
+      o `sku.service` (que nunca gera duplicata sozinho, por construção atômica).
 
 ## Fase 2 — Implementação core
 
-- [ ] T004 [P] Implementar `backend/src/schemas/sku.schema.ts`
+- [x] T004 [P] Implementar `backend/src/schemas/sku.schema.ts`
       (`SkuSchema`, regex `/^BVI-[A-Z]{3,6}-\d{6}$/`).
-- [ ] T005 Implementar `backend/src/repositories/sku-sequence.repository.ts`
+- [x] T005 Implementar `backend/src/repositories/sku-sequence.repository.ts`
       (`incrementAndGet(categoryCode)` via `findOneAndUpdate` atômico com `$inc` e
       `upsert: true` — **nunca** ler o valor atual antes de incrementar).
-- [ ] T006 Implementar `backend/src/services/sku.service.ts` (`generateNextSku(categoryCode)`
+- [x] T006 Implementar `backend/src/services/sku.service.ts` (`generateNextSku(categoryCode)`
       — valida categoria via `category.service.assertCategoryActive` de
       [003](../003-categorias/tasks.md), incrementa via T005, formata com zero-padding) —
       depende de T004, T005 — faz T001 e T002 passarem.
+
+**Validado contra o Mongo de dev real** (sem rota HTTP própria — 004 não tem UI nem API,
+testado chamando `generateNextSku` diretamente): `BVI-BERM-000001/2/3` sequenciais,
+`BVI-VEST-000001` independente, categoria inexistente rejeitada com a mesma mensagem de
+`assertCategoryActive` (003). Documento em `sku_sequences` confere exatamente com o modelo de
+dados da spec (`{_id: "BERM", currentValue: 3}`).
 
 ## Dependências entre tarefas
 

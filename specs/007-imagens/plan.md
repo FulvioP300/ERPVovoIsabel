@@ -82,12 +82,19 @@ ImageUploader (input capture="environment")
 
 ## 7. Riscos / decisões em aberto
 
-- Limites exatos (tamanho máximo em MB, nº máximo de imagens por peça) ficam como constantes
-  de configuração a definir na implementação — a spec não fixa um número exato.
-- **Estratégia de URL**: se o container permanecer privado, a `url` persistida em
-  `products.imagens` não pode depender de um SAS token de curta duração (o link expiraria e
-  quebraria a imagem exibida no catálogo). Duas opções a decidir na implementação: (a)
-  container com acesso de leitura público a nível de blob (mais simples, adequado ao MVP,
-  pois as fotos não são dados sensíveis) ou (b) endpoint de leitura autenticado no backend
-  que gera SAS sob demanda a cada exibição. Recomenda-se (a) para o MVP, revisitando (b) se
-  houver exigência de acesso restrito.
+- ~~Limites exatos~~ — resolvido na implementação (integrada a 005): `MAX_IMAGE_SIZE_BYTES` =
+  5MB por arquivo (`backend/src/schemas/image.schema.ts`); MIME types permitidos: JPEG, PNG,
+  WebP. `MAX_PRODUCT_IMAGES` = 10 fotos por peça — mas essa contagem **não** é validada em
+  `POST /api/images` (a rota não é escopada por produto); é aplicada no
+  `ProductSchema.imagens.galeria.max()` (`shared/schemas/product.schema.ts`), fonte única
+  tanto para o schema quanto para o limite exibido no `ImageUploader` do frontend.
+- ~~Estratégia de URL~~ — resolvido pelo
+  [ADR-003](../../memory/decisions.md#adr-003--topologia-do-azure-blob-storage-1-storage-account-leitura-pública-a-nível-de-blob):
+  container com **leitura pública a nível de blob** (opção (a) descrita originalmente aqui),
+  em uma única Storage Account (`stvovoisabel`) com containers `product-images-{dev,test,prod}`
+  por ambiente. Validado de ponta a ponta (upload → leitura anônima → remoção).
+- Checklist visual (Frente/Costas/Etiqueta/Detalhes/Defeitos, seção 6 da spec) e reordenação
+  manual de fotos **não foram implementados** — o pedido que motivou esta spec (integrada a
+  005) foi só "N fotos, upload e remoção no cadastro/edição"; a primeira foto da galeria vira
+  a capa automaticamente, sem seletor dedicado. Reavaliar quando 006 (cadastro por IA)
+  precisar do checklist de fato.

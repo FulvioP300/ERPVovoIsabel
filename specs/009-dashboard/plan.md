@@ -26,14 +26,16 @@ backend/src/
 └── modules/dashboard.module.ts
 
 frontend/src/
+├── schemas/dashboard.schema.ts      # DashboardSummarySchema
 ├── services/dashboard.service.ts
 ├── hooks/useDashboardSummary.ts     # TanStack Query
-├── pages/DashboardPage.tsx
-├── layouts/BackofficeLayout.tsx     # sidebar (Dashboard/Produtos/Categorias/Usuários/Config.)
-├── components/Sidebar.tsx
-├── components/Header.tsx
-└── components/Loading.tsx
+└── pages/DashboardPage.tsx          # 6 Cards (005), renderizada dentro do AppLayout existente (002)
 ```
+
+Sem `layouts/BackofficeLayout.tsx`/`components/Sidebar.tsx`/`components/Header.tsx`/
+`components/Loading.tsx` — reaproveita `components/AppLayout.tsx` (já existente desde 002,
+cabeçalho horizontal com navegação filtrada por role) em vez de um layout de sidebar paralelo.
+Ver [ADR-014](../../memory/decisions.md#adr-014--dashboard-reaproveita-applayout-em-vez-de-criar-um-layout-de-sidebar-paralelo).
 
 ## 4. Indicadores e origem dos dados
 
@@ -53,11 +55,11 @@ Produtos sem imagens        → countDocuments({ "imagens.principal": null, "ima
 2. `routes/dashboard.routes.ts`: `GET /api/dashboard/summary`, `authenticate` obrigatório
    (qualquer perfil logado); nenhuma restrição adicional de `role` — os números agregados não
    expõem dado individual sensível.
-3. `layouts/BackofficeLayout.tsx`: sidebar cujos itens são filtrados pela role do usuário
-   logado (ex.: "Usuários" só para `admin`), consumindo o mesmo helper de permissões definido
-   em 002.
+3. Navegação: reaproveita `components/AppLayout.tsx` (já filtra itens por role desde 002) —
+   ganhou um link "Dashboard" explícito, primeiro item do menu, apontando para `/`. Nenhum
+   layout novo criado (ver seção 3, ADR-014).
 4. `pages/DashboardPage.tsx`: renderiza os 6 indicadores como `Card`s (componente de 005),
-   com estado de `loading`/`error` padrão.
+   com estado de `loading`/`error` padrão, dentro do `AppLayout` existente.
 
 ## 6. Testes planejados
 

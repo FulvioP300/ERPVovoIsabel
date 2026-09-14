@@ -5,48 +5,74 @@
 [002-usuarios/tasks.md](../002-usuarios/tasks.md) (`authorize.middleware.ts`)
 **Convenção:** `[P]` = tarefa paralelizável.
 
+**Implementado dentro do trabalho de [005](../005-produtos-cadastro-manual/tasks.md)** (fotos no
+cadastro/edição manual de produto) — 007 não foi adiantada especulativamente, só quando 005
+criou a dependência real. Detalhes/decisões completos estão em tasks.md de 005; aqui só o
+mapeamento de tarefas.
+
 ## Fase 1 — Contrato e testes
 
-- [ ] T001 [P] Definir `backend/src/plugins/images/image-provider.port.ts`
-      (`upload(buffer, mimeType): Promise<ImageAsset>`, `remove(id): Promise<void>`).
-- [ ] T002 [P] Implementar `backend/src/schemas/image.schema.ts`
-      (`ImageMetadataSchema`, `UploadConstraintsSchema` — MIME types permitidos, tamanho
-      máximo, quantidade máxima).
-- [ ] T003 Teste unitário `backend/src/services/image.service.test.ts`: rejeita MIME type
-      inválido; rejeita arquivo acima do tamanho máximo; rejeita upload além do limite de
-      imagens por peça — **antes** de qualquer chamada ao provedor externo.
-- [ ] T004 Teste de integração `backend/tests/integration/images.spec.ts` (adapter Azure Blob
-      mockado): `POST /api/images` sem autenticação retorna 401; upload válido retorna
-      metadado completo (`id`, `url`, `ordem`, `tipo`) sem o binário.
+- [x] T001 [P] `backend/src/plugins/images/image-provider.port.ts`
+      (`upload(buffer, mimeType, extension): Promise<{id, url}>`, `remove(id): Promise<void>`).
+- [x] T002 [P] `backend/src/schemas/image.schema.ts` (`ALLOWED_IMAGE_MIME_TYPES` — mapa
+      MIME→extensão para jpeg/png/webp —, `MAX_IMAGE_SIZE_BYTES` = 5MB, `UploadedImageSchema`).
+      **Desvio do plano original**: "quantidade máxima" não está aqui — `POST /images` não é
+      escopado por produto, então o limite (`MAX_PRODUCT_IMAGES`, ver 005) é aplicado no
+      `ProductSchema.imagens.galeria.max()` compartilhado, não por request de upload.
+- [x] T003 `backend/src/services/image.service.test.ts`: rejeita MIME type inválido e arquivo
+      acima do tamanho máximo, ambos **antes** de chamar o provedor (mock injetado via
+      `setImageProviderForTesting`, sem tocar env vars do Azure).
+- [x] T004 `backend/tests/integration/images.spec.ts`: `POST /api/images` sem autenticação
+      retorna 401; `viewer` recebe 403; upload válido (admin/operador) retorna `{id, url}` sem
+      o binário; MIME inválido rejeitado com 400 antes do provedor; `DELETE /api/images/:id`
+      sem autenticação retorna 401, autenticado delega ao provedor. Provider mockado via
+      `light-my-request`'s suporte nativo a `FormData` (Node 18+), sem tocar Azure real.
 
 ## Fase 2 — Implementação core (backend)
 
-- [ ] T005 Implementar `backend/src/plugins/images/azure-blob.adapter.ts` com
-      `@azure/storage-blob` (`AZURE_STORAGE_CONNECTION_STRING`,
-      `AZURE_STORAGE_CONTAINER_NAME`); `upload` grava blob `{uuid}.{ext}` e retorna a URL
-      (pública do container ou via SAS, conforme decisão do plan.md); `remove` chama
-      `deleteIfExists()` — depende de T001.
-- [ ] T005a Adicionar `@azure/storage-blob` às dependências de `backend/package.json` e
-      `AZURE_STORAGE_CONNECTION_STRING`, `AZURE_STORAGE_CONTAINER_NAME` a
-      `backend/.env.example`.
-- [ ] T006 Implementar `backend/src/services/image.service.ts` (valida MIME/extensão/
-      tamanho/quantidade via T002, delega upload/remoção ao adapter T005) — depende de T002,
-      T005 — faz T003 passar.
-- [ ] T007 Implementar `backend/src/routes/image.routes.ts`
-      (`POST /images`, `DELETE /images/:id`, `authenticate` +
-      `authorize(["admin","operator"])`) — depende de T006 — faz T004 passar.
-- [ ] T008 Registrar `backend/src/modules/image.module.ts` no `server.ts`.
+- [x] T005 `backend/src/plugins/images/azure-blob.adapter.ts` (`AzureBlobImageProvider`,
+      classe — mesmo padrão de `OpenAiCompatibleAdapter` de 006: env vars lidas no
+      construtor, nunca no import do módulo, para não exigir Azure configurado em testes que
+      não tocam upload). `upload` grava `{uuid}.{ext}` e retorna `blockBlobClient.url`
+      diretamente — **sem SAS token** (ADR-003: leitura pública a nível de blob, URL estável).
+      `remove` chama `deleteIfExists()`.
+- [x] T005a `@azure/storage-blob`/`@fastify/multipart` já estavam em
+      `backend/package.json`/`.env.example` (adicionados durante o setup de infraestrutura,
+      antes desta implementação).
+- [x] T006 `backend/src/services/image.service.ts` (`uploadImage`/`removeImage`, valida MIME/
+      tamanho via T002 antes de delegar ao provider singleton lazy — instanciado só no
+      primeiro uso real, nunca no import do módulo).
+- [x] T007 `backend/src/routes/image.routes.ts` (`POST /`, `DELETE /:id`, `authenticate` +
+      `authorize(["admin","operator"])`).
+- [x] T008 `backend/src/modules/image.module.ts` registrado em `app.ts`, prefixo
+      `/api/images`; `backend/src/plugins/multipart.plugin.ts` novo (registra
+      `@fastify/multipart` com `limits.fileSize = MAX_IMAGE_SIZE_BYTES`).
+
+**Validado de ponta a ponta contra o Azure Blob Storage real** (`stvovoisabel`,
+`product-images-dev`, via curl): upload → leitura pública 200 → MIME inválido rejeitado 400 →
+delete → leitura pós-delete 404. `POST /api/products` com `imagens` embutido e `PATCH
+/api/products/:id` substituindo `imagens` (replace atômico, não parcial) também validados
+contra o Mongo de dev real.
 
 ## Fase 3 — Frontend
 
-- [ ] T009 [P] `frontend/src/services/image.service.ts` (`POST`/`DELETE /api/images`).
-- [ ] T010 Implementar `frontend/src/hooks/useImageUpload.ts` (TanStack Query mutation com
-      progresso/erro) — depende de T009.
-- [ ] T011 Implementar `frontend/src/components/ImageUploader.tsx`
-      (`<input type="file" accept="image/*" capture="environment">`, checklist visual
-      Frente/Costas/Etiqueta/Detalhes/Defeitos, preview e reordenação) — depende de T010.
-      **Componente reutilizado por [005](../005-produtos-cadastro-manual/tasks.md) e
-      [006](../006-produtos-cadastro-ia/tasks.md).**
+- [x] T009 [P] `frontend/src/services/image.service.ts` (`POST`/`DELETE /api/images`, mesmo
+      padrão `ApiEnvelope`/`parseEnvelope` dos demais services).
+- [x] T010 `frontend/src/hooks/useImageUpload.ts` (mutations TanStack Query para upload/
+      remoção). **Desvio do plano original**: sem barra de progresso — `fetch` não expõe
+      progresso de upload nativamente (exigiria reescrever com `XMLHttpRequest`);
+      simplificação de escopo aceita para o MVP, erro tratado via estado local no
+      `ImageUploader`.
+- [x] T011 `frontend/src/components/ImageUploader.tsx` (`<input type="file" accept="image/*"
+      capture="environment" multiple>`, preview em grade com botão de remoção por foto,
+      contador "N de `MAX_PRODUCT_IMAGES` fotos"). **Desvio do plano original**: sem checklist
+      visual Frente/Costas/Etiqueta/Detalhes/Defeitos nem reordenação manual — fora do pedido
+      original de 005 ("N fotos, upload e remoção no cadastro/edição"); a primeira foto da
+      lista vira a capa (`imagens.principal`) automaticamente, sem seletor dedicado. Reavaliar
+      o checklist quando 006 (cadastro por IA) precisar dele de fato.
+      **Integrado a [005](../005-produtos-cadastro-manual/tasks.md)** (`ProductForm.tsx`).
+      Reutilização por [006](../006-produtos-cadastro-ia/tasks.md) permanece válida sem
+      alteração de contrato.
 
 ## Dependências entre tarefas
 

@@ -3,7 +3,8 @@
 **Domínio:** Products
 **Fase:** 1 — Backoffice
 **Status:** Draft
-**Depende de:** [003-categorias](../003-categorias/spec.md), [004-sku](../004-sku/spec.md)
+**Depende de:** [003-categorias](../003-categorias/spec.md), [004-sku](../004-sku/spec.md),
+[007-imagens](../007-imagens/spec.md) (fotos do produto)
 
 ## 1. Visão geral
 
@@ -120,6 +121,15 @@ Formulário reflete integralmente o modelo de dados acima. Campos calculados/ger
 sistema (`sku`, `auditoria.*`, `ecommerce.slug` se não informado) não são editáveis
 diretamente pelo usuário.
 
+### 4.1 Fotos do produto
+
+Cada peça pode ter **N fotos** (`imagens.galeria`, limite de `MAX_PRODUCT_IMAGES` — ver
+[007-imagens](../007-imagens/spec.md)). O formulário de cadastro manual permite enviar novas
+fotos diretamente (upload para o provedor de imagens, seção 007); na edição, o operador pode
+tanto adicionar novas fotos quanto apagar fotos já existentes da peça. A primeira foto da
+galeria é usada automaticamente como `imagens.principal` (capa exibida na listagem, seção 5) —
+não há seletor dedicado de "foto principal" no MVP.
+
 ## 5. Administração de produtos
 
 Tela "Produtos" com: busca, filtros, ordenação, paginação, novo produto, edição,
@@ -155,6 +165,10 @@ DELETE /api/products/:id
 
 `DELETE` deve preferencialmente realizar exclusão lógica (`status = inativo`).
 `POST /api/products` aceita `role ∈ {admin, operator}`.
+
+`imagens` (principal + galeria) é aceito tanto em `POST` quanto em `PATCH` — sempre como o
+array completo já resultante do upload/remoção feitos via `POST`/`DELETE /api/images` (007)
+*antes* da chamada a `products`; nunca um merge parcial como as demais subseções do modelo.
 
 ## 7. Índices MongoDB
 

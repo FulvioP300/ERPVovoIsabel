@@ -17,7 +17,9 @@
 | Frontend | React + Vite 8 + TypeScript + React Hook Form + Zod + TanStack Query |
 
 Explicitamente **não** utilizar LangChain/LangGraph nesta fase (constituição, princípio V) —
-chamada direta ao SDK/API do provedor de IA, encapsulada em um único adapter.
+chamada direta ao SDK/API do provedor de IA, encapsulada em um único adapter. **Nenhuma
+capacidade de function/tool calling é configurada no adapter** — decisão de segurança
+permanente, não temporária (spec, seção 8.2/10).
 
 ## 2. Contexto técnico
 
@@ -28,24 +30,26 @@ implementação concreta (ex.: `OpenAiVisionAdapter`) fica isolada em `plugins/a
 ## 3. Estrutura de arquivos
 
 ```
+shared/schemas/
+└── ai-intake.schema.ts                  # AiSuggestedProductSchema — fonte única (backend valida a IA, frontend tipa/parseia a resposta e monta os badges)
+
 backend/src/
 ├── plugins/ai/ai-provider.port.ts       # interface: analyze(prompt, images[]) => RawAiOutput
 ├── plugins/ai/<provider>.adapter.ts     # implementação concreta do provedor multimodal
-├── schemas/ai-intake.schema.ts          # AiAnalysisInputSchema, AiSuggestedProductSchema (subset de product.schema)
+├── schemas/ai-intake.schema.ts          # reexporta AiSuggestedProductSchema de shared/dist + AiAnalysisInputSchema (só backend)
 ├── services/ai-intake.service.ts        # orquestra: chama adapter → valida Zod → aplica taxonomia de categorias (003)
 ├── services/product-confirm.service.ts  # recebe produto revisado → reusa product.service (005) + sku.service (004)
 ├── routes/ai-intake.routes.ts           # POST /products/analyze, POST /products/confirm
 └── modules/ai-intake.module.ts
 
 frontend/src/
-├── schemas/ai-intake.schema.ts          # espelha AiSuggestedProductSchema
-├── services/ai-intake.service.ts        # POST /api/products/analyze (multipart), POST /api/products/confirm
-├── hooks/useAiAnalysis.ts               # TanStack Query mutation com estados loading/success/error
-├── pages/products/ProductAiIntakePage.tsx
-├── features/products-ai/AiIntakeForm.tsx      # upload de fotos + textarea de descrição
-├── features/products-ai/AiReviewForm.tsx      # reutiliza ProductForm (005) pré-preenchido
-├── features/products-ai/AiConfidenceBadges.tsx  # "✓ Categoria identificada / ⚠ Marca não identificada"
-└── components/ImageUploader.tsx          # <input capture="environment">, usado também em 007
+├── schemas/ai-intake.schema.ts          # reexporta AiSuggestedProductSchema de shared/dist + aiSuggestionToFormValues/buildConfidenceBadges
+├── services/ai-intake.service.ts        # POST /api/products/analyze (multipart, File[] direto — sem Azure Blob antes), POST /api/products/confirm
+├── hooks/useAiAnalysis.ts               # TanStack Query mutation com estados loading/success/error/empty
+├── pages/products/ProductAiIntakePage.tsx  # orquestra intake → upload real das fotos (007) → revisão → confirm
+├── features/products-ai/AiIntakeForm.tsx      # picker de fotos PRÓPRIO (preview local, sem upload) + textarea — não é o ImageUploader de 007
+├── features/products-ai/AiReviewForm.tsx      # reutiliza ProductForm (005) pré-preenchido — é aqui que o ImageUploader de 007 entra, dentro do ProductForm
+└── features/products-ai/AiConfidenceBadges.tsx  # "✓ Categoria identificada / ⚠ Marca não identificada"
 ```
 
 ## 4. Fluxo de execução (camadas)
@@ -74,35 +78,55 @@ AiIntakeForm (fotos + descrição)
    Promise<RawAiOutput>` — nenhuma outra camada conhece o SDK do provedor.
 2. `schemas/ai-intake.schema.ts`: subset de `product.schema.ts` (005) que a IA pode
    preencher; campos não determináveis são `.nullable()` e devem chegar como `null`, nunca
-   `undefined` silencioso ou string inventada.
-3. `services/ai-intake.service.ts`: chama o adapter, valida com Zod, valida `categoria_codigo`
-   contra 003, e — se configurado — anexa `ai_metadata.fields["<campo>"] = {confidence,
-   source}` quando o provedor retornar esse dado.
+   `undefined` silencioso ou string inventada. `AiSuggestedProductSchema` é **`.strict()`**
+   (spec, seção 8.2-B) — qualquer chave fora do schema rejeita a resposta inteira, nunca é
+   descartada em silêncio. O schema nunca declara `sku`, `preco`, `status`, `estoque`,
+   `ecommerce` ou `venda` (spec, seção 8.2-C).
+3. `services/ai-intake.service.ts`: monta o prompt de sistema com os guardrails da spec
+   (seção 8.3, configurado como `systemPrompt` do `OpenAiCompatibleAdapterConfig`) e, por
+   requisição, concatena em blocos delimitados **o schema exato de resposta exigido** (`
+   RESPONSE_SCHEMA_TEMPLATE`, ver spec seção 8.3 nota de implementação — sem isso o modelo
+   improvisa a estrutura e `.strict()` rejeita tudo, descoberto testando contra o provedor
+   real) + a lista de categorias ativas (003) + a descrição literal do operador (spec, seção
+   8.3) antes de chamar o adapter; valida a saída com Zod (T002), revalida `categoria_codigo`
+   contra 003 via `category.service.assertCategoryActive` — **independente do que o prompt
+   pediu** (spec, seção 8.2-D) — e, se o provedor retornar, propaga `ai_metadata.fields`
+   (metadado de exibição apenas, nunca usado para decidir validação).
 4. `routes/ai-intake.routes.ts`: `POST /products/analyze` com `@fastify/multipart` e
    `@fastify/rate-limit` (limite configurável via env, ex. `AI_ANALYZE_RATE_LIMIT`);
    `POST /products/confirm` delega a `product-confirm.service.ts`.
 5. `services/product-confirm.service.ts`: reaproveita integralmente `product.service.ts` de
    005 — não duplica lógica de geração de SKU nem de persistência; a única diferença do
    cadastro manual é a origem dos dados (IA + revisão humana vs. digitação direta).
-6. Frontend: `AiIntakeForm` (upload + descrição) → estados `loading/success/error/empty` →
-   `AiReviewForm` reaproveitando `ProductForm` (005) com valores iniciais vindos da análise →
-   `AiConfidenceBadges` para indicar o que foi/não foi identificado.
-7. Garantir que o botão final é sempre "Salvar produto" acionado pelo operador — nenhuma
-   chamada a `/confirm` é disparada automaticamente após `/analyze`.
+6. Frontend: `AiIntakeForm` (picker de fotos local — sem upload ainda, `/analyze` usa os
+   bytes direto — + textarea de descrição) → estados `loading/success/error/empty` → ao
+   suceder, as mesmas fotos escolhidas viram upload real (`useImageUpload`, 007) →
+   `AiReviewForm` reaproveitando `ProductForm` (005), pré-preenchido com os valores da análise
+   e com essas fotos já na seção Fotos → `AiConfidenceBadges` indicando o que foi/não foi
+   identificado.
+7. Garantir que o botão final é sempre o próprio submit do `ProductForm` ("Cadastrar
+   produto"), acionado pelo operador — nenhuma chamada a `/confirm` é disparada
+   automaticamente após `/analyze`.
 
 ## 6. Testes planejados
 
 - Unitário: `ai-intake.schema` rejeita payload com campo obrigatório ausente ou tipo
   inválido; `ai-intake.service` propaga `null` sem inventar valores quando o adapter retorna
-  incerteza.
+  incerteza. **Segurança (spec, seção 8.4)**: mock do adapter retornando `sku`, `preco`,
+  `status`, `estoque` ou `ecommerce` no JSON é rejeitado pelo `.strict()` — nunca chega
+  silenciosamente ao service; mock retornando `categoria_codigo` fora da taxonomia ativa (ou
+  inexistente) é rejeitado por `assertCategoryActive`, mesmo com JSON estruturalmente válido.
 - Integração: `POST /products/analyze` com adapter mockado retorna estrutura validada, sem
   `sku`, sem persistência; `POST /products/confirm` gera SKU e persiste via 004/005.
 - E2E: cadastrar peça utilizando IA — do upload de fotos até "Salvar produto" (critério de
-  aceite da spec).
+  aceite da spec); "dado desconhecido pela IA" (T019, tasks.md).
 
 ## 7. Riscos / decisões em aberto
 
-- Escolha do provedor de IA multimodal concreto (`<provider>.adapter.ts`) não é fixada nesta
-  fase — qualquer provedor compatível com texto+imagem→structured output serve, desde que
-  acessado só pelo backend.
+- ~~Escolha do provedor de IA multimodal concreto~~ — resolvido parcialmente pelo
+  [ADR-002](../../memory/decisions.md#adr-002--adapter-de-ia-genérico-compatível-com-a-api-openai):
+  `plugins/ai/openai-compatible.adapter.ts` fala com qualquer provedor compatível com o
+  formato OpenAI Chat Completions, configurável via `AI_BASE_URL`/`AI_API_KEY`/`AI_MODEL`.
+  Ainda em aberto: qual provedor efetivamente usar em produção (OpenAI, OpenRouter, um
+  servidor self-hosted etc.) — decisão de custo/operação, não de código.
 - Definir formato exato de `AI_ANALYZE_RATE_LIMIT` (por usuário vs. por IP) na implementação.
