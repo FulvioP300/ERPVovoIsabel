@@ -12,6 +12,7 @@ import cookiePlugin from "./plugins/cookie.plugin.js";
 import corsPlugin from "./plugins/cors.plugin.js";
 import multipartPlugin from "./plugins/multipart.plugin.js";
 import rateLimitPlugin from "./plugins/rate-limit.plugin.js";
+import staticPlugin from "./plugins/static.plugin.js";
 
 export interface BuildAppOptions {
   logger?: boolean;
@@ -39,6 +40,9 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(imageModule);
   await app.register(aiIntakeModule);
   await app.register(dashboardModule);
+
+  // Depois de todas as rotas /api/*: o fallback SPA (spec 010) não pode interceptar a API.
+  await app.register(staticPlugin);
 
   return app;
 }

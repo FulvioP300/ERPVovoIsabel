@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # shared/ primeiro — backend/ e frontend/ importam shared/dist diretamente (via caminho
+      # relativo, sem workspace do npm) tanto no lint/build/test quanto em runtime.
+      - name: shared — install, lint, build, test
+        working-directory: shared
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+          npm run test
+
+      - name: backend — install, lint, build, test
+        working-directory: backend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+          npm run test
+
+      - name: frontend — install, lint, build, test
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+          npm run test

@@ -751,8 +751,81 @@ apontando para `/`. Nenhum componente novo de layout/sidebar/header foi criado;
 
 ---
 
+## ADR-015 — Deploy em container único, não Azure App Service + Static Web Apps
+
+**Status:** Aceita
+**Data:** 2026-09-14
+**Specs afetadas:** [010-deploy](../specs/010-deploy/spec.md)
+
+### Contexto
+
+Uma primeira tentativa de estratégia de deploy (2 commits em cima do MVP completo, chegou a
+ser mesclada em `main` e depois revertida) hospedava o backend no Azure App Service e o
+frontend no Azure Static Web Apps — dois serviços gerenciados, duas origens diferentes.
+
+Essa tentativa foi revertida a pedido explícito do usuário, que considerou o resultado uma
+regressão. Ao investigar o motivo (não um bug pontual, mas uma rejeição da estratégia em si):
+frontend e backend em origens diferentes exigem cookies de sessão `SameSite=None; Secure`
+para funcionar cross-origin (mais frágeis e mais fáceis de quebrar silenciosamente do que
+`SameSite=Lax` same-origin já usado em dev), e o frontend precisava saber a URL absoluta do
+backend em tempo de build (`frontend/src/config.ts`), quebrando a simetria com o proxy
+relativo (`/api/...`) que já funcionava em dev via Vite. Também prendia a estratégia de deploy
+a duas APIs específicas da Azure (App Service + Static Web Apps), quando o pedido explícito do
+usuário era por uma abordagem **independente de provedor**, que ainda pudesse rodar na Azure
+como uma opção, não como a única.
+
+### Decisão
+
+Empacotar backend e frontend **num único container Docker**, backend servindo o build
+estático do frontend (`@fastify/static` + fallback SPA) no mesmo processo/porta — elimina a
+origem cruzada inteiramente (mesma origem ⇒ `SameSite=Lax` funciona sem configuração
+condicional, `fetch("/api/...")` relativo funciona igual em dev e produção, sem
+`config.ts`/URL absoluta). A imagem publicada em GitHub Container Registry (`ghcr.io`, não um
+registro específico de nuvem) roda em qualquer host que execute containers — Azure Container
+Apps incluído, mas não exclusivo. MongoDB Atlas e Azure Blob Storage continuam exatamente como
+estão (ADR-009, ADR-003) — a mudança é só na camada de execução do código, não nos serviços
+gerenciados externos, ambos já abstraídos por porta (princípio VI).
+
+Detalhe completo em [spec.md](../specs/010-deploy/spec.md) e [plan.md](../specs/010-deploy/plan.md).
+
+### Consequências
+
+- `main` foi resetado para o commit do MVP completo (`be249a7`) e o branch `azureDeploy` (que
+  tinha a tentativa anterior) foi apagado local e remotamente — a decisão de reverter veio
+  antes da decisão de qual estratégia usar no lugar; esta ADR documenta a segunda parte.
+- Nenhuma mudança nas specs de domínio (001–009) nem nos serviços externos já decididos
+  (MongoDB Atlas, Azure Blob Storage, provedor de IA) — só a camada de empacotamento/execução.
+- Decisão operacional em aberto, deliberadamente **não** resolvida por esta ADR: qual host
+  efetivamente roda a imagem em produção. A imagem é portável por construção; a escolha do
+  host é um passo separado, sem exigir mudança de código quando for tomada (spec 010, seção 7).
+- Precedente para o projeto: qualquer decisão de infraestrutura que prenda a aplicação a uma
+  API específica de um provedor de nuvem (além dos serviços gerenciados já explicitamente
+  decididos — Mongo Atlas, Azure Blob) deve ser questionada antes de implementada, não depois.
+
+**Addendum (2026-09-14, mesmo dia)**: o host foi decidido — **Azure Container Apps** (1
+Container Apps Environment compartilhado, 3 Container Apps: dev/test/prod), aproveitando os
+créditos Azure já usados por Mongo/Blob Storage. A imagem continua desacoplada (roda em
+qualquer host Docker); só o *runtime* escolhido para produção deixou de estar em aberto.
+Detalhe completo em [spec.md](../specs/010-deploy/spec.md), seção 5 (topologia), e
+[plan.md](../specs/010-deploy/plan.md), seção 5.3 (provisionamento).
+
+**Addendum 2 (2026-09-14, mesmo dia)**: refinado por custo — **só produção vai pro Azure
+Container Apps**. Dev continua local (`npm run dev`, inalterado) e test passa a rodar local
+via `docker compose up` (a mesma imagem que vai pra produção, validada na máquina antes de
+qualquer deploy), sem nenhum Container App de dev/test na subscription. Motivo: cada Container
+App paga por alocação mínima de recursos mesmo ocioso (0.25 vCPU / 0.5 GiB fixos), e dev/test
+já rodavam localmente durante todo o desenvolvimento até aqui — mantê-los assim custa zero
+adicional e não perde cobertura de teste, já que a mesma imagem Docker é o artefato validado
+nos três lugares (local, test local, produção na nuvem). A topologia de 3 Container Apps
+descrita acima fica só como referência histórica, caso um ambiente de teste remoto vire
+necessidade real (spec 010, seção 8 "fora de escopo"). Detalhe completo em
+[spec.md](../specs/010-deploy/spec.md) e [plan.md](../specs/010-deploy/plan.md) (ambos
+reescritos nesta revisão).
+
+---
+
 <!--
 Ao registrar uma nova ADR, copiar o bloco de convenção acima, numerar sequencialmente
-(ADR-015, ADR-016, ...) e atualizar constitution.md se a decisão alterar a stack fixada na
+(ADR-016, ADR-017, ...) e atualizar constitution.md se a decisão alterar a stack fixada na
 seção 2.
 -->

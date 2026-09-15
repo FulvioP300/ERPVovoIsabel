@@ -1,6 +1,6 @@
 # Constituição do Projeto — ERP da Vovó Isabel
 
-**Versão:** 1.3
+**Versão:** 1.4
 **Data de ratificação:** 2026-08-21
 **Última alteração:** 2026-09-14
 **Fonte:** Especificação Funcional e Técnica — Brechó da Vovó Isabel (v1.0, 20/08/2026)
@@ -95,11 +95,15 @@ Cada peça física possui um SKU único e imutável, mesmo havendo peças aparen
 | Banco de dados | MongoDB Atlas |
 | Imagens | Azure Blob Storage (MongoDB armazena apenas id, URL, metadados, ordem e tipo — nunca binário) |
 | IA | Modelo multimodal (texto + imagens → structured output), acessado exclusivamente pelo backend |
+| Deploy | Container Docker único (backend serve o build estático do frontend), publicado em GitHub Container Registry, rodando em Azure Container Apps (imagem independente do host escolhido) |
 
 Mudança de stack requer atualização desta constituição com justificativa registrada. Tailwind
 CSS definido como o único caminho de estilo do frontend (antes listado como opção junto de
 CSS Modules) — decisão e paleta/tipografia associadas em
 [ADR-005](decisions.md#adr-005--identidade-visual-do-frontend-paleta-e-tipografia-inspiradas-no-site-institucional).
+Estratégia de deploy definida em [ADR-015](decisions.md#adr-015--deploy-em-container-único-não-azure-app-service--static-web-apps)
+(substitui uma tentativa anterior de Azure App Service + Static Web Apps, revertida) — ver
+[specs/010-deploy](../specs/010-deploy/spec.md).
 
 ---
 

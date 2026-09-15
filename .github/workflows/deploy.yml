@@ -1,0 +1,68 @@
+name: Deploy
+
+# Só dispara depois da CI passar num push em main — nunca em paralelo com ela, nunca em
+# dev/test (que não têm nenhum recurso de nuvem, spec 010, seção 2).
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  contents: read
+  packages: write # publicar em ghcr.io
+  id-token: write # necessário pro azure/login via OIDC (sem client-secret de longa duração)
+
+jobs:
+  build-and-push:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.build.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Login no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build e push da imagem (contexto = raiz do monorepo)
+        id: build
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # ghcr.io exige nome de imagem em minúsculas; github.repository preserva o casing do repo.
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/$REPO_LOWER"
+          docker build -t "$IMAGE:$SHA" -t "$IMAGE:latest" .
+          docker push "$IMAGE:$SHA"
+          docker push "$IMAGE:latest"
+          echo "image=$IMAGE:$SHA" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    # GitHub Environment "production" com required reviewer configurado manualmente no repo —
+    # é isso que torna o deploy uma aprovação humana, não o workflow em si (spec 010, seção 7).
+    environment: production
+    steps:
+      - name: Login no Azure (OIDC — sem client-secret de longa duração)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Atualiza o Container App de produção (único Container App da subscription)
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            az containerapp update \
+              --name ca-vovoisabel-prod \
+              --resource-group rg-vovoisabel \
+              --image ${{ needs.build-and-push.outputs.image }}

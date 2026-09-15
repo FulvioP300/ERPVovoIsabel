@@ -1,0 +1,24 @@
+# Reinstalado do zero em cada estágio do Dockerfile — nunca copiar node_modules do host
+# (evita levar binários nativos compilados pra plataforma errada, ex. argon2).
+**/node_modules
+
+# Segredos nunca entram na imagem — só via env var/secret em runtime (constituição, princípio VII).
+.env
+.env.*
+!.env.example
+!docker-compose.example.env
+
+# Builds locais — cada estágio gera os seus dentro do container.
+**/dist
+**/coverage
+
+.git
+.github
+
+# Documentação e specs não fazem parte do runtime da aplicação.
+*.md
+memory/
+specs/
+
+# Testes E2E rodam fora da imagem (contra ela, não dentro dela).
+e2e/
