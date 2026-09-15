@@ -43,9 +43,11 @@ test("operador cadastra uma peça manualmente, com foto, e ela aparece na listag
   await fieldset(page, "Condição").locator("select").selectOption("novo");
 
   // Upload de foto (spec 005, seção 4.1 / 007-imagens) — sobe de verdade para o Azure Blob
-  // Storage do ambiente de teste (product-images-test).
+  // Storage do ambiente de teste (product-images-test). Dois inputs de arquivo agora existem
+  // (botões "Tirar foto"/"Galeria", spec 007 seção 5) — usa o de galeria (sem `capture`, já
+  // que não há câmera num teste headless).
   const fotos = fieldset(page, "Fotos");
-  await fotos.locator('input[type="file"]').setInputFiles({
+  await fotos.locator('input[type="file"]:not([capture])').setInputFiles({
     name: "foto-e2e.jpg",
     mimeType: "image/jpeg",
     buffer: FIXTURE_PHOTO,

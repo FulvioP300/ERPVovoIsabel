@@ -96,19 +96,39 @@ de escolher da galeria.
 - [x] T015 [P] Remover `capture="environment"` de
       `frontend/src/features/products-ai/AiIntakeForm.tsx` (input próprio, não reaproveita
       `ImageUploader`) — cadastro por IA (006).
-- [ ] T016 Validar manualmente em iOS Safari e Android Chrome reais que o seletor nativo
-      passa a oferecer as duas opções (câmera e galeria) — depende de T014, T015. **Não
-      validado ainda**: exige um celular real, fora do alcance desta sessão. Se algum navegador
-      testado não oferecer as duas opções, reavaliar pra dois botões explícitos (plan.md,
-      seção 5.2, risco documentado).
+- [x] T016 Validado em celular real pelo usuário: **sem `capture`, o navegador/SO dele abriu
+      só a galeria, nunca ofereceu a câmera** — confirma o risco já documentado em plan.md,
+      seção 5.2 ("comportamento pode divergir entre navegadores/WebViews"). T014/T015 sozinhas
+      não bastam; ver T020.
 
 **Validação automatizada**: e2e `product-manual-registration.spec.ts` roda de ponta a ponta
-contra o `ImageUploader` sem `capture` (upload real, miniatura renderiza) — passou. e2e
-`product-ai.spec.ts` (AiIntakeForm + AiReviewForm) não pôde ser validado nesta sessão: a
-chamada real ao provedor de IA multimodal travou (sem retornar em vários minutos) — falha
-pré-existente e não relacionada a esta mudança (nenhum código do fluxo de IA foi tocado;
-uma chamada de texto puro ao mesmo provedor respondeu em ~2,6s, isolando o problema à
-requisição multimodal em si, não a rede/credenciais).
+contra o `ImageUploader` (upload real, miniatura renderiza) — passou. e2e `product-ai.spec.ts`
+(AiIntakeForm + AiReviewForm) não pôde ser validado nesta sessão: a chamada real ao provedor de
+IA multimodal travou (sem retornar em vários minutos) — falha pré-existente e não relacionada a
+esta mudança (nenhum código do fluxo de IA foi tocado; uma chamada de texto puro ao mesmo
+provedor respondeu em ~2,6s, isolando o problema à requisição multimodal em si, não a
+rede/credenciais).
+
+### Correção: dois botões explícitos (câmera e galeria), não um seletor único
+
+T014/T015 confiavam no seletor nativo do navegador oferecer as duas opções sozinho quando o
+input não tem `capture` — não é garantido (T016). Troca pra dois inputs de arquivo distintos,
+cada um com seu próprio botão visível, sem depender do comportamento do navegador/SO:
+
+- [x] T020 [P] `ImageUploader.tsx`: dois botões lado a lado no lugar do único "+ Foto" —
+      "📷 Tirar foto" (`capture="environment"`, sem `multiple` — captura é sempre uma foto por
+      vez) e "🖼️ Galeria" (`multiple`, sem `capture`). Dois refs (`cameraInputRef`,
+      `galleryInputRef`) — `handleFiles` agora recebe qual dos dois disparou, pra resetar só o
+      input certo depois do upload.
+- [x] T021 [P] `AiIntakeForm.tsx`: mesma troca (dois botões/inputs) — sem necessidade de refs
+      aqui, já que `handleFiles` é síncrono (não faz upload, só guarda o `File` local — spec
+      006), reset via `e.target.value = ""` direto no `onChange`.
+- [x] T022 e2e: `product-manual-registration.spec.ts` e `product-ai.spec.ts` atualizados — o
+      seletor `input[type="file"]` batia num elemento só antes; agora tem dois no DOM
+      (violação de strict mode do Playwright). Corrigido pra
+      `input[type="file"]:not([capture])`, mirando o input de galeria (não há câmera num teste
+      headless) — depende de T020, T021. Rodado contra o Mongo de teste real (mesmo processo
+      de DNS SRV manual documentado nesta sessão) — passou.
 
 ## Dependências entre tarefas
 
@@ -117,7 +137,7 @@ T005a → T005 (adapter precisa do SDK e das env vars)
 T001,T002 → T005,T006 → T007 → T008
 T009 → T010 → T011
 T012 → T013
-T014, T015 → T016
+T014, T015 → T016 → T020, T021 → T022
 ```
 
 ## Nota

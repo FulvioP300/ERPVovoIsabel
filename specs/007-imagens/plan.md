@@ -110,17 +110,44 @@ do lightbox.
 
 ### 5.2 Correção: escolher da galeria além de tirar foto (bug real, spec seção 5)
 
-Remover o atributo `capture="environment"` do `<input type="file" accept="image/*">` — é
-literalmente a única mudança de código necessária, em **dois lugares** que hoje têm o mesmo
-input duplicado (nenhum dos dois reaproveita `ImageUploader` — histórico, não desenhado
-assim de propósito):
+**Tentativa 1 (removida)**: só remover o atributo `capture="environment"` do
+`<input type="file" accept="image/*">`, confiando no navegador/SO oferecer as duas opções
+(câmera + galeria) num seletor nativo único. **Não se confirmou na prática** — validado pelo
+usuário num celular real: sem `capture`, o navegador abriu só a galeria, nunca ofereceu a
+câmera (risco que já tinha sido documentado como possível na seção 7 desta revisão anterior).
 
-- `frontend/src/components/ImageUploader.tsx` (cadastro/edição manual — 005/007).
+**Correção final**: dois `<input type="file">` distintos, cada um atrás do seu próprio botão
+visível — sem depender de nenhum comportamento implícito do navegador/SO:
+
+```html
+<!-- Botão "📷 Tirar foto" -->
+<input type="file" accept="image/*" capture="environment" />
+
+<!-- Botão "🖼️ Galeria" -->
+<input type="file" accept="image/*" multiple />
+```
+
+`capture` nunca soma com `multiple` de forma útil (captura de câmera é sempre uma foto por
+vez, mesmo que o atributo `multiple` esteja presente) — por isso só o input de galeria leva
+`multiple`.
+
+Dois lugares têm essa duplicação (nenhum reaproveita `ImageUploader` — histórico, não
+desenhado assim de propósito):
+
+- `frontend/src/components/ImageUploader.tsx` (cadastro/edição manual — 005/007): dois refs
+  (`cameraInputRef`, `galleryInputRef`) — `handleFiles` passa a receber qual das duas fontes
+  disparou o evento, pra resetar (`value = ""`) só o input correspondente depois do upload
+  assíncrono terminar.
 - `frontend/src/features/products-ai/AiIntakeForm.tsx` (cadastro por IA — 006, input próprio,
-  não usa `ImageUploader`).
+  não usa `ImageUploader`): mais simples, sem necessidade de refs — `handleFiles` aqui é
+  síncrono (não faz upload, só guarda o `File` localmente — spec 006), reset via
+  `e.target.value = ""` direto no `onChange` de cada input.
 
-Nenhuma mudança de contrato, schema ou backend — é puramente um atributo HTML do input já
-existente em ambos os componentes.
+Nenhuma mudança de contrato, schema ou backend — puramente client-side. Efeito colateral:
+os testes e2e que selecionavam o input de foto via `input[type="file"]` (seletor único)
+precisaram ser ajustados pra `input[type="file"]:not([capture])` (mira o de galeria, já que
+não há câmera num teste headless) — ver `e2e/tests/product-manual-registration.spec.ts` e
+`e2e/tests/product-ai.spec.ts`.
 
 ## 6. Testes planejados
 
@@ -132,9 +159,10 @@ existente em ambos os componentes.
   com a `url` correta; clique no fundo, `Esc`, e clique no `×` do overlay todos chamam
   `onClose`; clique na própria imagem ampliada não chama `onClose`; clique no botão de remover
   foto não abre o overlay (evento não propaga).
-- Remoção do `capture`: não é testável de forma automatizada de forma confiável (o
-  comportamento do seletor nativo é do navegador/SO, fora do controle do app) — validação é
-  manual, num celular real (iOS e Android), confirmando que aparecem as duas opções.
+- Dois botões (câmera/galeria, seção 5.2): não testável de forma automatizada de forma
+  confiável quanto ao comportamento da câmera em si (fora do controle do app) — mas o e2e
+  cobre o caminho de galeria (`input[type="file"]:not([capture])`, upload real, miniatura
+  renderiza), e a existência dos dois botões/inputs é verificável estaticamente.
 
 ## 7. Riscos / decisões em aberto
 
@@ -154,12 +182,9 @@ existente em ambos os componentes.
   005) foi só "N fotos, upload e remoção no cadastro/edição"; a primeira foto da galeria vira
   a capa automaticamente, sem seletor dedicado. Reavaliar quando 006 (cadastro por IA)
   precisar do checklist de fato.
-- `ImageLightbox` (seção 5.1, seção 6 da spec) ainda **não implementado** — só desenhado
-  nesta revisão, a pedido explícito do usuário ("apenas na spec, não desenvolver ainda").
-- Remoção do `capture="environment"` (seção 5.2, seção 5 da spec) também ainda **não
-  implementada** — mesma restrição do usuário nesta revisão. Risco de comportamento
-  divergente entre navegadores mobile: a maioria dos Android Chrome/iOS Safari atuais mostra
-  as duas opções sem `capture`, mas WebViews embutidos ou navegadores mais antigos podem se
-  comportar diferente — se isso for confirmado na implementação, a alternativa é expor dois
-  botões explícitos ("Tirar foto" com `capture`, "Escolher da galeria" sem `capture`) em vez
-  de depender do seletor nativo único.
+- ~~`ImageLightbox` ainda não implementado~~ — implementado e integrado ao `ImageUploader.tsx`
+  (T012/T013 de tasks.md), validado via e2e.
+- ~~Remoção do `capture="environment"` (confiando no seletor nativo)~~ — **risco confirmado na
+  prática** (validado pelo usuário num celular real: sem `capture`, o navegador abriu só a
+  galeria, nunca ofereceu a câmera) — substituído pela correção final: dois botões explícitos
+  (seção 5.2), que não depende de nenhum comportamento implícito do navegador/SO.

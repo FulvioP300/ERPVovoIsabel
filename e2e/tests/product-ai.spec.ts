@@ -55,7 +55,7 @@ test.describe.serial("cadastro de produto assistido por IA (spec 006)", () => {
     await page.getByText("+ Cadastrar com IA").click();
     await page.waitForURL("**/products/ai-new");
 
-    await page.locator('input[type="file"]').setInputFiles({
+    await page.locator('input[type="file"]:not([capture])').setInputFiles({
       name: "foto-e2e.png",
       mimeType: "image/png",
       buffer: FIXTURE_PHOTO,
@@ -108,7 +108,7 @@ test.describe.serial("cadastro de produto assistido por IA (spec 006)", () => {
     await loginAsAdmin(page);
     await page.goto("/products/ai-new");
 
-    await page.locator('input[type="file"]').setInputFiles({
+    await page.locator('input[type="file"]:not([capture])').setInputFiles({
       name: "foto-e2e.png",
       mimeType: "image/png",
       buffer: FIXTURE_PHOTO,

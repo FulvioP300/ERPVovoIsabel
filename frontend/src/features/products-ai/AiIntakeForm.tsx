@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { MAX_PRODUCT_IMAGES } from "../../schemas/product.schema";
 
 interface PickedImage {
@@ -22,7 +22,6 @@ interface AiIntakeFormProps {
 export function AiIntakeForm({ onSubmit, isSubmitting, error }: AiIntakeFormProps) {
   const [images, setImages] = useState<PickedImage[]>([]);
   const [prompt, setPrompt] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => {
@@ -41,7 +40,6 @@ export function AiIntakeForm({ onSubmit, isSubmitting, error }: AiIntakeFormProp
       .slice(0, remaining)
       .map((file) => ({ file, previewUrl: URL.createObjectURL(file) }));
     setImages((prev) => [...prev, ...next]);
-    if (inputRef.current) inputRef.current.value = "";
   }
 
   function removeImage(index: number) {
@@ -80,22 +78,46 @@ export function AiIntakeForm({ onSubmit, isSubmitting, error }: AiIntakeFormProp
             </div>
           ))}
           {!atLimit && (
-            <label
-              className={`flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-gray-300 text-center text-xs text-gray-500 hover:border-wine-400 ${
-                isSubmitting ? "pointer-events-none opacity-50" : ""
-              }`}
-            >
-              + Foto
-              <input
-                ref={inputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                disabled={isSubmitting}
-                onChange={(e) => handleFiles(e.target.files)}
-              />
-            </label>
+            <>
+              <label
+                className={`flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-gray-300 text-center text-xs text-gray-500 hover:border-wine-400 ${
+                  isSubmitting ? "pointer-events-none opacity-50" : ""
+                }`}
+              >
+                📷
+                <span>Tirar foto</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  disabled={isSubmitting}
+                  onChange={(e) => {
+                    handleFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <label
+                className={`flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-gray-300 text-center text-xs text-gray-500 hover:border-wine-400 ${
+                  isSubmitting ? "pointer-events-none opacity-50" : ""
+                }`}
+              >
+                🖼️
+                <span>Galeria</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  disabled={isSubmitting}
+                  onChange={(e) => {
+                    handleFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </>
           )}
         </div>
         <p className="text-xs text-gray-500">

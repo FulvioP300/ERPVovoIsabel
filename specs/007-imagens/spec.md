@@ -60,24 +60,33 @@ da câmera, **sem oferecer a opção de escolher uma foto já existente na galer
 pelo usuário como bug real de uso — quem já tinha a foto tirada não conseguia reutilizá-la, só
 fotografar de novo.
 
-Correção: **remover o atributo `capture`** do input de arquivo:
+**Primeira tentativa de correção** (removida): tirar o atributo `capture`, deixando o
+navegador/SO decidir o que mostrar. Em teoria os dois principais mobile (iOS Safari, Android
+Chrome) apresentariam as duas opções num seletor nativo único. **Não se confirmou na
+prática** — validado pelo usuário num celular real: sem `capture`, o navegador abriu só a
+galeria, nunca ofereceu a câmera. Comportamento do seletor nativo não é confiável o bastante
+pra depender dele sozinho.
+
+**Correção final: dois inputs de arquivo distintos, cada um com seu próprio botão visível**,
+sem depender do navegador/SO oferecer as duas opções:
 
 ```html
+<!-- Botão "Tirar foto" — força a câmera, sempre uma foto por vez -->
+<input type="file" accept="image/*" capture="environment" />
+
+<!-- Botão "Galeria" — nunca abre a câmera, permite selecionar várias de uma vez -->
 <input type="file" accept="image/*" multiple />
 ```
 
-Sem `capture`, o próprio sistema operacional/navegador abre o seletor nativo de origem — que
-nos dois principais mobile (iOS Safari, Android Chrome) já apresenta **as duas opções**
-("Tirar foto" e "Fototeca"/"Galeria", nomes variam por SO) num único menu, sem exigir dois
-botões distintos na UI do app. Tirar uma foto nova continua sendo só um toque extra dentro
-desse seletor — não se perde a capacidade de fotografar direto, só se ganha a opção de
-escolher da galeria.
+Cada botão é um alvo de toque separado e visível na tela — não depende de nenhum menu/seletor
+intermediário do sistema operacional, então o comportamento é previsível em qualquer
+navegador/WebView.
 
-Fluxo desejado no cadastro por peça (inalterado, só a origem da foto passa a ser escolha do
-usuário a cada toque em "+ Foto", não mais forçada para a câmera):
+Fluxo desejado no cadastro por peça (inalterado, agora com escolha explícita entre os dois
+botões a cada foto):
 
 ```
-Abrir cadastro → Adicionar frente (câmera ou galeria) → Adicionar costas → Adicionar etiqueta
+Abrir cadastro → Adicionar frente (📷 ou 🖼️) → Adicionar costas → Adicionar etiqueta
    → Informar descrição → Analisar com IA
 ```
 
@@ -127,8 +136,8 @@ orientar o usuário nesta ordem/checklist tanto no cadastro manual quanto no cad
 - Excedido o número máximo de imagens por peça, novos uploads são bloqueados até remoção de
   alguma existente.
 - Usuário não autenticado recebe `401`/`403` ao tentar `POST /api/images`.
-- No celular, tocar em "+ Foto" abre o seletor nativo do sistema oferecendo tanto tirar uma
-  foto nova quanto escolher uma já existente na galeria — nunca forçando a câmera direto.
+- No celular, dois botões visíveis e independentes cobrem "tirar foto agora" e "escolher da
+  galeria" — nenhum dos dois depende do outro nem de um seletor intermediário do sistema.
 - Clicar numa miniatura já enviada abre a foto ampliada sobre a tela atual.
 - Clicar fora da imagem ampliada, pressionar `Esc`, ou clicar no botão `×` do overlay fecham a
   visualização e retornam à tela anterior sem perda de estado do formulário.

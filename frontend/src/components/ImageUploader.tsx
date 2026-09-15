@@ -20,11 +20,12 @@ export function ImageUploader({ images, onChange, disabled = false }: ImageUploa
   const [error, setError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const atLimit = images.length >= MAX_PRODUCT_IMAGES;
 
-  async function handleFiles(files: FileList | null) {
+  async function handleFiles(files: FileList | null, source: "camera" | "gallery") {
     if (!files || files.length === 0 || disabled) return;
     setError(null);
 
@@ -45,7 +46,8 @@ export function ImageUploader({ images, onChange, disabled = false }: ImageUploa
       }
     }
 
-    if (inputRef.current) inputRef.current.value = "";
+    const ref = source === "camera" ? cameraInputRef : galleryInputRef;
+    if (ref.current) ref.current.value = "";
   }
 
   async function handleRemove(image: Imagem) {
@@ -83,23 +85,48 @@ export function ImageUploader({ images, onChange, disabled = false }: ImageUploa
             </button>
           </div>
         ))}
-        {!atLimit && (
-          <label
-            className={`flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-gray-300 text-center text-xs text-gray-500 hover:border-wine-400 ${
-              disabled || upload.isPending ? "pointer-events-none opacity-50" : ""
-            }`}
-          >
-            {upload.isPending ? "Enviando..." : "+ Foto"}
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              disabled={disabled}
-              onChange={(e) => void handleFiles(e.target.files)}
-            />
-          </label>
+        {!atLimit && !upload.isPending && (
+          <>
+            <label
+              className={`flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-gray-300 text-center text-xs text-gray-500 hover:border-wine-400 ${
+                disabled ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
+              📷
+              <span>Tirar foto</span>
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                disabled={disabled}
+                onChange={(e) => void handleFiles(e.target.files, "camera")}
+              />
+            </label>
+            <label
+              className={`flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-gray-300 text-center text-xs text-gray-500 hover:border-wine-400 ${
+                disabled ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
+              🖼️
+              <span>Galeria</span>
+              <input
+                ref={galleryInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                disabled={disabled}
+                onChange={(e) => void handleFiles(e.target.files, "gallery")}
+              />
+            </label>
+          </>
+        )}
+        {upload.isPending && (
+          <div className="flex h-24 w-24 flex-col items-center justify-center rounded-md border border-dashed border-gray-300 text-center text-xs text-gray-500 opacity-50">
+            Enviando...
+          </div>
         )}
       </div>
       <p className="text-xs text-gray-500">
