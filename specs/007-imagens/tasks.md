@@ -76,32 +76,39 @@ contra o Mongo de dev real.
 
 ## Fase 4 — Visualização ampliada (lightbox)
 
-Desenhada nesta revisão a pedido explícito do usuário — **spec apenas, implementação ainda
-não iniciada** (ver spec.md, seção 6, e plan.md, seção 5.1).
-
-- [ ] T012 `frontend/src/components/ImageLightbox.tsx`: overlay `position: fixed` em tela
+- [x] T012 `frontend/src/components/ImageLightbox.tsx`: overlay `position: fixed` em tela
       cheia, imagem ampliada com `object-fit: contain` (máx. 90vw/90vh, garantindo margem de
       fundo clicável), fecha via clique no fundo, tecla `Esc`, ou botão `×` — clique na própria
       imagem não fecha. Bloqueia scroll do `body` enquanto aberto (restaura no unmount).
-- [ ] T013 Integrar `ImageLightbox` ao `ImageUploader.tsx`: `onClick` na miniatura abre o
-      overlay com a `url` daquela foto (estado local); `onClick` do botão de remover (`×` já
-      existente) usa `stopPropagation()` pra não também abrir o overlay — depende de T012.
+- [x] T013 Integrar `ImageLightbox` ao `ImageUploader.tsx`: `onClick` na miniatura abre o
+      overlay com a `url` daquela foto (estado local) — depende de T012. **Desvio do desenho
+      original**: sem `stopPropagation()` no botão de remover — não é necessário, o botão é
+      *sibling* da `<img>` (não está aninhado dentro dela), então o clique nele nunca propaga
+      pro `onClick` da imagem; confirmado lendo a árvore de elementos antes de implementar.
 
 ## Fase 5 — Escolher foto da galeria, não só a câmera direta
 
-Bug real relatado pelo usuário: no celular, tocar em "+ Foto" abre a câmera direto, sem opção
-de escolher da galeria. Desenhada nesta revisão — **spec apenas, implementação ainda não
-iniciada** (ver spec.md, seção 5, e plan.md, seção 5.2).
+Bug real relatado pelo usuário: no celular, tocar em "+ Foto" abria a câmera direto, sem opção
+de escolher da galeria.
 
-- [ ] T014 [P] Remover `capture="environment"` de `frontend/src/components/ImageUploader.tsx`
+- [x] T014 [P] Remover `capture="environment"` de `frontend/src/components/ImageUploader.tsx`
       (mantém `accept="image/*" multiple`) — cadastro/edição manual (005/007).
-- [ ] T015 [P] Remover `capture="environment"` de
+- [x] T015 [P] Remover `capture="environment"` de
       `frontend/src/features/products-ai/AiIntakeForm.tsx` (input próprio, não reaproveita
       `ImageUploader`) — cadastro por IA (006).
 - [ ] T016 Validar manualmente em iOS Safari e Android Chrome reais que o seletor nativo
-      passa a oferecer as duas opções (câmera e galeria) — depende de T014, T015. Se algum
-      navegador testado não oferecer as duas opções, reavaliar pra dois botões explícitos
-      (plan.md, seção 5.2, risco documentado).
+      passa a oferecer as duas opções (câmera e galeria) — depende de T014, T015. **Não
+      validado ainda**: exige um celular real, fora do alcance desta sessão. Se algum navegador
+      testado não oferecer as duas opções, reavaliar pra dois botões explícitos (plan.md,
+      seção 5.2, risco documentado).
+
+**Validação automatizada**: e2e `product-manual-registration.spec.ts` roda de ponta a ponta
+contra o `ImageUploader` sem `capture` (upload real, miniatura renderiza) — passou. e2e
+`product-ai.spec.ts` (AiIntakeForm + AiReviewForm) não pôde ser validado nesta sessão: a
+chamada real ao provedor de IA multimodal travou (sem retornar em vários minutos) — falha
+pré-existente e não relacionada a esta mudança (nenhum código do fluxo de IA foi tocado;
+uma chamada de texto puro ao mesmo provedor respondeu em ~2,6s, isolando o problema à
+requisição multimodal em si, não a rede/credenciais).
 
 ## Dependências entre tarefas
 

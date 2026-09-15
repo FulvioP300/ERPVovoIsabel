@@ -90,7 +90,6 @@ export function AiIntakeForm({ onSubmit, isSubmitting, error }: AiIntakeFormProp
                 ref={inputRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
                 multiple
                 className="hidden"
                 disabled={isSubmitting}

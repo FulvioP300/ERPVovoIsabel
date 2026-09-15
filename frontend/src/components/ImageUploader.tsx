@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useImageUpload } from "../hooks/useImageUpload";
 import { MAX_PRODUCT_IMAGES, type Imagem } from "../schemas/product.schema";
+import { ImageLightbox } from "./ImageLightbox";
 
 interface ImageUploaderProps {
   images: Imagem[];
@@ -18,6 +19,7 @@ export function ImageUploader({ images, onChange, disabled = false }: ImageUploa
   const { upload, remove } = useImageUpload();
   const [error, setError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const atLimit = images.length >= MAX_PRODUCT_IMAGES;
@@ -64,7 +66,12 @@ export function ImageUploader({ images, onChange, disabled = false }: ImageUploa
       <div className="flex flex-wrap gap-3">
         {images.map((image) => (
           <div key={image.id} className="relative h-24 w-24 overflow-hidden rounded-md border border-gray-200">
-            <img src={image.url} alt="" className="h-full w-full object-cover" />
+            <img
+              src={image.url}
+              alt=""
+              className="h-full w-full cursor-pointer object-cover"
+              onClick={() => setPreviewUrl(image.url)}
+            />
             <button
               type="button"
               className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white/90 text-xs font-bold text-red-600 shadow disabled:opacity-50"
@@ -87,7 +94,6 @@ export function ImageUploader({ images, onChange, disabled = false }: ImageUploa
               ref={inputRef}
               type="file"
               accept="image/*"
-              capture="environment"
               multiple
               className="hidden"
               disabled={disabled}
@@ -100,6 +106,7 @@ export function ImageUploader({ images, onChange, disabled = false }: ImageUploa
         {images.length} de {MAX_PRODUCT_IMAGES} fotos. A primeira é usada como capa.
       </p>
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {previewUrl && <ImageLightbox url={previewUrl} onClose={() => setPreviewUrl(null)} />}
     </div>
   );
 }
