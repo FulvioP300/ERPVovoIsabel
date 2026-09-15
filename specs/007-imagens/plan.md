@@ -104,9 +104,14 @@ interface ImageLightboxProps {
   mount, restaurado no unmount (mesmo padrão comum de modal).
 
 `ImageUploader.tsx`: cada miniatura ganha um `onClick` que abre o lightbox com a `url` daquela
-imagem (estado local `previewUrl: string | null`); o botão de remover (`×` já existente sobre
-a miniatura) precisa de `onClick` com `stopPropagation()` pra não também disparar a abertura
-do lightbox.
+imagem (estado local `previewUrl: string | null`). **Desvio do desenho original**: o botão de
+remover (`×`) não precisou de `stopPropagation()` — é *sibling* da `<img>`, não aninhado
+dentro dela, então o clique nele nunca propaga pro `onClick` da imagem.
+
+`ProductCard.tsx` (listagem de produtos, spec 005): mesmo padrão — `onClick` na foto de capa
+(`product.imagens.principal.url`) abre o lightbox com estado local próprio. Card não é um
+link/navegação (o botão "Editar" é um `<Link>` separado, em outra coluna da tabela), então não
+há conflito de clique com a navegação da linha.
 
 ### 5.2 Correção: escolher da galeria além de tirar foto (bug real, spec seção 5)
 

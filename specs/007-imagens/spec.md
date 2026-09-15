@@ -92,10 +92,15 @@ Abrir cadastro → Adicionar frente (📷 ou 🖼️) → Adicionar costas → A
 
 ## 6. Visualização ampliada (lightbox)
 
-Ao clicar em qualquer miniatura já enviada (`ImageUploader`, tanto no cadastro manual quanto
-na edição de produto — 005, e reutilizado pelo cadastro por IA — 006), a foto abre **ampliada**
-sobre um overlay que cobre a tela atual, sem navegar para outra rota/URL — a tela de
-cadastro/edição continua montada por baixo, com o formulário intacto.
+Ao clicar em qualquer miniatura já enviada, a foto abre **ampliada** sobre um overlay que cobre
+a tela atual, sem navegar para outra rota/URL — a tela de origem continua montada por baixo,
+com o estado intacto. Dois lugares:
+
+- `ImageUploader` — cadastro manual e edição de produto (005), reutilizado pelo cadastro por
+  IA (006).
+- **Listagem de produtos (005)** — capa do produto (`ProductCard`, coluna "Produto" da
+  tabela): clicar amplia a foto pra conferir se é a peça certa antes de clicar em "Editar"
+  (link separado, sem navegar sozinho ao clicar na foto).
 
 ```
 Miniatura (clique) → overlay em tela cheia, fundo escurecido semi-transparente

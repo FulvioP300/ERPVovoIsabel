@@ -130,13 +130,25 @@ cada um com seu próprio botão visível, sem depender do comportamento do naveg
       headless) — depende de T020, T021. Rodado contra o Mongo de teste real (mesmo processo
       de DNS SRV manual documentado nesta sessão) — passou.
 
+## Fase 10 — Lightbox também na listagem de produtos
+
+Pedido do usuário: conferir visualmente se é a peça certa antes de clicar em "Editar", sem
+sair da listagem.
+
+- [x] T023 `ProductCard.tsx` (listagem, spec 005): `onClick` na foto de capa abre
+      `ImageLightbox` — mesmo componente de T012, estado local próprio, sem conflito com o
+      link "Editar" (coluna separada da tabela, o Card não é navegável). Validado com um
+      teste e2e ad-hoc (login → `/products` → clicar na miniatura → overlay abre com a URL
+      real da imagem → clicar fora fecha) — passou, script descartado depois (não fica no
+      repo, cobertura pontual/manual desta sessão).
+
 ## Dependências entre tarefas
 
 ```
 T005a → T005 (adapter precisa do SDK e das env vars)
 T001,T002 → T005,T006 → T007 → T008
 T009 → T010 → T011
-T012 → T013
+T012 → T013 → T023
 T014, T015 → T016 → T020, T021 → T022
 ```
 

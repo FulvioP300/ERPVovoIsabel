@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { MOEDA_LOCALES, PRODUCT_STATUS_LABELS, type Moeda, type Product } from "../schemas/product.schema";
 import { Card } from "./Card";
+import { ImageLightbox } from "./ImageLightbox";
 
 const PRODUCT_STATUS_STYLES: Record<Product["status"], string> = {
   rascunho: "bg-gray-100 text-gray-600",
@@ -27,13 +29,17 @@ function formatPrice(value: number | null, moeda: Moeda): string {
 
 /** Resumo visual de um produto — usado dentro da listagem (005) e reutilizável no futuro e-commerce. */
 export function ProductCard({ product }: { product: Product }) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const capaUrl = product.imagens.principal?.url;
+
   return (
     <Card className="flex gap-3">
-      {product.imagens.principal ? (
+      {capaUrl ? (
         <img
-          src={product.imagens.principal.url}
+          src={capaUrl}
           alt={product.identificacao.nome}
-          className="h-16 w-16 shrink-0 rounded-md object-cover"
+          className="h-16 w-16 shrink-0 cursor-pointer rounded-md object-cover"
+          onClick={() => setPreviewUrl(capaUrl)}
         />
       ) : (
         <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-md bg-gold-100 text-xs text-wine-700">
@@ -53,6 +59,7 @@ export function ProductCard({ product }: { product: Product }) {
           {formatPrice(product.preco.preco_venda, product.preco.moeda)}
         </p>
       </div>
+      {previewUrl && <ImageLightbox url={previewUrl} onClose={() => setPreviewUrl(null)} />}
     </Card>
   );
 }
