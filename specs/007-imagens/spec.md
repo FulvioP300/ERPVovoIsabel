@@ -54,16 +54,30 @@ armazenamento.
 
 ## 5. Captura no celular
 
-O input de arquivo deve aceitar captura direta pela câmera quando suportado pelo navegador:
+**Correção de bug (2026-09-15)**: o input original usava o atributo `capture="environment"`,
+que em boa parte dos navegadores mobile (Chrome/Android, Safari/iOS) força a abertura direta
+da câmera, **sem oferecer a opção de escolher uma foto já existente na galeria**. Relatado
+pelo usuário como bug real de uso — quem já tinha a foto tirada não conseguia reutilizá-la, só
+fotografar de novo.
+
+Correção: **remover o atributo `capture`** do input de arquivo:
 
 ```html
-<input type="file" accept="image/*" capture="environment" />
+<input type="file" accept="image/*" multiple />
 ```
 
-Fluxo desejado no cadastro por peça:
+Sem `capture`, o próprio sistema operacional/navegador abre o seletor nativo de origem — que
+nos dois principais mobile (iOS Safari, Android Chrome) já apresenta **as duas opções**
+("Tirar foto" e "Fototeca"/"Galeria", nomes variam por SO) num único menu, sem exigir dois
+botões distintos na UI do app. Tirar uma foto nova continua sendo só um toque extra dentro
+desse seletor — não se perde a capacidade de fotografar direto, só se ganha a opção de
+escolher da galeria.
+
+Fluxo desejado no cadastro por peça (inalterado, só a origem da foto passa a ser escolha do
+usuário a cada toque em "+ Foto", não mais forçada para a câmera):
 
 ```
-Abrir cadastro → Fotografar frente → Fotografar costas → Fotografar etiqueta
+Abrir cadastro → Adicionar frente (câmera ou galeria) → Adicionar costas → Adicionar etiqueta
    → Informar descrição → Analisar com IA
 ```
 
@@ -113,6 +127,8 @@ orientar o usuário nesta ordem/checklist tanto no cadastro manual quanto no cad
 - Excedido o número máximo de imagens por peça, novos uploads são bloqueados até remoção de
   alguma existente.
 - Usuário não autenticado recebe `401`/`403` ao tentar `POST /api/images`.
+- No celular, tocar em "+ Foto" abre o seletor nativo do sistema oferecendo tanto tirar uma
+  foto nova quanto escolher uma já existente na galeria — nunca forçando a câmera direto.
 - Clicar numa miniatura já enviada abre a foto ampliada sobre a tela atual.
 - Clicar fora da imagem ampliada, pressionar `Esc`, ou clicar no botão `×` do overlay fecham a
   visualização e retornam à tela anterior sem perda de estado do formulário.

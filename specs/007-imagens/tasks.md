@@ -87,6 +87,22 @@ não iniciada** (ver spec.md, seção 6, e plan.md, seção 5.1).
       overlay com a `url` daquela foto (estado local); `onClick` do botão de remover (`×` já
       existente) usa `stopPropagation()` pra não também abrir o overlay — depende de T012.
 
+## Fase 5 — Escolher foto da galeria, não só a câmera direta
+
+Bug real relatado pelo usuário: no celular, tocar em "+ Foto" abre a câmera direto, sem opção
+de escolher da galeria. Desenhada nesta revisão — **spec apenas, implementação ainda não
+iniciada** (ver spec.md, seção 5, e plan.md, seção 5.2).
+
+- [ ] T014 [P] Remover `capture="environment"` de `frontend/src/components/ImageUploader.tsx`
+      (mantém `accept="image/*" multiple`) — cadastro/edição manual (005/007).
+- [ ] T015 [P] Remover `capture="environment"` de
+      `frontend/src/features/products-ai/AiIntakeForm.tsx` (input próprio, não reaproveita
+      `ImageUploader`) — cadastro por IA (006).
+- [ ] T016 Validar manualmente em iOS Safari e Android Chrome reais que o seletor nativo
+      passa a oferecer as duas opções (câmera e galeria) — depende de T014, T015. Se algum
+      navegador testado não oferecer as duas opções, reavaliar pra dois botões explícitos
+      (plan.md, seção 5.2, risco documentado).
+
 ## Dependências entre tarefas
 
 ```
@@ -94,6 +110,7 @@ T005a → T005 (adapter precisa do SDK e das env vars)
 T001,T002 → T005,T006 → T007 → T008
 T009 → T010 → T011
 T012 → T013
+T014, T015 → T016
 ```
 
 ## Nota

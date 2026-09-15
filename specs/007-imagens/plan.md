@@ -15,7 +15,7 @@
 | Backend | Node.js + TypeScript + Fastify + `@fastify/multipart` |
 | Armazenamento | **Azure Blob Storage** (`@azure/storage-blob`), container privado dedicado (`product-images`) |
 | Banco | MongoDB Atlas — apenas metadados (`id`, `url`, `metadados`, `ordem`, `tipo`) embutidos em `products.imagens` |
-| Frontend | React + Vite 8 + TypeScript; `<input type="file" accept="image/*" capture="environment">` |
+| Frontend | React + Vite 8 + TypeScript; `<input type="file" accept="image/*" multiple>` — **sem** `capture` (spec, seção 5: com `capture="environment"` o navegador força a câmera direto, sem opção de galeria — bug corrigido nesta revisão) |
 
 ## 2. Contexto técnico
 
@@ -43,7 +43,7 @@ frontend/src/
 ## 4. Fluxo de execução (camadas)
 
 ```
-ImageUploader (input capture="environment")
+ImageUploader (input sem capture — seletor nativo oferece câmera OU galeria)
   → image.service.ts (POST /api/images, multipart)
   → routes/image.routes.ts (authenticate obrigatório)
   → services/image.service.ts
@@ -108,6 +108,20 @@ imagem (estado local `previewUrl: string | null`); o botão de remover (`×` já
 a miniatura) precisa de `onClick` com `stopPropagation()` pra não também disparar a abertura
 do lightbox.
 
+### 5.2 Correção: escolher da galeria além de tirar foto (bug real, spec seção 5)
+
+Remover o atributo `capture="environment"` do `<input type="file" accept="image/*">` — é
+literalmente a única mudança de código necessária, em **dois lugares** que hoje têm o mesmo
+input duplicado (nenhum dos dois reaproveita `ImageUploader` — histórico, não desenhado
+assim de propósito):
+
+- `frontend/src/components/ImageUploader.tsx` (cadastro/edição manual — 005/007).
+- `frontend/src/features/products-ai/AiIntakeForm.tsx` (cadastro por IA — 006, input próprio,
+  não usa `ImageUploader`).
+
+Nenhuma mudança de contrato, schema ou backend — é puramente um atributo HTML do input já
+existente em ambos os componentes.
+
 ## 6. Testes planejados
 
 - Unitário: `image.service` rejeita MIME type inválido, arquivo acima do tamanho máximo, e
@@ -118,6 +132,9 @@ do lightbox.
   com a `url` correta; clique no fundo, `Esc`, e clique no `×` do overlay todos chamam
   `onClose`; clique na própria imagem ampliada não chama `onClose`; clique no botão de remover
   foto não abre o overlay (evento não propaga).
+- Remoção do `capture`: não é testável de forma automatizada de forma confiável (o
+  comportamento do seletor nativo é do navegador/SO, fora do controle do app) — validação é
+  manual, num celular real (iOS e Android), confirmando que aparecem as duas opções.
 
 ## 7. Riscos / decisões em aberto
 
@@ -139,3 +156,10 @@ do lightbox.
   precisar do checklist de fato.
 - `ImageLightbox` (seção 5.1, seção 6 da spec) ainda **não implementado** — só desenhado
   nesta revisão, a pedido explícito do usuário ("apenas na spec, não desenvolver ainda").
+- Remoção do `capture="environment"` (seção 5.2, seção 5 da spec) também ainda **não
+  implementada** — mesma restrição do usuário nesta revisão. Risco de comportamento
+  divergente entre navegadores mobile: a maioria dos Android Chrome/iOS Safari atuais mostra
+  as duas opções sem `capture`, mas WebViews embutidos ou navegadores mais antigos podem se
+  comportar diferente — se isso for confirmado na implementação, a alternativa é expor dois
+  botões explícitos ("Tirar foto" com `capture`, "Escolher da galeria" sem `capture`) em vez
+  de depender do seletor nativo único.

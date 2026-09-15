@@ -38,8 +38,10 @@ precisar digitar manualmente cada atributo.
 ```
 
 Imagens recomendadas (orientar o usuário): 1) Frente, 2) Costas, 3) Etiqueta, 4) Detalhes,
-5) Defeitos (se existentes). No smartphone, usar
-`<input type="file" accept="image/*" capture="environment">` quando suportado.
+5) Defeitos (se existentes). No smartphone, usar `<input type="file" accept="image/*"
+multiple>` — **sem** o atributo `capture`, que força a câmera direto e esconde a opção de
+escolher da galeria (bug corrigido em [007-imagens/spec.md, seção 5](../007-imagens/spec.md#5-captura-no-celular),
+mesmo padrão de input usado aqui).
 
 ## 4. Fluxo
 
