@@ -890,8 +890,56 @@ já suportar R$, US$ e €.
 
 ---
 
+## ADR-017 — Rollback via tag git + reaproveitar imagem já publicada, não revisões múltiplas do Container App
+
+**Status:** Aceita
+**Data:** 2026-09-15
+**Specs afetadas:** [010-deploy](../specs/010-deploy/spec.md)
+
+### Contexto
+
+Usuário pediu uma estratégia pra marcar a versão em produção como estável e poder voltar pra
+ela caso uma mudança futura cause regressão. Investigando as opções: o Container App
+(`ca-vovoisabel-prod`) está no modo de revisão **`Single`** — a cada `az containerapp update`,
+a revisão anterior é automaticamente descartada (confirmado: `az containerapp revision list`
+mostrava só 1 revisão ativa mesmo depois de 2 deploys). Isso significa que o próprio Azure
+**não guarda** um "voltar" pronto via troca de tráfego entre revisões, diferente do que
+aconteceria no modo `Multiple`.
+
+### Decisão
+
+Não mudar pra modo `Multiple` — manter revisões antigas ativas consome réplica própria
+mesmo com 0% de tráfego, custo contínuo que contraria a decisão de custo mínimo já tomada em
+[ADR-015](#adr-015--deploy-em-container-único-não-azure-app-service--static-web-apps)/addendum
+2. Em vez disso:
+
+1. **Tag git anotada** (ex. `v1.0.0`) em commits deliberadamente marcados como estáveis
+   (depois de confirmar que estão rodando bem em produção) — não uma tag "móvel"
+   (`stable` reapontada a cada vez), cada versão estável ganha sua própria tag imutável.
+2. **`infra/aca/rollback.sh`**: resolve a tag/branch/SHA pro commit real (`git rev-parse
+   "$REF^{commit}"` — **cuidado**: sem o `^{commit}`, `git rev-parse` numa tag *anotada*
+   devolve o SHA do objeto da tag, não do commit; bug real encontrado e corrigido durante a
+   implementação desta ADR) e roda `az containerapp update --image
+   ghcr.io/<owner>/<repo>:<sha>` direto — a imagem já existe no registro porque todo deploy
+   aprovado publica `ghcr.io/<owner>/<repo>:<sha-completo>` (`.github/workflows/deploy.yml`).
+   Sem rebuild, sem esperar CI/CD, sem aprovação manual — rollback é justamente pra quando não
+   dá pra esperar isso.
+
+### Consequências
+
+- Rollback só funciona pra commits que já tiveram um deploy aprovado antes (a imagem precisa
+  existir em `ghcr.io`) — não é rollback pra qualquer commit do histórico, só pros
+  deliberadamente marcados como estáveis. Aceitável: o objetivo é "voltar pra uma versão boa
+  conhecida", não "voltar pra qualquer ponto arbitrário".
+- Sem custo adicional — nenhum recurso novo provisionado, só uma tag git (grátis) e um script
+  local que reaproveita infraestrutura já existente.
+- Documentado em `infra/aca/README.md`, seção "Rollback rápido pra uma versão estável
+  conhecida".
+
+---
+
 <!--
 Ao registrar uma nova ADR, copiar o bloco de convenção acima, numerar sequencialmente
-(ADR-017, ADR-018, ...) e atualizar constitution.md se a decisão alterar a stack fixada na
+(ADR-018, ADR-019, ...) e atualizar constitution.md se a decisão alterar a stack fixada na
 seção 2.
 -->

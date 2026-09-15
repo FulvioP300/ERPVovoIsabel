@@ -182,6 +182,42 @@ az containerapp update \
   --image ghcr.io/<owner>/<repo>:<tag-ou-sha>
 ```
 
+## Rollback rápido pra uma versão estável conhecida
+
+O Container App está no modo de revisão **`Single`** (`az containerapp show ... --query
+properties.configuration.activeRevisionsMode`) — a revisão anterior é descartada
+automaticamente a cada deploy, então **não dá pra confiar no próprio Azure** pra guardar uma
+versão antiga pronta pra voltar via troca de tráfego entre revisões (não usamos `Multiple`
+de propósito: manter revisões antigas ativas consome réplica própria, custo contínuo que
+contraria a decisão de custo mínimo desta spec).
+
+A estratégia adotada: marcar commits estáveis conhecidos com uma **tag git anotada** (ex.:
+`v1.0.0`, criada depois de confirmar que aquele commit está rodando bem em produção) — a
+imagem Docker daquele commit já está publicada em `ghcr.io` (todo deploy aprovado publica
+`ghcr.io/<owner>/<repo>:<sha-completo>`), então reverter é só reapontar o Container App pra
+ela, sem rebuild e sem esperar CI/CD:
+
+```sh
+git tag -a v1.1.0 <sha-ou-branch> -m "descrição do que valida essa versão como estável"
+git push origin v1.1.0   # tags não disparam CI/CD (só push de branch dispara) — seguro
+```
+
+Rollback, usando o script (`infra/aca/rollback.sh`):
+
+```sh
+AZURE_SUBSCRIPTION_ID=<id-ou-nome> ./infra/aca/rollback.sh v1.0.0
+```
+
+O script resolve a tag/branch/SHA pro commit real (cuidado: `git rev-parse` numa tag anotada
+sozinho devolve o SHA do *objeto da tag*, não do commit — o script já usa `^{commit}` pra
+desreferenciar corretamente) e roda o `az containerapp update --image` direto, sem passar
+pela aprovação manual do GitHub Actions — rollback é justamente pra quando não dá pra esperar
+isso.
+
+**Limitação**: só funciona para commits que já tiveram um deploy aprovado antes (a imagem
+precisa existir em `ghcr.io`) — não é rollback pra qualquer commit do histórico, só pros que
+foram deliberadamente marcados como estáveis.
+
 ## Rodando o "ambiente de teste" local
 
 Não usa nada deste diretório — é local, via Docker Compose, na raiz do repo:

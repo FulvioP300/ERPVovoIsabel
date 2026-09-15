@@ -130,6 +130,18 @@
       registrada: troca de estratégia (App Service + Static Web Apps, revertida → container
       único) e o motivo (spec, seção 3).
 
+## Fase 8 — Rollback pra uma versão estável conhecida
+
+- [x] T018 `infra/aca/rollback.sh`: reverte `ca-vovoisabel-prod` pra qualquer tag/branch/SHA
+      já publicado em `ghcr.io` (`az containerapp update --image`), sem esperar CI/CD nem
+      aprovação manual — rollback é justamente pra quando não dá pra esperar isso. Estratégia
+      escolhida em vez do Container App em modo `Multiple` (que deixaria o próprio Azure
+      guardar revisões antigas prontas pra troca de tráfego instantânea) porque revisões
+      antigas mantidas ativas consomem réplica própria — custo contínuo, contraria a decisão
+      de custo mínimo já tomada nesta spec. Documentado em `infra/aca/README.md`, seção
+      "Rollback rápido". [ADR-017](../../memory/decisions.md#adr-017--rollback-via-tag-git--reaproveitar-imagem-já-publicada-não-revisões-múltiplas-do-container-app)
+      registrada.
+
 ## Dependências entre tarefas
 
 ```
@@ -140,4 +152,5 @@ T007 → T008 (T008 também depende de T004)
 T009 → T010, T011 → T012
 T008, T010, T011 → T013 → T015 (T015 também depende de T014)
 T016, T017 (documentação, já concluídas)
+T018 (independente — ferramenta operacional, não bloqueia nem depende de nenhuma das anteriores)
 ```
