@@ -105,9 +105,22 @@
       (`frontend`) e o runtime teria falhado ao importar shared/dist (`backend`). Corrigido
       copiando `shared/node_modules` nos 3 lugares — funcionava "sem querer" localmente porque
       `shared/node_modules` já existe no disco do desenvolvedor.**
-- [ ] T015 Repetir o smoke test de T014 contra a URL pública de `ca-vovoisabel-prod` depois do
+- [x] T015 Repetir o smoke test de T014 contra a URL pública de `ca-vovoisabel-prod` depois do
       primeiro deploy — confirma TLS automático do ACA, cookies, e que os secrets/env vars
-      configurados em T010 estão corretos — depende de T013, T014.
+      configurados em T010 estão corretos — depende de T013, T014. **Rodado contra a URL real
+      (`https://ca-vovoisabel-prod.braveocean-5f790e9e.eastus.azurecontainerapps.io`):
+      `GET /api/health` → 200, `GET /` → HTML, `GET /products` (reload) → 200 (fallback SPA),
+      `GET /api/rota-inexistente` → 404, e login completo (`POST /api/auth/login` → cookies
+      `accessToken`/`refreshToken` → `GET /api/auth/me`) com o admin inicial de produção
+      (`npm run seed:admin`, e-mail `admin@vovoisabel.com.br`) — TLS automático do ACA e
+      cookies same-origin confirmados. Dois problemas reais encontrados e corrigidos no
+      caminho: (1) a credencial federada OIDC precisou do subject exato
+      `repo:<owner>@<owner_id>/<repo>@<repo_id>:environment:<nome>` (não
+      `ref:refs/heads/main`, e com os IDs imutáveis do GitHub, não só os nomes) — documentado
+      em `infra/aca/README.md`; (2) o Atlas de produção rejeitava a conexão na camada TLS
+      (`SSL alert internal error`) até liberar o IP estático do Container Apps Environment
+      (`20.62.226.96`, de `az containerapp env show`) no Network Access do projeto — IP único,
+      não `0.0.0.0/0`, a pedido do usuário.**
 
 ## Fase 7 — Documentação
 

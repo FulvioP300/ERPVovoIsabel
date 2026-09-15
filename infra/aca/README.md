@@ -61,6 +61,24 @@ Alternativa mais simples: tornar o pacote público nas configurações do GHCR (
 Package settings → Change visibility) — a imagem não contém segredo nenhum (spec 010, critério
 de aceite), então isso é seguro.
 
+**Liberar o IP de saída no MongoDB Atlas (Network Access)** — sem isso, o container conecta no
+Mongo e a conexão é recusada na camada TLS (`SSL alert internal error` nos logs, via
+`az containerapp logs show`), o servidor nunca sobe e todo request trava/dá timeout. O Container
+Apps Environment (plano Consumption, sem VNET dedicada) não garante formalmente um IP de saída
+fixo, mas expõe um IP estático do Environment que na prática também é usado como saída:
+
+```sh
+az containerapp env show --name cae-vovoisabel --resource-group rg-vovoisabel \
+  --query "properties.staticIp" -o tsv
+```
+
+Adicione esse IP (`/32`) no Atlas → Project de produção → **Network Access** → **IP Access
+List**. Se mesmo assim a conexão falhar (o IP de saída real pode não coincidir com o `staticIp`
+em todo cenário), o log do container mostra os hosts do shard que ele tentou alcançar — nesse
+caso, ou amplia a faixa liberada no Atlas, ou libera `0.0.0.0/0` como fallback (a autenticação
+usuário/senha + TLS continua protegendo a conexão), ou investe em VNET + NAT Gateway pra um IP
+de saída garantido (custo e complexidade extra, fora do escopo desta spec).
+
 ## 2. Configurar os secrets de produção
 
 Credenciais de **produção** apenas — as de dev/test nunca tocam o Azure, continuam só em
@@ -121,13 +139,24 @@ az role assignment create \
   --role "Container Apps Contributor" \
   --scope "/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/rg-vovoisabel"
 
-# 3. Credencial federada — confia em runs do GitHub Actions deste repo, branch main
+# 3. Credencial federada — confia em runs do GitHub Actions deste repo que rodam sob o
+#    Environment "production". IMPORTANTE: o subject NÃO é "ref:refs/heads/main" — um job que
+#    referencia `environment:` no workflow (como o job "deploy" em deploy.yml) faz o GitHub
+#    emitir o token OIDC com subject no formato "environment:<nome>", não "ref:refs/heads/...".
+#    Usar o subject errado (ref:refs/heads/main) falha com AADSTS700213 "No matching federated
+#    identity record found" — foi exatamente esse o erro no primeiro deploy real desta spec.
+#
+#    Além disso: contas/repos com "immutable subject claims" habilitado (GitHub inclui os IDs
+#    numéricos imutáveis do owner/repo no subject, não só os nomes) precisam do subject exato
+#    "repo:<owner>@<owner_id>/<repo>@<repo_id>:environment:production" — o erro AADSTS700213
+#    traz o subject exato que o GitHub tentou usar, copie dali em vez de adivinhar. Foi
+#    necessário aqui: "repo:FulvioP300@248797478/ERPVovoIsabel@1341397627:environment:production".
 az identity federated-credential create \
   --name gh-actions-main \
   --identity-name id-vovoisabel-deploy \
   --resource-group rg-vovoisabel \
   --issuer "https://token.actions.githubusercontent.com" \
-  --subject "repo:<owner>/<repo>:ref:refs/heads/main" \
+  --subject "repo:<owner>/<repo>:environment:production" \
   --audiences "api://AzureADTokenExchange"
 ```
 

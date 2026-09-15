@@ -822,6 +822,22 @@ necessidade real (spec 010, seção 8 "fora de escopo"). Detalhe completo em
 [spec.md](../specs/010-deploy/spec.md) e [plan.md](../specs/010-deploy/plan.md) (ambos
 reescritos nesta revisão).
 
+**Addendum 3 (2026-09-15)**: primeiro deploy real em produção concluído (T009–T015 de
+`tasks.md`) — `rg-vovoisabel`, `cae-vovoisabel`, `ca-vovoisabel-prod` provisionados na
+subscription "Microsoft Azure Sponsorship"; pipeline de CI/CD (push em `main` → CI →
+build+push pra `ghcr.io` → aprovação manual no Environment `production` → `az containerapp
+update`) validado de ponta a ponta, incluindo login funcional contra a URL pública. Duas
+descobertas operacionais registradas em `infra/aca/README.md` pra não se repetirem: (1) a
+credencial federada OIDC do GitHub Actions precisa do subject exato
+`repo:<owner>@<owner_id>/<repo>@<repo_id>:environment:<nome>` — não `ref:refs/heads/main` (isso
+só vale pra jobs sem `environment:` no workflow) e, nesta conta, com os IDs numéricos imutáveis
+do GitHub, não só os nomes; usar o subject errado falha com `AADSTS700213`. (2) O Atlas de
+produção rejeitava a conexão do Container App na camada TLS até liberar, no Network Access do
+projeto, o IP estático do Container Apps Environment (`az containerapp env show --query
+properties.staticIp`) — mantido como IP único (não `0.0.0.0/0`) a pedido explícito do usuário,
+por segurança, mesmo sem a Azure garantir formalmente esse IP como o de saída no plano
+Consumption sem VNET dedicada.
+
 ---
 
 <!--
