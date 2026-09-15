@@ -172,6 +172,60 @@ E em GitHub → Settings → Environments, crie o Environment `production` com *
 reviewer** habilitado — é isso que torna o deploy uma aprovação manual (o workflow já referencia
 `environment: production`).
 
+## 4. Domínio customizado (opcional)
+
+A URL padrão do ACA (`https://ca-vovoisabel-prod.<region>.azurecontainerapps.io`) sempre
+funciona — este passo é só pra apontar um domínio próprio (ex.: `sistema.vovoisabel.com.br`)
+pra ela, com certificado TLS **gerenciado automaticamente pela Azure** (grátis, renovação
+automática). Cobre só o hostname exato configurado — **não é wildcard**; múltiplos
+subdomínios exigiriam repetir o processo pra cada um, ou trazer um certificado wildcard
+próprio (fora do que a Azure emite automaticamente).
+
+```sh
+# 1. Pegue o ID de verificação do domínio
+az containerapp show --name ca-vovoisabel-prod --resource-group rg-vovoisabel \
+  --query "properties.customDomainVerificationId" -o tsv
+```
+
+No DNS do seu domínio (fora da Azure — no seu provedor/registrador), adicione:
+
+| Tipo | Nome | Valor |
+|---|---|---|
+| `TXT` | `asuid.<subdominio>` | o ID de verificação do passo 1 |
+| `CNAME` | `<subdominio>` | `ca-vovoisabel-prod.<region>.azurecontainerapps.io` |
+
+Espere propagar (minutos a algumas horas; confirme com `nslookup -type=TXT
+asuid.<subdominio>.<dominio>` e `nslookup <subdominio>.<dominio>` antes de continuar) e então:
+
+```sh
+# 2. Adiciona o hostname ao Container App
+az containerapp hostname add \
+  --hostname <subdominio>.<dominio> \
+  --name ca-vovoisabel-prod \
+  --resource-group rg-vovoisabel
+
+# 3. Vincula o certificado gerenciado — pode levar mais que os "até 20 minutos" que a Azure
+#    avisa; acompanhe com o comando de baixo em vez de confiar só no spinner do CLI
+az containerapp hostname bind \
+  --hostname <subdominio>.<dominio> \
+  --name ca-vovoisabel-prod \
+  --resource-group rg-vovoisabel \
+  --environment cae-vovoisabel \
+  --validation-method CNAME
+
+# Acompanhar o progresso da emissão (Pending → Succeeded)
+az containerapp env certificate list --name cae-vovoisabel --resource-group rg-vovoisabel \
+  --query "[].properties.provisioningState" -o tsv
+```
+
+Por fim, atualize `FRONTEND_URL` pro domínio novo (afeta CORS/origem, mesmo em uma app
+same-origin):
+
+```sh
+az containerapp update --name ca-vovoisabel-prod --resource-group rg-vovoisabel \
+  --set-env-vars "FRONTEND_URL=https://<subdominio>.<dominio>"
+```
+
 ## Deploy manual (fora do CI, se precisar)
 
 ```sh

@@ -142,6 +142,17 @@
       "Rollback rápido". [ADR-017](../../memory/decisions.md#adr-017--rollback-via-tag-git--reaproveitar-imagem-já-publicada-não-revisões-múltiplas-do-container-app)
       registrada.
 
+## Fase 9 — Domínio customizado
+
+- [x] T019 `sistema.vovoisabel.com.br` vinculado ao Container App de produção — só esse
+      hostname específico (não wildcard, decisão do usuário), certificado TLS gerenciado pela
+      Azure (`az containerapp hostname add` + `hostname bind --validation-method CNAME`).
+      `FRONTEND_URL` atualizado pro domínio novo; validado com `GET /api/health` e login
+      completo via `https://sistema.vovoisabel.com.br`. Documentado em `infra/aca/README.md`,
+      seção 4, e spec.md, seção 5.
+      [ADR-018](../../memory/decisions.md#adr-018--domínio-customizado-sistemavovoisabelcombr-sem-wildcard)
+      registrada.
+
 ## Dependências entre tarefas
 
 ```
@@ -153,4 +164,5 @@ T009 → T010, T011 → T012
 T008, T010, T011 → T013 → T015 (T015 também depende de T014)
 T016, T017 (documentação, já concluídas)
 T018 (independente — ferramenta operacional, não bloqueia nem depende de nenhuma das anteriores)
+T019 (depende de T009 — Container App já precisa existir; independente das demais)
 ```

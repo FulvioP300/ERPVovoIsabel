@@ -109,9 +109,16 @@ Todos os recursos desta spec (Resource Group, Container Apps Environment, o Cont
 produção, a Managed Identity do OIDC) vivem **na mesma subscription** — nunca espalhados entre
 subscriptions diferentes.
 
-- **Ingress**: externo, HTTPS, porta alvo = `PORT` da aplicação (ex. 8080). URL pública
-  `https://ca-vovoisabel-prod.<region>.azurecontainerapps.io` (domínio customizado fora de
-  escopo nesta fase).
+- **Ingress**: externo, HTTPS, porta alvo = `PORT` da aplicação (ex. 8080). URL padrão do ACA
+  `https://ca-vovoisabel-prod.<region>.azurecontainerapps.io` continua ativa, e o domínio
+  customizado **`https://sistema.vovoisabel.com.br`** também está vinculado (2026-09-15),
+  com certificado gerenciado pela Azure (emissão automática, renovação automática, sem custo
+  extra) — `CNAME` + `TXT` de verificação (`asuid.sistema`) no DNS do domínio, depois `az
+  containerapp hostname add` + `az containerapp hostname bind --validation-method CNAME`.
+  `FRONTEND_URL` (env var da aplicação) aponta pro domínio customizado. Só esse hostname
+  específico tem certificado — não é um wildcard (`*.vovoisabel.com.br`), decisão explícita
+  do usuário por simplicidade/custo (certificado wildcard exigiria trazer um certificado
+  próprio, fora do que a Azure emite automaticamente).
 - **Secrets do Container App** (não plain env var) para tudo sensível: `MONGODB_URI`,
   `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `AZURE_STORAGE_CONNECTION_STRING`, `AI_API_KEY` —
   as credenciais de **produção** apenas. Variáveis não sensíveis (`NODE_ENV`, `PORT`,
@@ -190,14 +197,17 @@ Container App de produção, secrets) é feito **uma vez**, via `az cli` documen
 - Deploy em `ca-vovoisabel-prod` exige aprovação manual no GitHub Actions antes de rodar —
   nunca automático no primeiro push verde.
 - **Nenhum Container App de dev ou test existe na subscription** — só `ca-vovoisabel-prod`.
+- `https://sistema.vovoisabel.com.br` responde com TLS válido (certificado gerenciado pela
+  Azure) e o mesmo comportamento da URL padrão do ACA (health check, fallback SPA, login).
 
 ## 9. Fora de escopo
 
 - Dev/test hospedados no Azure Container Apps (ou qualquer nuvem) — decisão de custo mínimo
   desta spec; ambos rodam localmente (seção 4).
 - Orquestração multi-container/Kubernetes — o ACA já abstrai isso pra produção.
-- Domínio customizado e certificado próprio — usa o domínio padrão
-  `*.azurecontainerapps.io` nesta fase.
+- Certificado wildcard próprio (`*.vovoisabel.com.br`) — implementado só o domínio customizado
+  específico `sistema.vovoisabel.com.br`, com certificado gerenciado pela Azure (seção 5);
+  cobrir múltiplos subdomínios exigiria trazer um certificado wildcard próprio.
 - CDN/edge caching do frontend — o container serve os estáticos diretamente; suficiente para o
   volume esperado do MVP.
 - Scale-to-zero em produção — trocaria confiabilidade por economia marginal (seção 5).

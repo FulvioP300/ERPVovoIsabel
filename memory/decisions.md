@@ -938,8 +938,52 @@ mesmo com 0% de tráfego, custo contínuo que contraria a decisão de custo mín
 
 ---
 
+## ADR-018 — Domínio customizado `sistema.vovoisabel.com.br`, sem wildcard
+
+**Status:** Aceita
+**Data:** 2026-09-15
+**Specs afetadas:** [010-deploy](../specs/010-deploy/spec.md)
+
+### Contexto
+
+Usuário tem o domínio `vovoisabel.com.br` (registrado, DNS gerenciado fora da Azure — servidor
+`ns11.domaincontrol.com`, GoDaddy) e pediu pra apontar `sistema.vovoisabel.com.br` pro Container
+App de produção. Pediu "wildcard" na frase, mas ao confirmar era sobre esse subdomínio
+específico — importante distinguir: um domínio customizado único no Azure Container Apps ganha
+certificado TLS **gerenciado automaticamente pela Azure, grátis**; um wildcard de verdade
+(`*.vovoisabel.com.br`) exigiria trazer um certificado próprio (compra ou emissão manual via
+DNS-01), sem suporte nativo do ACA pra emissão automática.
+
+### Decisão
+
+Vincular só `sistema.vovoisabel.com.br` como domínio customizado, com certificado gerenciado
+pela Azure (`az containerapp hostname add` + `hostname bind --validation-method CNAME`).
+Registros DNS necessários (adicionados pelo usuário, fora do controle deste projeto):
+
+```
+TXT   asuid.sistema.vovoisabel.com.br   → <customDomainVerificationId do Container App>
+CNAME sistema.vovoisabel.com.br         → ca-vovoisabel-prod.braveocean-5f790e9e.eastus.azurecontainerapps.io
+```
+
+`FRONTEND_URL` (env var da aplicação) atualizado pro domínio customizado. A URL padrão do ACA
+continua funcionando em paralelo (a Azure não desativa o domínio default ao adicionar um
+customizado) — nenhum redirect entre as duas foi configurado, nenhum pedido nesse sentido.
+
+### Consequências
+
+- A emissão do certificado gerenciado levou ~25 minutos (Azure avisa "até 20 minutos" — passou
+  um pouco da estimativa na prática, sem ser erro; `provisioningState` do certificado foi
+  monitorado via `az containerapp env certificate list` até `Succeeded`).
+- Se no futuro fizer sentido cobrir múltiplos subdomínios (`*.vovoisabel.com.br`), é uma
+  decisão nova — exigiria certificado wildcard próprio, fora do que foi implementado aqui.
+- Nenhum recurso de nuvem novo provisionado além do certificado gerenciado (gratuito, dentro do
+  Container Apps Environment já existente) — mantém a decisão de custo mínimo de
+  [ADR-015](#adr-015--deploy-em-container-único-não-azure-app-service--static-web-apps).
+
+---
+
 <!--
 Ao registrar uma nova ADR, copiar o bloco de convenção acima, numerar sequencialmente
-(ADR-018, ADR-019, ...) e atualizar constitution.md se a decisão alterar a stack fixada na
+(ADR-019, ADR-020, ...) e atualizar constitution.md se a decisão alterar a stack fixada na
 seção 2.
 -->
