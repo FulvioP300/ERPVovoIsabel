@@ -840,8 +840,58 @@ Consumption sem VNET dedicada.
 
 ---
 
+## ADR-016 — Correção de bug decimal no formulário de preço + ativação de multi-moeda
+
+**Status:** Aceita
+**Data:** 2026-09-15
+**Specs afetadas:** [005-produtos-cadastro-manual](../specs/005-produtos-cadastro-manual/spec.md)
+
+### Contexto
+
+Bug relatado em produção: os campos de preço no cadastro de produto (`ProductForm.tsx`) não
+aceitavam valores decimais digitados com vírgula (convenção brasileira, ex. "19,90"). Causa:
+os inputs eram `<input type="number">`, e a maioria dos navegadores (Chrome/Edge/Firefox
+modernos) simplesmente **ignora o caractere vírgula** nesse tipo de input — o usuário digitando
+"19,90" acabava salvando "1990" (100× o valor pretendido), um bug de corrupção silenciosa de
+dado, não só de UX.
+
+Ao investigar, o schema (`shared/schemas/product.schema.ts`) já tinha um campo `moeda` em
+`PrecoSchema`, mas o `MoedaEnum` só aceitava `"BRL"` e nenhuma tela expunha um seletor — a
+extensibilidade estava desenhada mas nunca finalizada. O usuário pediu, no mesmo momento, pra
+já suportar R$, US$ e €.
+
+### Decisão
+
+1. Trocar os 4 inputs de preço (`preco_original_estimado`, `custo_aquisicao`, `preco_venda`,
+   `preco_promocional`) de `type="number"` para `type="text" inputMode="decimal"`, com parsing
+   próprio (`parseOptionalNumber` em `frontend/src/schemas/product.schema.ts`) que aceita tanto
+   vírgula quanto ponto como separador decimal — normaliza pra ponto antes de `Number()`.
+2. Validação client-side (`superRefine`) rejeita texto que não bate com `/^\d+([.,]\d{1,2})?$/`,
+   evitando que um valor inválido seja silenciosamente descartado (comportamento anterior do
+   `parseOptionalNumber`, que devolvia `undefined` para qualquer `NaN`).
+3. `MoedaEnum` (shared) expandido de `["BRL"]` para `["BRL", "USD", "EUR"]`. Um seletor de moeda
+   foi adicionado ao fieldset "Preço" do formulário — um único campo por produto (não por linha
+   de preço, já era assim no schema). Exibição (`ProductCard.tsx`) usa `Intl`/`toLocaleString`
+   com locale por moeda (`pt-BR`/`en-US`/`de-DE`) pra formatação correta do símbolo.
+
+### Consequências
+
+- Sem migração de dados: produtos existentes já têm `moeda: "BRL"` (default do schema desde a
+  criação do campo); nada muda pra eles.
+- **Fora do escopo desta decisão:** conversão/agregação entre moedas diferentes. Dashboard e
+  filtros de preço (`preco_min`/`preco_max`) continuam tratando o valor numérico como está
+  gravado, sem normalizar por câmbio — misturar produtos em moedas diferentes num mesmo filtro
+  de faixa de preço não é semanticamente correto hoje; resolver isso é decisão futura, só se
+  vender em múltiplas moedas de fato virar necessidade real.
+- Os filtros de faixa de preço (`ProductFilters.tsx`) e os campos de medidas (cintura, quadril
+  etc., que reaproveitam o mesmo `parseOptionalNumber`) não foram alterados quanto ao tipo do
+  input — o bug relatado era especificamente nos 4 campos de preço do cadastro; mesma classe de
+  problema pode existir ali, mas não foi escopo deste fix.
+
+---
+
 <!--
 Ao registrar uma nova ADR, copiar o bloco de convenção acima, numerar sequencialmente
-(ADR-016, ADR-017, ...) e atualizar constitution.md se a decisão alterar a stack fixada na
+(ADR-017, ADR-018, ...) e atualizar constitution.md se a decisão alterar a stack fixada na
 seção 2.
 -->

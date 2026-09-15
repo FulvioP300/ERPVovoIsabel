@@ -1,4 +1,4 @@
-import { PRODUCT_STATUS_LABELS, type Product } from "../schemas/product.schema";
+import { MOEDA_LOCALES, PRODUCT_STATUS_LABELS, type Moeda, type Product } from "../schemas/product.schema";
 import { Card } from "./Card";
 
 const PRODUCT_STATUS_STYLES: Record<Product["status"], string> = {
@@ -20,9 +20,9 @@ export function ProductStatusBadge({ status }: { status: Product["status"] }) {
   );
 }
 
-function formatPrice(value: number | null): string {
+function formatPrice(value: number | null, moeda: Moeda): string {
   if (value === null) return "—";
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return value.toLocaleString(MOEDA_LOCALES[moeda], { style: "currency", currency: moeda });
 }
 
 /** Resumo visual de um produto — usado dentro da listagem (005) e reutilizável no futuro e-commerce. */
@@ -49,7 +49,9 @@ export function ProductCard({ product }: { product: Product }) {
           {product.sku} · {product.classificacao.categoria}
           {product.caracteristicas.tamanho_etiqueta ? ` · Tam. ${product.caracteristicas.tamanho_etiqueta}` : ""}
         </p>
-        <p className="text-sm font-semibold text-wine-800">{formatPrice(product.preco.preco_venda)}</p>
+        <p className="text-sm font-semibold text-wine-800">
+          {formatPrice(product.preco.preco_venda, product.preco.moeda)}
+        </p>
       </div>
     </Card>
   );

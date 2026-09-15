@@ -7,6 +7,7 @@ import {
   CONDICAO_ESTADO_LABELS,
   CondicaoEstadoEnum,
   CreatableStatusEnum,
+  MOEDA_SYMBOLS,
   PRODUCT_STATUS_LABELS,
   ProductFormSchema,
   ProductStatusEnum,
@@ -348,26 +349,62 @@ export function ProductForm({ mode, defaultValues, defaultImages = [], onSubmit,
         <div className={gridClass}>
           <div>
             <label className={labelClass}>
+              Moeda
+              <select className={inputClass} {...register("moeda")}>
+                {Object.entries(MOEDA_SYMBOLS).map(([code, symbol]) => (
+                  <option key={code} value={code}>
+                    {symbol} ({code})
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div>
+            <label className={labelClass}>
               Preço original estimado
-              <input className={inputClass} type="number" step="0.01" {...register("preco_original_estimado")} />
+              <input
+                className={inputClass}
+                type="text"
+                inputMode="decimal"
+                placeholder="0,00"
+                {...register("preco_original_estimado")}
+              />
             </label>
           </div>
           <div>
             <label className={labelClass}>
               Custo de aquisição
-              <input className={inputClass} type="number" step="0.01" {...register("custo_aquisicao")} />
+              <input
+                className={inputClass}
+                type="text"
+                inputMode="decimal"
+                placeholder="0,00"
+                {...register("custo_aquisicao")}
+              />
             </label>
           </div>
           <div>
             <label className={labelClass}>
               Preço de venda
-              <input className={inputClass} type="number" step="0.01" {...register("preco_venda")} />
+              <input
+                className={inputClass}
+                type="text"
+                inputMode="decimal"
+                placeholder="0,00"
+                {...register("preco_venda")}
+              />
             </label>
           </div>
           <div>
             <label className={labelClass}>
               Preço promocional
-              <input className={inputClass} type="number" step="0.01" {...register("preco_promocional")} />
+              <input
+                className={inputClass}
+                type="text"
+                inputMode="decimal"
+                placeholder="0,00"
+                {...register("preco_promocional")}
+              />
             </label>
           </div>
         </div>

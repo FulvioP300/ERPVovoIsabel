@@ -29,7 +29,7 @@ export const CondicaoEstadoEnum = z.enum(["novo", "seminovo", "usado"]);
 export type CondicaoEstado = z.infer<typeof CondicaoEstadoEnum>;
 
 export const MedidasUnidadeEnum = z.enum(["cm", "in"]);
-export const MoedaEnum = z.enum(["BRL"]);
+export const MoedaEnum = z.enum(["BRL", "USD", "EUR"]);
 export const CanalVendaEnum = z.enum(["loja_fisica", "ecommerce", "mercado_livre", "shopee", "outro"]);
 
 const nullableString = () => z.string().nullable();

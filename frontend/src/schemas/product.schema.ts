@@ -4,12 +4,29 @@ import {
   ProductStatusEnum,
   CondicaoEstadoEnum,
   MedidasUnidadeEnum,
+  MoedaEnum,
   CanalVendaEnum,
   ImagemSchema,
   MAX_PRODUCT_IMAGES,
 } from "../../../shared/dist/schemas/product.schema.js";
 
-export { ProductSchema, ProductStatusEnum, CondicaoEstadoEnum, MedidasUnidadeEnum, CanalVendaEnum, MAX_PRODUCT_IMAGES };
+export { ProductSchema, ProductStatusEnum, CondicaoEstadoEnum, MedidasUnidadeEnum, MoedaEnum, CanalVendaEnum, MAX_PRODUCT_IMAGES };
+export type Moeda = z.infer<typeof MoedaEnum>;
+
+/** Símbolo de exibição por moeda — usado tanto no seletor do formulário quanto na listagem. */
+export const MOEDA_SYMBOLS: Record<Moeda, string> = {
+  BRL: "R$",
+  USD: "US$",
+  EUR: "€",
+};
+
+/** Locale usado por `Intl.NumberFormat`/`toLocaleString` para formatar cada moeda (símbolo e
+ * posicionamento corretos, ex.: "R$ 19,90" vs "$19.90" vs "19,90 €"). */
+export const MOEDA_LOCALES: Record<Moeda, string> = {
+  BRL: "pt-BR",
+  USD: "en-US",
+  EUR: "de-DE",
+};
 export type { Product, ProductStatus } from "../../../shared/dist/schemas/product.schema.js";
 export type CondicaoEstado = z.infer<typeof CondicaoEstadoEnum>;
 export type Imagem = z.infer<typeof ImagemSchema>;
@@ -88,6 +105,7 @@ export const ProductFormSchema = z
     observacoes_condicao: z.string().optional(),
 
     // Preço
+    moeda: MoedaEnum.default("BRL"),
     preco_original_estimado: z.string().optional(),
     custo_aquisicao: z.string().optional(),
     preco_venda: z.string().optional(),
@@ -113,13 +131,35 @@ export const ProductFormSchema = z
         message: "Descreva ao menos um defeito (separado por vírgula) quando marcar \"possui defeitos\".",
       });
     }
+    for (const field of PRICE_FIELDS) {
+      const value = data[field]?.trim();
+      if (value && !DECIMAL_INPUT_PATTERN.test(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: "Use só números, com vírgula ou ponto pra decimais (ex.: 19,90).",
+        });
+      }
+    }
   });
 export type ProductFormValues = z.infer<typeof ProductFormSchema>;
 
+/** Aceita "19", "19.90" ou "19,90" — nunca mais de 2 casas decimais. */
+const DECIMAL_INPUT_PATTERN = /^\d+([.,]\d{1,2})?$/;
+const PRICE_FIELDS = [
+  "preco_original_estimado",
+  "custo_aquisicao",
+  "preco_venda",
+  "preco_promocional",
+] as const;
+
+/** Aceita tanto "19.90" quanto "19,90" (convenção brasileira) — sem isso, `Number("19,90")`
+ * retorna `NaN` e o valor digitado é descartado silenciosamente (bug real de cadastro). */
 function parseOptionalNumber(value?: string): number | undefined {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
-  const parsed = Number(trimmed);
+  const normalized = trimmed.replace(",", ".");
+  const parsed = Number(normalized);
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
@@ -192,6 +232,7 @@ export function toProductPayload(values: ProductFormValues, galeria: Imagem[] = 
       observacoes: textOrUndefined(values.observacoes_condicao),
     },
     preco: {
+      moeda: values.moeda,
       preco_original_estimado: parseOptionalNumber(values.preco_original_estimado),
       custo_aquisicao: parseOptionalNumber(values.custo_aquisicao),
       preco_venda: parseOptionalNumber(values.preco_venda),
@@ -254,6 +295,7 @@ export function productToFormValues(product: z.infer<typeof ProductSchema>): Pro
     possui_defeitos: product.condicao.possui_defeitos,
     defeitos: joinList(product.condicao.defeitos),
     observacoes_condicao: product.condicao.observacoes ?? "",
+    moeda: product.preco.moeda,
     preco_original_estimado: product.preco.preco_original_estimado?.toString() ?? "",
     custo_aquisicao: product.preco.custo_aquisicao?.toString() ?? "",
     preco_venda: product.preco.preco_venda?.toString() ?? "",
@@ -306,6 +348,7 @@ export const DEFAULT_PRODUCT_FORM_VALUES: ProductFormValues = {
   possui_defeitos: false,
   defeitos: "",
   observacoes_condicao: "",
+  moeda: "BRL",
   preco_original_estimado: "",
   custo_aquisicao: "",
   preco_venda: "",
