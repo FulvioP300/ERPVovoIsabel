@@ -41,7 +41,9 @@ test("admin edita nome e preço de uma peça e a mudança aparece na listagem", 
 
   const nomeEditado = `${nomeOriginal} (editado)`;
   await fieldset(page, "Identificação").locator('input[type="text"]').first().fill(nomeEditado);
-  await fieldset(page, "Preço").locator('input[type="number"]').nth(2).fill("149.90");
+  // Campos de preço são type="text" (não "number") desde a correção do bug de decimal com
+  // vírgula (ADR-016) — mira pelo rótulo em vez do tipo do input.
+  await page.getByLabel("Preço de venda").fill("149.90");
   await page.click('button[type="submit"]');
 
   await page.waitForURL("**/products");

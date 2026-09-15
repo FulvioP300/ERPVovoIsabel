@@ -982,8 +982,53 @@ customizado) — nenhum redirect entre as duas foi configurado, nenhum pedido ne
 
 ---
 
-<!--
-Ao registrar uma nova ADR, copiar o bloco de convenção acima, numerar sequencialmente
-(ADR-019, ADR-020, ...) e atualizar constitution.md se a decisão alterar a stack fixada na
-seção 2.
--->
+## ADR-019 — Cabeçalho responsivo (menu hambúrguer) e coluna de ações fixa na tabela
+
+**Status:** Aceita
+**Data:** 2026-09-15
+**Specs afetadas:** nenhuma spec de domínio específica — corrige o requisito não funcional já
+existente ("aplicação responsiva", [constitution.md, seção 5](../memory/constitution.md)).
+
+### Contexto
+
+Usuário pediu uma revisão de design pra celular em retrato (9:18). Investigação com
+screenshots reais (Playwright, viewport 390×780) revelou um bug real e sério, não cosmético:
+`AppLayout.tsx` tinha uma `<nav>` horizontal fixa com ~6 itens (Dashboard/Produtos/
+Categorias/Usuários/Auditoria/nome/Sair) numa única linha, sem quebra nem colapso — em telas
+estreitas isso empurra a página inteira pra ter scroll horizontal, e o botão **"Sair" (logout)
+fica completamente fora da área visível**, só alcançável rolando a página pra direita (sem
+nenhuma pista visual de que isso é necessário). O resto do app (formulários, grids, filtros)
+já respondia bem graças a `grid-cols-1`/`flex-wrap`/`overflow-x-auto` já existentes — não foi
+necessário mexer neles.
+
+Um segundo problema, descoberto só depois de corrigir o primeiro (o primeiro mascarava o
+segundo, já que a página inteira estava fora de escala): a tabela genérica (`Table.tsx`,
+reusada em produtos/categorias/usuários/auditoria) rola horizontalmente em telas estreitas
+(`overflow-x-auto` já existia), mas a coluna de ações (sempre a última, por convenção) ficava
+escondida fora da área visível sem nenhuma indicação de que dava pra arrastar pra vê-la — na
+prática, "Editar" ficava inacessível pra quem não soubesse descobrir o scroll sozinho.
+
+### Decisão
+
+1. `AppLayout.tsx`: nav horizontal completa (`hidden md:flex`) só a partir de telas médias;
+   abaixo disso, um botão hambúrguer (`md:hidden`) abre um painel com os mesmos links
+   empilhados verticalmente, incluindo nome do usuário e "Sair". Cabeçalho nunca mais excede a
+   largura da viewport.
+2. `Table.tsx`: última coluna (convenção: sempre a de ações) ganha `position: sticky; right: 0`
+   tanto no `<th>` quanto no `<td>` — fica sempre visível, mesmo sem o usuário rolar a tabela,
+   com uma sombra sutil à esquerda sinalizando que há mais conteúdo por baixo. `group`/
+   `group-hover` no `<tr>` mantém o fundo da coluna fixa consistente com o hover da linha.
+
+### Consequências
+
+- Validado com screenshots reais em viewport 390×780 (9:18), antes/depois de cada correção,
+  login → dashboard → listagem de produtos → cadastro → cadastro por IA → categorias.
+  Screenshots foram descartados depois (ferramenta de diagnóstico desta sessão, não fica no
+  repo).
+- Efeito colateral encontrado e corrigido: `e2e/tests/product-edit.spec.ts` mirava o campo de
+  preço por `input[type="number"]`, que não existe mais desde
+  [ADR-016](#adr-016--correção-de-bug-decimal-no-formulário-de-preço--ativação-de-multi-moeda)
+  (campos de preço viraram `type="text"`) — o teste nunca tinha rodado desde aquela mudança.
+  Corrigido pra mirar por rótulo (`getByLabel`), mais robusto a mudanças de tipo de input.
+- Padrão de "última coluna fixa" em `Table.tsx` é genérico — qualquer tela nova que reaproveite
+  o componente já herda o comportamento, sem precisar reimplementar.
