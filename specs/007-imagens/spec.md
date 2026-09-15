@@ -67,26 +67,69 @@ Abrir cadastro → Fotografar frente → Fotografar costas → Fotografar etique
    → Informar descrição → Analisar com IA
 ```
 
-## 6. Imagens recomendadas por peça
+## 6. Visualização ampliada (lightbox)
+
+Ao clicar em qualquer miniatura já enviada (`ImageUploader`, tanto no cadastro manual quanto
+na edição de produto — 005, e reutilizado pelo cadastro por IA — 006), a foto abre **ampliada**
+sobre um overlay que cobre a tela atual, sem navegar para outra rota/URL — a tela de
+cadastro/edição continua montada por baixo, com o formulário intacto.
+
+```
+Miniatura (clique) → overlay em tela cheia, fundo escurecido semi-transparente
+                       + imagem ampliada centralizada (object-fit: contain,
+                         nunca ocupa 100% da viewport — sempre sobra uma margem
+                         de fundo clicável em qualquer proporção de tela/imagem)
+```
+
+**Fechar o overlay e voltar exatamente à tela anterior** (sem perda de estado do formulário)
+acontece por qualquer uma destas ações:
+
+- Clicar em qualquer área fora da imagem ampliada (o fundo escurecido).
+- Pressionar a tecla `Esc`.
+- Clicar num botão de fechar (`×`) visível sobre o overlay — necessário porque, em telas
+  pequenas (celular), a margem "fora da imagem" pode ser estreita ou de difícil precisão via
+  touch.
+
+Clicar **na própria imagem ampliada** (não no fundo) não fecha o overlay — evita fechamento
+acidental ao tentar dar zoom/pinch em touch.
+
+O botão existente de remover foto (`×` sobre a miniatura, já implementado) continua
+funcionando de forma independente: clicar nele remove a foto sem abrir o overlay ampliado;
+só o clique na própria miniatura (fora da área do botão de remover) abre a visualização.
+
+Escopo: aplica-se só a fotos já enviadas (com `url` real do Azure Blob Storage) — o
+`ImageUploader` já só exibe miniaturas depois do upload concluído (seção 1), então não há
+caso de abrir o lightbox para uma foto ainda em upload.
+
+## 7. Imagens recomendadas por peça
 
 1. Frente, 2. Costas, 3. Etiqueta, 4. Detalhes, 5. Defeitos (se existentes). O sistema deve
 orientar o usuário nesta ordem/checklist tanto no cadastro manual quanto no cadastro por IA.
 
-## 7. Critérios de aceite
+## 8. Critérios de aceite
 
 - Upload de imagem fora do MIME type permitido é rejeitado com erro claro.
 - Upload acima do tamanho máximo configurado é rejeitado.
 - Excedido o número máximo de imagens por peça, novos uploads são bloqueados até remoção de
   alguma existente.
 - Usuário não autenticado recebe `401`/`403` ao tentar `POST /api/images`.
+- Clicar numa miniatura já enviada abre a foto ampliada sobre a tela atual.
+- Clicar fora da imagem ampliada, pressionar `Esc`, ou clicar no botão `×` do overlay fecham a
+  visualização e retornam à tela anterior sem perda de estado do formulário.
+- Clicar dentro da própria imagem ampliada não fecha o overlay.
+- Clicar no botão de remover foto (sobre a miniatura) continua removendo a foto normalmente,
+  sem abrir o overlay ampliado.
 
-## 8. Fora de escopo
+## 9. Fora de escopo
 
 Edição de imagem (crop/filtros) no backoffice, CDN/Front Door próprio na frente do Blob
 Storage — usar os recursos nativos do provedor enquanto não houver necessidade concreta de
-URLs públicas de longa duração (ex. e-commerce público, fase 3 do roadmap).
+URLs públicas de longa duração (ex. e-commerce público, fase 3 do roadmap). Navegação entre
+fotos (anterior/próxima) dentro do overlay ampliado, zoom/pinch além do que o navegador já
+oferece nativamente, e reordenação de fotos por arrastar — nenhum desses foi pedido; avaliar
+só se surgir necessidade real de uso.
 
-## 9. Conformidade constitucional
+## 10. Conformidade constitucional
 
 Aplica o princípio VI (abstração de integrações externas) e a regra de segurança de upload
 do princípio VII da [constituição](../../memory/constitution.md). A escolha de Azure Blob

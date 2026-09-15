@@ -70,8 +70,43 @@ ImageUploader (input capture="environment")
    admin definidas em 002; `viewer` não deve chamar esta rota via UI, mas o backend também
    deve aplicar `authorize(["admin","operator"])` para reforçar a regra).
 5. Frontend: `ImageUploader` com checklist visual (Frente/Costas/Etiqueta/Detalhes/Defeitos,
-   ver seção 6 da spec), preview e reordenação antes do envio; integra tanto com cadastro
+   ver seção 7 da spec), preview e reordenação antes do envio; integra tanto com cadastro
    manual (005) quanto com o fluxo de IA (006).
+6. Frontend: `ImageLightbox` — overlay de visualização ampliada ao clicar numa miniatura já
+   enviada (spec, seção 6). Ver seção 5.1 abaixo para o desenho técnico.
+
+### 5.1 `ImageLightbox` (visualização ampliada)
+
+Componente novo, reutilizável: `frontend/src/components/ImageLightbox.tsx`.
+
+```
+interface ImageLightboxProps {
+  url: string;
+  onClose: () => void;
+}
+```
+
+- Renderiza um overlay `position: fixed`, cobrindo a viewport inteira (`inset-0`), com fundo
+  escurecido semi-transparente (`bg-black/80` ou equivalente) e `z-index` acima de qualquer
+  outro elemento da tela de cadastro/edição.
+- A imagem ampliada usa `object-fit: contain` com `max-width`/`max-height` abaixo de 100% da
+  viewport (ex. 90vw/90vh) — garante uma margem de fundo clicável em qualquer proporção de
+  tela/imagem (spec, seção 6).
+- Fecha (`onClose`) em três gatilhos: clique no elemento de fundo (não na imagem — usar
+  `stopPropagation()` no `<img>` pra não propagar o clique pro fundo), tecla `Esc` (listener
+  `keydown` registrado só enquanto o overlay está montado, removido no cleanup do `useEffect`),
+  e um botão `×` fixo num canto do overlay.
+- **Sem portal do React** (`createPortal`) — `position: fixed` já é suficiente neste caso,
+  já que não há nenhum ancestral com `overflow: hidden`/`transform` entre `ImageUploader` e o
+  `<body>` que quebraria o posicionamento fixo (confirmar na implementação; se algum ancestral
+  futuro introduzir isso, migrar pra portal é a correção).
+- Bloqueio de scroll do fundo enquanto aberto: `document.body.style.overflow = "hidden"` no
+  mount, restaurado no unmount (mesmo padrão comum de modal).
+
+`ImageUploader.tsx`: cada miniatura ganha um `onClick` que abre o lightbox com a `url` daquela
+imagem (estado local `previewUrl: string | null`); o botão de remover (`×` já existente sobre
+a miniatura) precisa de `onClick` com `stopPropagation()` pra não também disparar a abertura
+do lightbox.
 
 ## 6. Testes planejados
 
@@ -79,6 +114,10 @@ ImageUploader (input capture="environment")
   upload além do limite de imagens por peça.
 - Integração: `POST /images` sem autenticação retorna `401`; upload válido retorna metadado
   completo (sem binário) pronto para ser referenciado em `products.imagens`.
+- `ImageLightbox` (componente novo, sem chamada de API): clique numa miniatura abre o overlay
+  com a `url` correta; clique no fundo, `Esc`, e clique no `×` do overlay todos chamam
+  `onClose`; clique na própria imagem ampliada não chama `onClose`; clique no botão de remover
+  foto não abre o overlay (evento não propaga).
 
 ## 7. Riscos / decisões em aberto
 
@@ -93,8 +132,10 @@ ImageUploader (input capture="environment")
   container com **leitura pública a nível de blob** (opção (a) descrita originalmente aqui),
   em uma única Storage Account (`stvovoisabel`) com containers `product-images-{dev,test,prod}`
   por ambiente. Validado de ponta a ponta (upload → leitura anônima → remoção).
-- Checklist visual (Frente/Costas/Etiqueta/Detalhes/Defeitos, seção 6 da spec) e reordenação
+- Checklist visual (Frente/Costas/Etiqueta/Detalhes/Defeitos, seção 7 da spec) e reordenação
   manual de fotos **não foram implementados** — o pedido que motivou esta spec (integrada a
   005) foi só "N fotos, upload e remoção no cadastro/edição"; a primeira foto da galeria vira
   a capa automaticamente, sem seletor dedicado. Reavaliar quando 006 (cadastro por IA)
   precisar do checklist de fato.
+- `ImageLightbox` (seção 5.1, seção 6 da spec) ainda **não implementado** — só desenhado
+  nesta revisão, a pedido explícito do usuário ("apenas na spec, não desenvolver ainda").

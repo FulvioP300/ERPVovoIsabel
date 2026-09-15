@@ -74,12 +74,26 @@ contra o Mongo de dev real.
       Reutilização por [006](../006-produtos-cadastro-ia/tasks.md) permanece válida sem
       alteração de contrato.
 
+## Fase 4 — Visualização ampliada (lightbox)
+
+Desenhada nesta revisão a pedido explícito do usuário — **spec apenas, implementação ainda
+não iniciada** (ver spec.md, seção 6, e plan.md, seção 5.1).
+
+- [ ] T012 `frontend/src/components/ImageLightbox.tsx`: overlay `position: fixed` em tela
+      cheia, imagem ampliada com `object-fit: contain` (máx. 90vw/90vh, garantindo margem de
+      fundo clicável), fecha via clique no fundo, tecla `Esc`, ou botão `×` — clique na própria
+      imagem não fecha. Bloqueia scroll do `body` enquanto aberto (restaura no unmount).
+- [ ] T013 Integrar `ImageLightbox` ao `ImageUploader.tsx`: `onClick` na miniatura abre o
+      overlay com a `url` daquela foto (estado local); `onClick` do botão de remover (`×` já
+      existente) usa `stopPropagation()` pra não também abrir o overlay — depende de T012.
+
 ## Dependências entre tarefas
 
 ```
 T005a → T005 (adapter precisa do SDK e das env vars)
 T001,T002 → T005,T006 → T007 → T008
 T009 → T010 → T011
+T012 → T013
 ```
 
 ## Nota
