@@ -1,18 +1,41 @@
 # Especificação Funcional e Técnica  
 ## ERP SAMPLE para Brechó
 
-**Versão:** 1.1  
-**Data:** 22/08/2026  
+**Versão:** 1.3  
+**Data:** 17/09/2026  
 **Tipo de aplicação:** E-commerce + Backoffice Administrativo + Cadastro de Produtos Assistido por IA
 
 ---
 
-## Notas de versão — 1.1 (22/08/2026)
+## Notas de versão — 1.3 (17/09/2026)
 
-Alteração em relação à v1.0: o provedor de armazenamento de imagens foi definido como
-**Azure Blob Storage**, substituindo a sugestão anterior de Cloudinary. Trechos afetados:
-seção 4.4 (Armazenamento de imagens), diagrama da seção 5 (Arquitetura geral) e seção 47
-(Variáveis de ambiente). Demais seções permanecem inalteradas em relação à v1.0.
+Alteração em relação à v1.2: **reprioridade do roadmap** (seção 75) — venda via marketplaces
+passou a ser priorizada sobre a construção de um e-commerce próprio. "Marketplaces" (antes
+Fase 5) e "Inteligência comercial" (antes Fase 6) tornam-se **Fase 3** e **Fase 4**;
+"E-commerce" e "Venda" (loja própria, antes Fase 3 e Fase 4) tornam-se **Fase 5** e **Fase 6**,
+despriorizadas. Fases 1 e 2 (Backoffice, Cadastro inteligente) não mudam de posição. Referência
+cruzada corrigida na seção 79 (era "Fase 6", passa a ser "Fase 4 — Inteligência comercial").
+
+---
+
+## Notas de versão — 1.2 (17/09/2026)
+
+Alteração em relação à v1.1: adicionado o **módulo de integração com e-commerce** (camada de
+conectores por marketplace), até então só mencionado como preparação futura (seção 1) e item
+de roadmap (seção 74, "Fora do MVP", e seção 75, Fase 5). Trechos afetados/adicionados:
+
+- **Seção 19** (Modelo completo de produto): exemplo de `marketplaces` enriquecido com os
+  campos que a publicação de anúncio precisa (status, URL do anúncio, data de publicação,
+  erro) e adicionado o marketplace `ebay`.
+- **Seção 74** (Fora do MVP): nota cruzada pra seção 79 — Mercado Livre/Shopee/eBay continuam
+  fora do MVP original (specs 001–010, já implementado), mas agora têm evolução detalhada.
+- **Seção 75** (Roadmap sugerido, Fase 5 — Marketplaces): adicionado eBay à lista e referência
+  à seção 79.
+- **Seções 79 e 80 (novas)**: regras de negócio do módulo de integração com e-commerce —
+  camada de conectores (um adapter por marketplace), ordem de implementação (Mercado Livre →
+  Shopee → eBay → demais), e o fluxo de publicação de anúncio a partir da tela do produto.
+
+Demais seções permanecem inalteradas em relação à v1.1.
 
 ---
 
@@ -36,7 +59,7 @@ A aplicação deverá contemplar:
 - gerenciamento de preços;
 - gerenciamento de imagens;
 - preparação para publicação em e-commerce;
-- preparação futura para integração com marketplaces.
+- integração com marketplaces externos via camada de conectores (seções 79 e 80).
 
 Cada peça física deverá possuir um **SKU único**, mesmo que existam outras peças aparentemente iguais.
 
@@ -880,13 +903,30 @@ Estrutura:
 
   "marketplaces": {
     "mercado_livre": {
+      "status": "nao_publicado",
       "publicado": false,
-      "id_anuncio": null
+      "id_anuncio": null,
+      "url_anuncio": null,
+      "publicado_em": null,
+      "erro": null
     },
 
     "shopee": {
+      "status": "nao_publicado",
       "publicado": false,
-      "id_anuncio": null
+      "id_anuncio": null,
+      "url_anuncio": null,
+      "publicado_em": null,
+      "erro": null
+    },
+
+    "ebay": {
+      "status": "nao_publicado",
+      "publicado": false,
+      "id_anuncio": null,
+      "url_anuncio": null,
+      "publicado_em": null,
+      "erro": null
     }
   },
 
@@ -2346,6 +2386,8 @@ Mercado Livre
 
 Shopee
 
+eBay
+
 CRM
 
 Programa de fidelidade
@@ -2361,11 +2403,20 @@ BI avançado
 Multiagentes
 ```
 
-Esses recursos deverão ser tratados como evolução.
+Esses recursos deverão ser tratados como evolução. Mercado Livre, Shopee e eBay têm essa
+evolução detalhada nas seções 79 e 80 (módulo de integração com e-commerce) — continuam fora
+do MVP original (specs 001–010), mas já com regras de negócio definidas para implementação
+posterior, conector por conector.
 
 ---
 
 # 75. Roadmap sugerido
+
+**Reprioridade (v1.3):** venda via marketplaces passou a ser priorizada sobre a construção de
+um e-commerce próprio — publicar peças em Mercado Livre/Shopee/eBay entrega canal de venda
+mais rápido do que construir catálogo público, carrinho e checkout próprios. As fases de
+"E-commerce" e "Venda" (loja própria) permanecem no roadmap, mas foram despriorizadas para
+depois de Marketplaces e Inteligência comercial.
 
 ## Fase 1 — Backoffice
 
@@ -2401,7 +2452,46 @@ SKU automático
 
 ---
 
-## Fase 3 — E-commerce
+## Fase 3 — Marketplaces
+
+Regras de negócio detalhadas nas seções 79 e 80 — camada de conectores (um adapter por
+marketplace), publicação de anúncio a partir da tela do produto, ordem de implementação.
+
+```text
+Conector Mercado Livre (publicação de anúncio)
+
+Conector Shopee (publicação de anúncio)
+
+Conector eBay (publicação de anúncio)
+
+Demais conectores (avaliados conforme demanda)
+
+Sincronização de estoque (fase futura, fora do escopo inicial dos conectores)
+
+Pedidos externos (fase futura, fora do escopo inicial dos conectores)
+```
+
+---
+
+## Fase 4 — Inteligência comercial
+
+```text
+Precificação por IA
+
+Recomendação
+
+Análise de giro
+
+Previsão de venda
+
+SEO automático
+
+BI
+```
+
+---
+
+## Fase 5 — E-commerce (loja própria, despriorizada)
 
 ```text
 Catálogo público
@@ -2417,7 +2507,7 @@ Carrinho
 
 ---
 
-## Fase 4 — Venda
+## Fase 6 — Venda (loja própria, despriorizada)
 
 ```text
 Checkout
@@ -2427,38 +2517,6 @@ Pagamento
 Pedido
 
 Baixa automática da peça
-```
-
----
-
-## Fase 5 — Marketplaces
-
-```text
-Mercado Livre
-
-Shopee
-
-Sincronização de estoque
-
-Pedidos externos
-```
-
----
-
-## Fase 6 — Inteligência comercial
-
-```text
-Precificação por IA
-
-Recomendação
-
-Análise de giro
-
-Previsão de venda
-
-SEO automático
-
-BI
 ```
 
 ---
@@ -2584,3 +2642,150 @@ confirmar cadastro
 ```
 
 Esse fluxo deverá constituir o núcleo funcional inicial do **ERP SAMPLE**.
+
+---
+
+# 79. Módulo de integração com e-commerce (camada de conectores)
+
+## Visão geral
+
+O sistema deverá evoluir para publicar peças cadastradas diretamente em marketplaces
+externos, a partir dos dados já existentes no ERP — sem retrabalho de digitação pelo
+operador e sem re-fotografar a peça.
+
+Essa integração deverá ser construída como uma **camada de conectores**: uma interface comum
+("porta") que todo marketplace implementa, e um adaptador concreto por marketplace, seguindo
+o mesmo princípio arquitetural já usado para os demais provedores externos (IA, armazenamento
+de imagens — seção 76, "integrações externas deverão ser abstraídas"). Isso permite adicionar
+um novo
+marketplace um a um, sem alterar os módulos já existentes (Produtos, SKU, Estoque, Preço,
+Imagens) — só a implementação concreta daquele conector.
+
+```text
+Produto (ERP)
+    ↓
+Camada de conectores (porta comum)
+    ↓                    ↓                    ↓
+Conector             Conector             Conector
+Mercado Livre        Shopee               eBay
+    ↓                    ↓                    ↓
+API do                API do               API do
+Mercado Livre         Shopee               eBay
+```
+
+## Funcionalidade principal
+
+Um botão **"Publicar no [Marketplace]"** deverá existir na tela de edição do produto (a
+tela do SKU). Ao clicar:
+
+```text
+Operador abre o produto
+        ↓
+Escolhe o marketplace (ex.: Mercado Livre)
+        ↓
+Clica em "Publicar no Mercado Livre"
+        ↓
+Sistema valida se o produto tem dados mínimos completos
+        ↓
+Sistema monta o anúncio a partir dos dados do produto (seção 19)
+        ↓
+Conector autentica com o marketplace (credencial da loja, configurada uma vez)
+        ↓
+Conector cria o anúncio via API do marketplace
+        ↓
+Sistema grava id/URL do anúncio e status "publicado" em marketplaces.<nome>
+        ↓
+Tela do produto exibe selo "Publicado no Mercado Livre" com link pro anúncio
+```
+
+## Dados enviados ao marketplace
+
+A fonte de dados é sempre o modelo de produto já existente (seção 19) — nenhum campo novo é
+digitado especificamente para a publicação:
+
+```text
+Nome
+Descrição
+Categoria (mapeada para a taxonomia do marketplace, quando aplicável)
+Preço de venda
+Condição (novo/seminovo/usado, mapeada para as opções do marketplace)
+Características relevantes (marca, tamanho, cor, material)
+Fotos da galeria (a foto de capa é usada como imagem principal do anúncio)
+```
+
+## Regras de negócio
+
+- Só é possível publicar um produto com dados mínimos completos: nome, categoria, preço de
+  venda e ao menos uma foto. Publicar sem isso deverá ser bloqueado, com mensagem clara sobre
+  o que falta.
+- Publicar um anúncio é sempre uma ação explícita do operador — nunca automática (mesmo
+  princípio de *human in the loop* já aplicado ao cadastro por IA, seção 27). Nenhum produto é
+  publicado em qualquer marketplace sem essa ação direta.
+- Publicar não altera o status do produto no ERP (seção 20) — publicação é uma ação
+  complementar, não substitui nem antecipa o fluxo de venda local já existente.
+- Falha na publicação (erro do marketplace, credencial expirada, atributo obrigatório
+  faltando etc.) nunca deverá ser silenciosa: o status em `marketplaces.<nome>` deverá
+  registrar o erro (campo `erro`), visível na tela do produto, com opção de tentar de novo.
+- Cada marketplace tem sua própria metodologia de publicação — categorias próprias,
+  atributos obrigatórios variáveis, regras específicas de imagem (tamanho, quantidade,
+  formato). A camada de conectores existe justamente para isolar essa variação: o restante do
+  sistema nunca precisa conhecer os detalhes de nenhum marketplace específico.
+- Atualizar um produto já publicado (ex.: mudar o preço) **não deverá** sincronizar
+  automaticamente com o marketplace nesta primeira fase — o operador republica manualmente
+  quando quiser refletir a mudança. Sincronização automática de atualização é evolução
+  futura (Fase 4 — Inteligência comercial, seção 75).
+- Uma peça vendida por qualquer canal (loja física ou um dos marketplaces) continua exigindo
+  baixa manual do operador no ERP (seção 20, "vendido"). Baixa automática cross-channel
+  (pausar/remover o anúncio nos demais marketplaces quando a peça vender em um deles) fica
+  fora do escopo desta primeira fase — cada peça é única, com SKU único (seção 1), então o
+  risco de venda duplicada existe até essa sincronização ser implementada; o operador deverá
+  ser orientado a dar baixa manual imediatamente após qualquer venda.
+
+## Fora do escopo desta primeira fase (evolução futura)
+
+```text
+Importação de pedidos feitos no marketplace de volta para o ERP
+
+Baixa automática de estoque entre canais (cross-channel)
+
+Sincronização automática de preço/estoque após a publicação inicial
+
+Atualização automática de um anúncio já publicado
+
+Suporte a variações (múltiplos tamanhos/cores por anúncio)
+
+Precificação diferenciada por marketplace
+```
+
+Esses itens seguirão o mesmo roadmap por fases (seção 75) e deverão ser detalhados quando
+cada conector específico avançar de fase.
+
+---
+
+# 80. Roadmap de conectores de marketplace (ordem de implementação)
+
+A implementação deverá seguir estritamente esta ordem, um conector por vez — nenhum conector
+novo deverá ser iniciado especulativamente antes do anterior estar completo e validado:
+
+```text
+1. Mercado Livre
+2. Shopee
+3. eBay
+4. Demais marketplaces (ex.: Shein, Amazon, Enjoei, OLX) — avaliados um a um,
+   conforme demanda real
+```
+
+Cada novo conector deverá:
+
+```text
+Implementar a mesma interface comum (porta) dos conectores anteriores
+
+Não exigir nenhuma alteração nos módulos de Produtos, SKU, Estoque, Preço ou Imagens
+
+Documentar sua própria metodologia de publicação (autenticação, taxonomia de
+categorias, atributos obrigatórios, regras de imagem) como parte da sua especificação
+específica
+
+Ser validado de ponta a ponta (publicação real de pelo menos uma peça de teste) antes
+de ser considerado concluído
+```
