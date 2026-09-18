@@ -4,7 +4,7 @@ import { userRepository, type UserRole } from "../repositories/user.repository.j
 import { record } from "./audit-log.service.js";
 import { verifyPassword } from "./password.service.js";
 
-const ACCESS_TOKEN_TTL = "15m";
+const ACCESS_TOKEN_TTL = "1h";
 const REFRESH_TOKEN_TTL = "7d";
 
 export const ACCESS_COOKIE_NAME = "accessToken";

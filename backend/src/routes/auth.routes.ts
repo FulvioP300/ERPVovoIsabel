@@ -9,7 +9,7 @@ import {
   verifyCredentials,
 } from "../services/auth.service.js";
 
-const ACCESS_COOKIE_MAX_AGE = 15 * 60; // 15 minutos, em segundos
+const ACCESS_COOKIE_MAX_AGE = 60 * 60; // 1 hora, em segundos — precisa bater com ACCESS_TOKEN_TTL (auth.service.ts)
 const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60; // 7 dias, em segundos
 
 function cookieOptions(maxAgeSeconds: number) {
