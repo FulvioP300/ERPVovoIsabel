@@ -1,9 +1,65 @@
 # Especificação Funcional e Técnica  
 ## ERP SAMPLE para Brechó
 
-**Versão:** 1.3  
-**Data:** 17/09/2026  
+**Versão:** 1.6  
+**Data:** 18/09/2026  
 **Tipo de aplicação:** E-commerce + Backoffice Administrativo + Cadastro de Produtos Assistido por IA
+
+---
+
+## Notas de versão — 1.6 (18/09/2026)
+
+Alteração em relação à v1.5: adicionado o atributo **`peso`** ao modelo de produto (seção
+19) — objeto com `valor` (decimal, em kg) e `unidade` fixa `"kg"`, seguindo o mesmo padrão já
+usado em `medidas` (`unidade` compartilhada) e `preco` (`moeda`). Campo opcional, como as
+demais medidas.
+
+---
+
+## Notas de versão — 1.5 (18/09/2026)
+
+Alteração em relação à v1.4: adicionados **requisitos de segurança das credenciais de
+integrações de marketplace** (ainda não implementados, apenas especificados) à extensão de
+multi-conta desenhada na v1.4 (seção 81). Trechos afetados:
+
+- **Seção 10** (Perfis de acesso): explicitado que **visualizar** configurações/credenciais de
+  contas de marketplace, além de criar/editar/desativar, é restrito ao ADMIN; o OPERADOR não
+  pode nem visualizar.
+- **Seção 35** (Operações auditáveis): adicionados os eventos de criação, alteração,
+  desativação e visualização de contas de marketplace à lista de operações que devem gerar
+  registro de auditoria.
+- **Seção 46** (Requisitos de segurança): adicionados bullets sobre criptografia de
+  credenciais de integrações externas e proteção contra spoofing/vulnerabilidades nas
+  integrações de marketplace.
+- **Seção 81** (nova subseção "Segurança das credenciais"): armazenamento criptografado,
+  nunca exibir a credencial completa após salva, proteção contra spoofing e outras
+  vulnerabilidades específicas de integrações externas, e acesso restrito ao ADMIN.
+
+---
+
+## Notas de versão — 1.4 (18/09/2026)
+
+Alteração em relação à v1.3: desenhada a extensão de **múltiplas contas por marketplace
+(multi-loja)** — ainda não implementada, apenas especificada (seção 81, nova). Até aqui, o
+documento modelava cada marketplace como uma credencial única e fixa ("a credencial da loja,
+configurada uma vez"), o que impedia publicar a mesma peça em duas contas diferentes do mesmo
+marketplace (ex.: duas lojas distintas no Mercado Livre). Trechos afetados:
+
+- **Seção 10** (Perfis de acesso): adicionada a permissão de cadastrar/gerenciar contas de
+  marketplace ao perfil ADMIN; explicitado que o OPERADOR não pode gerenciar essas contas,
+  só publicar usando contas já cadastradas.
+- **Seção 19** (Modelo completo de produto): campo `marketplaces` deixa de ser um objeto fixo
+  com uma entrada por nome de marketplace e passa a ser uma **lista de publicações**, uma por
+  combinação (marketplace + conta) — permitindo zero, uma ou várias publicações por peça,
+  inclusive mais de uma no mesmo marketplace.
+- **Seção 79** (Módulo de integração com e-commerce): fluxo de publicação ganha o passo
+  "escolhe a conta/loja"; a linha sobre credencial "configurada uma vez" é substituída por
+  credencial por conta; a regra de baixa manual passa a considerar todas as publicações ativas
+  da peça, não só uma.
+- **Seção 80** (Roadmap de conectores): nota de que suporte a múltiplas contas é requisito de
+  base de cada conector, não uma evolução separada por marketplace.
+- **Seção 81 (nova)**: "Múltiplas contas por marketplace (multi-loja)" — cadastro de contas,
+  regras de negócio, fluxo de publicação atualizado e itens fora do escopo desta extensão.
 
 ---
 
@@ -59,7 +115,8 @@ A aplicação deverá contemplar:
 - gerenciamento de preços;
 - gerenciamento de imagens;
 - preparação para publicação em e-commerce;
-- integração com marketplaces externos via camada de conectores (seções 79 e 80).
+- integração com marketplaces externos via camada de conectores, com suporte a múltiplas
+  contas por marketplace (seções 79, 80 e 81).
 
 Cada peça física deverá possuir um **SKU único**, mesmo que existam outras peças aparentemente iguais.
 
@@ -444,6 +501,8 @@ Permissões:
 - administrar categorias;
 - alterar preços;
 - publicar produtos;
+- cadastrar, editar, desativar e visualizar contas de marketplace, incluindo suas
+  credenciais (multi-loja — seção 81);
 - visualizar auditoria.
 
 ---
@@ -464,6 +523,8 @@ Não poderá:
 
 - criar usuários;
 - alterar permissões;
+- cadastrar, editar, desativar ou visualizar contas de marketplace ou suas credenciais (só
+  publicar usando contas já cadastradas por um ADMIN — seção 81);
 - consultar configurações sensíveis.
 
 ---
@@ -846,6 +907,11 @@ Estrutura:
     "largura_barra": null
   },
 
+  "peso": {
+    "valor": null,
+    "unidade": "kg"
+  },
+
   "condicao": {
     "estado": "novo",
 
@@ -901,8 +967,23 @@ Estrutura:
     ]
   },
 
-  "marketplaces": {
-    "mercado_livre": {
+  "marketplaces": [
+    {
+      "marketplace": "mercado_livre",
+      "conta_id": "ObjectId",
+      "conta_apelido": "Vovó Isabel - Loja 1",
+      "status": "publicado",
+      "publicado": true,
+      "id_anuncio": "MLB123456789",
+      "url_anuncio": "https://produto.mercadolivre.com.br/MLB-123456789",
+      "publicado_em": "2026-09-18T10:00:00-03:00",
+      "erro": null
+    },
+
+    {
+      "marketplace": "mercado_livre",
+      "conta_id": "ObjectId",
+      "conta_apelido": "Vovó Isabel - Loja 2",
       "status": "nao_publicado",
       "publicado": false,
       "id_anuncio": null,
@@ -911,16 +992,10 @@ Estrutura:
       "erro": null
     },
 
-    "shopee": {
-      "status": "nao_publicado",
-      "publicado": false,
-      "id_anuncio": null,
-      "url_anuncio": null,
-      "publicado_em": null,
-      "erro": null
-    },
-
-    "ebay": {
+    {
+      "marketplace": "shopee",
+      "conta_id": "ObjectId",
+      "conta_apelido": "Vovó Isabel - Shopee",
       "status": "nao_publicado",
       "publicado": false,
       "id_anuncio": null,
@@ -928,7 +1003,7 @@ Estrutura:
       "publicado_em": null,
       "erro": null
     }
-  },
+  ],
 
   "venda": {
     "vendido": false,
@@ -961,6 +1036,14 @@ Estrutura:
   }
 }
 ```
+
+`marketplaces` é uma lista com **zero, uma ou várias publicações por peça** — cada item
+representa uma combinação (marketplace + conta), permitindo publicar a mesma peça em mais de
+uma conta do mesmo marketplace (ex.: duas lojas diferentes no Mercado Livre). Ver seção 81.
+
+`peso.valor` é sempre em **kg** e deve aceitar **casas decimais** (ex.: `0.350` para uma
+peça de 350g) — não deve ser tratado como número inteiro. Assim como as demais medidas
+(seção 19), é opcional no cadastro (`null` até ser preenchido).
 
 ---
 
@@ -1434,7 +1517,16 @@ PRICE_UPDATE
 CATEGORY_CREATE
 CATEGORY_UPDATE
 CATEGORY_DISABLE
+
+MARKETPLACE_ACCOUNT_CREATE
+MARKETPLACE_ACCOUNT_UPDATE
+MARKETPLACE_ACCOUNT_DISABLE
+MARKETPLACE_ACCOUNT_VIEW
 ```
+
+`MARKETPLACE_ACCOUNT_VIEW` registra todo acesso à credencial de uma conta de marketplace
+(mesmo mascarada), não só criação/alteração — essas credenciais são um alvo sensível e
+precisam de rastreabilidade de quem consultou, e quando (seção 81).
 
 ---
 
@@ -1662,7 +1754,11 @@ Obrigatórios:
 - secrets exclusivamente em environment variables;
 - logs de segurança;
 - RBAC;
-- MongoDB não acessível diretamente pelo frontend.
+- MongoDB não acessível diretamente pelo frontend;
+- credenciais de integrações de marketplace (API keys, tokens OAuth etc.) criptografadas em
+  repouso, nunca em texto puro (seção 81);
+- proteção contra spoofing e demais vulnerabilidades específicas de integrações externas com
+  marketplaces (seção 81).
 
 ---
 
@@ -2454,8 +2550,9 @@ SKU automático
 
 ## Fase 3 — Marketplaces
 
-Regras de negócio detalhadas nas seções 79 e 80 — camada de conectores (um adapter por
-marketplace), publicação de anúncio a partir da tela do produto, ordem de implementação.
+Regras de negócio detalhadas nas seções 79, 80 e 81 — camada de conectores (um adapter por
+marketplace), publicação de anúncio a partir da tela do produto, ordem de implementação e
+suporte a múltiplas contas por marketplace.
 
 ```text
 Conector Mercado Livre (publicação de anúncio)
@@ -2683,20 +2780,28 @@ Operador abre o produto
         ↓
 Escolhe o marketplace (ex.: Mercado Livre)
         ↓
+Escolhe a conta/loja cadastrada naquele marketplace (seção 81) — pulado
+automaticamente se só houver uma conta cadastrada
+        ↓
 Clica em "Publicar no Mercado Livre"
         ↓
 Sistema valida se o produto tem dados mínimos completos
         ↓
 Sistema monta o anúncio a partir dos dados do produto (seção 19)
         ↓
-Conector autentica com o marketplace (credencial da loja, configurada uma vez)
+Conector autentica com o marketplace usando a credencial da conta escolhida (seção 81)
         ↓
 Conector cria o anúncio via API do marketplace
         ↓
-Sistema grava id/URL do anúncio e status "publicado" em marketplaces.<nome>
+Sistema grava id/URL do anúncio e status "publicado" numa nova entrada de
+`marketplaces` (marketplace + conta — seção 19)
         ↓
-Tela do produto exibe selo "Publicado no Mercado Livre" com link pro anúncio
+Tela do produto exibe selo "Publicado no Mercado Livre (<conta>)" com link pro anúncio
 ```
+
+Publicar a mesma peça numa segunda conta do mesmo marketplace repete esse fluxo do início,
+escolhendo a outra conta — as duas publicações ficam registradas lado a lado, cada uma com
+seu próprio id/URL/status de anúncio (seção 81).
 
 ## Dados enviados ao marketplace
 
@@ -2724,8 +2829,10 @@ Fotos da galeria (a foto de capa é usada como imagem principal do anúncio)
 - Publicar não altera o status do produto no ERP (seção 20) — publicação é uma ação
   complementar, não substitui nem antecipa o fluxo de venda local já existente.
 - Falha na publicação (erro do marketplace, credencial expirada, atributo obrigatório
-  faltando etc.) nunca deverá ser silenciosa: o status em `marketplaces.<nome>` deverá
-  registrar o erro (campo `erro`), visível na tela do produto, com opção de tentar de novo.
+  faltando etc.) nunca deverá ser silenciosa: o status na entrada correspondente de
+  `marketplaces` (marketplace + conta) deverá registrar o erro (campo `erro`), visível na
+  tela do produto, com opção de tentar de novo. Falha numa conta não afeta publicações já
+  feitas ou em andamento em outras contas (seção 81).
 - Cada marketplace tem sua própria metodologia de publicação — categorias próprias,
   atributos obrigatórios variáveis, regras específicas de imagem (tamanho, quantidade,
   formato). A camada de conectores existe justamente para isolar essa variação: o restante do
@@ -2736,10 +2843,12 @@ Fotos da galeria (a foto de capa é usada como imagem principal do anúncio)
   futura (Fase 4 — Inteligência comercial, seção 75).
 - Uma peça vendida por qualquer canal (loja física ou um dos marketplaces) continua exigindo
   baixa manual do operador no ERP (seção 20, "vendido"). Baixa automática cross-channel
-  (pausar/remover o anúncio nos demais marketplaces quando a peça vender em um deles) fica
-  fora do escopo desta primeira fase — cada peça é única, com SKU único (seção 1), então o
-  risco de venda duplicada existe até essa sincronização ser implementada; o operador deverá
-  ser orientado a dar baixa manual imediatamente após qualquer venda.
+  (pausar/remover o anúncio nas demais publicações ativas — inclusive em outras contas do
+  mesmo marketplace — quando a peça vender em um canal) fica fora do escopo desta primeira
+  fase — cada peça é única, com SKU único (seção 1), então o risco de venda duplicada existe
+  até essa sincronização ser implementada; o operador deverá ser orientado a dar baixa manual
+  imediatamente após qualquer venda, o que vale igualmente quando a peça está publicada em
+  mais de uma conta do mesmo marketplace (seção 81).
 
 ## Fora do escopo desta primeira fase (evolução futura)
 
@@ -2788,4 +2897,124 @@ específica
 
 Ser validado de ponta a ponta (publicação real de pelo menos uma peça de teste) antes
 de ser considerado concluído
+
+Suportar múltiplas contas cadastradas desde o início (seção 81) — não é uma evolução
+separada por marketplace, é parte da interface comum que todo conector implementa
+```
+
+---
+
+# 81. Múltiplas contas por marketplace (multi-loja)
+
+> Extensão desenhada nesta versão (1.4) — **ainda não implementada**. Descreve as regras de
+> negócio que o módulo de integração com e-commerce (seção 79) deverá seguir quando o operador
+> tiver mais de uma conta cadastrada no mesmo marketplace.
+
+## Motivação
+
+O operador pode ter mais de uma loja cadastrada no mesmo marketplace (por exemplo, duas
+contas diferentes no Mercado Livre) e precisa poder publicar a mesma peça em ambas, de forma
+independente — sem que isso seja tratado como duplicidade ou erro pelo sistema.
+
+## Cadastro de contas de marketplace
+
+Nova área administrativa (restrita ao perfil ADMIN — seção 10): **"Contas de marketplace"**.
+Cada conta cadastrada deverá conter:
+
+```text
+Marketplace (mercado_livre | shopee | ebay | ...)
+
+Apelido da loja (nome de exibição escolhido pelo operador, ex.: "Vovó Isabel - Loja 1")
+
+Credencial de autenticação (conforme o método daquele marketplace, ex.: OAuth)
+
+Status da conexão (conectada / desconectada / erro / expirada)
+
+Ativa (permite desativar sem excluir — mesmo princípio de exclusão lógica já usado
+para produtos e usuários)
+```
+
+Regras de negócio do cadastro:
+
+- É permitido cadastrar quantas contas o operador precisar, inclusive várias do mesmo
+  marketplace.
+- Cada conta é independente: falha de credencial numa conta não afeta as demais, nem
+  publicações já feitas através delas.
+- Desativar uma conta não remove nem pausa anúncios já publicados através dela — eles
+  continuam ativos no marketplace. Desativar só impede novas publicações usando essa conta;
+  as publicações existentes ficam visíveis normalmente no produto (seção 19), com a conta
+  identificada como inativa.
+- O apelido da conta é de uso interno do ERP (exibido na escolha de conta e no selo de
+  publicação do produto) — não é enviado ao marketplace.
+
+## Segurança das credenciais
+
+> Assim como senhas (seção 9), credenciais de marketplace são um alvo sensível — mas, ao
+> contrário de senha, o sistema precisa conseguir recuperar o valor original para autenticar
+> com a API do marketplace (seção 79), então a proteção é **criptografia reversível**, não
+> hash.
+
+- Toda credencial de conector (API key, client secret, token OAuth/refresh token etc.)
+  deverá ser armazenada **criptografada em repouso** no banco de dados — nunca em texto
+  puro, nem em backups. A chave de criptografia fica fora do banco (environment variable ou
+  serviço de segredo dedicado — mesmo princípio de "secrets exclusivamente em environment
+  variables" já exigido na seção 46), nunca junto com o dado criptografado.
+- Depois de salva, a credencial completa **nunca é exibida de volta** em nenhuma tela ou
+  resposta de API — nem para o ADMIN. A tela de "Contas de marketplace" mostra só um valor
+  mascarado (ex.: últimos 4 caracteres) e o status da conexão; para trocar a credencial, o
+  ADMIN informa um valor novo, que substitui o anterior (não existe "editar" parcial do valor
+  já salvo).
+- Credenciais (mascaradas ou não) nunca deverão aparecer em logs de aplicação, logs de erro
+  ou mensagens de exceção — falha de autenticação com o marketplace (seção 79) deverá
+  registrar o tipo de erro, nunca o valor da credencial usada.
+- Proteção contra **spoofing** e vulnerabilidades específicas de integração com serviços
+  externos:
+  - toda comunicação com a API de cada marketplace deverá usar HTTPS, validando o
+    certificado do servidor remoto (sem desabilitar verificação de TLS);
+  - respostas/webhooks recebidos de um marketplace deverão ter sua autenticidade validada
+    (assinatura, segredo compartilhado ou mecanismo equivalente oferecido por aquele
+    marketplace) antes de qualquer dado ser aceito — nunca confiar apenas na origem
+    (IP/header) da requisição;
+  - endpoints de cadastro/edição/visualização de contas de marketplace deverão ter rate
+    limit (mesmo princípio já exigido para login — seção 46), para dificultar tentativas de
+    força bruta ou enumeração;
+  - cada conector (seção 80) deverá tratar a resposta do marketplace como entrada não
+    confiável — validada antes de ser gravada no produto (seção 19), do mesmo jeito que
+    qualquer entrada externa já é validada com Zod (seção 46).
+- Acesso — criar, editar, desativar e **visualizar** (mesmo mascarada) qualquer conta ou
+  credencial de marketplace é restrito ao perfil ADMIN (seção 10); todo acesso é auditável
+  (`MARKETPLACE_ACCOUNT_VIEW` e demais eventos — seção 35).
+
+## Modelo de produto — publicações por marketplace + conta
+
+Conforme seção 19, `marketplaces` é uma lista de publicações, uma por combinação
+(marketplace + conta). A mesma peça pode ter zero, uma ou várias publicações simultâneas,
+inclusive mais de uma no mesmo marketplace, desde que em contas diferentes.
+
+## Regras de negócio da extensão
+
+- Publicar a mesma peça em duas contas do mesmo marketplace é permitido e **não** é tratado
+  como duplicidade: cada publicação é independente, com seu próprio `id_anuncio`,
+  `url_anuncio`, `status` e `erro` (seção 19).
+- Não é permitido publicar a mesma peça duas vezes na **mesma** conta — se já existir uma
+  publicação ativa para aquela combinação (marketplace + conta), o botão de publicar passa a
+  ser "Ver anúncio" / "Republicar", igual ao comportamento de hoje para um único marketplace.
+- Republicar após uma falha (campo `erro` preenchido) afeta só a publicação daquela conta —
+  as demais publicações da peça, em outras contas ou marketplaces, não são alteradas.
+- A escolha de conta na tela do produto (seção 79) só aparece quando há mais de uma conta
+  ativa cadastrada para o marketplace escolhido; com uma conta só, o comportamento é idêntico
+  ao já descrito na seção 79 (sem passo extra).
+
+## Fora do escopo desta extensão (evolução futura)
+
+```text
+Publicação em lote automática em todas as contas de um marketplace de uma só vez —
+o operador escolhe e confirma uma conta por vez, explicitamente
+
+Sincronizar preço/estoque entre contas do mesmo marketplace automaticamente
+
+Transferir ou mesclar publicações entre contas (ex.: mover um anúncio de uma
+conta para outra)
+
+Limite de contas por marketplace (nenhum limite é imposto nesta fase)
 ```
