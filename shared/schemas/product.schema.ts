@@ -82,6 +82,14 @@ export const MedidasSchema = z.object({
   largura_barra: nullableNumber().default(null),
 });
 
+/** Sempre em kg (spec, seção 19) — unidade fixa, ao contrário de `medidas` (cm/in), então um
+ * literal em vez de enum: não existe seletor de unidade na UI. */
+export const PesoSchema = z.object({
+  valor: nullableNumber().default(null),
+  unidade: z.literal("kg").default("kg"),
+});
+const DEFAULT_PESO = { valor: null, unidade: "kg" as const };
+
 /**
  * Objeto base sem o `.superRefine` — exportado separadamente para que consumidores (ex.:
  * `UpdateProductSchema` no backend) possam derivar uma versão `.partial()` dela; `ZodEffects`
@@ -203,6 +211,11 @@ export const ProductSchema = z.object({
   marca: MarcaSchema,
   caracteristicas: CaracteristicasSchema,
   medidas: MedidasSchema,
+  // `.default(...)` no campo inteiro (não só nos sub-campos) — diferente dos demais campos
+  // deste schema, `peso` é novo e produtos já persistidos no banco não têm essa chave; sem o
+  // default aqui, revalidar um documento antigo contra `ProductSchema.parse()` (rotas de
+  // listagem/detalhe) quebra com "Required" em `peso`.
+  peso: PesoSchema.default(DEFAULT_PESO),
   condicao: CondicaoSchema,
   preco: PrecoSchema,
   estoque: EstoqueSchema,

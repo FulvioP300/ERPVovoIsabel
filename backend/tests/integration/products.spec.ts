@@ -156,6 +156,26 @@ describe("POST /api/products", () => {
     });
     expect(response.statusCode).toBe(400);
   });
+
+  it("aceita peso em kg com casas decimais e aplica default quando omitido", async () => {
+    const comPeso = await app.inject({
+      method: "POST",
+      url: "/api/products",
+      cookies: { accessToken: operatorCookie },
+      payload: minimalProductPayload({ peso: { valor: 0.35 } }),
+    });
+    expect(comPeso.statusCode).toBe(201);
+    expect(comPeso.json().data.peso).toMatchObject({ valor: 0.35, unidade: "kg" });
+
+    const semPeso = await app.inject({
+      method: "POST",
+      url: "/api/products",
+      cookies: { accessToken: operatorCookie },
+      payload: minimalProductPayload(),
+    });
+    expect(semPeso.statusCode).toBe(201);
+    expect(semPeso.json().data.peso).toMatchObject({ valor: null, unidade: "kg" });
+  });
 });
 
 describe("DELETE /api/products/:id (exclusão lógica)", () => {
@@ -265,6 +285,30 @@ describe("PATCH /api/products/:id", () => {
       cor_principal: "Azul Escuro",
       tamanho_etiqueta: "32",
     });
+  });
+
+  it("altera peso.valor via PATCH, mantendo casas decimais", async () => {
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/products",
+      cookies: { accessToken: adminCookie },
+      payload: minimalProductPayload(),
+    });
+    const id = create.json().data.id;
+
+    await app.inject({
+      method: "PATCH",
+      url: `/api/products/${id}`,
+      cookies: { accessToken: adminCookie },
+      payload: { peso: { valor: 0.5 } },
+    });
+
+    const get = await app.inject({
+      method: "GET",
+      url: `/api/products/${id}`,
+      cookies: { accessToken: adminCookie },
+    });
+    expect(get.json().data.peso).toMatchObject({ valor: 0.5, unidade: "kg" });
   });
 
   it("transição de status inválida é rejeitada (vendido direto de rascunho)", async () => {

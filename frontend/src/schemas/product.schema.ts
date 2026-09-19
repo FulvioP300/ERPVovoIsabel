@@ -96,6 +96,9 @@ export const ProductFormSchema = z
     comprimento: z.string().optional(),
     largura_barra: z.string().optional(),
 
+    // Peso (sempre em kg — spec, seção 19)
+    peso: z.string().optional(),
+
     // Condição
     estado: CondicaoEstadoEnum,
     nota: z.string().optional(),
@@ -141,6 +144,14 @@ export const ProductFormSchema = z
         });
       }
     }
+    const peso = data.peso?.trim();
+    if (peso && !WEIGHT_INPUT_PATTERN.test(peso)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["peso"],
+        message: "Use só números, com vírgula ou ponto pra decimais (ex.: 0,350).",
+      });
+    }
   });
 export type ProductFormValues = z.infer<typeof ProductFormSchema>;
 
@@ -152,6 +163,10 @@ const PRICE_FIELDS = [
   "preco_venda",
   "preco_promocional",
 ] as const;
+
+/** Peso aceita até 3 casas decimais (precisão de grama — ex.: "0,350" para 350g), diferente
+ * dos campos de preço (2 casas). */
+const WEIGHT_INPUT_PATTERN = /^\d+([.,]\d{1,3})?$/;
 
 /** Aceita tanto "19.90" quanto "19,90" (convenção brasileira) — sem isso, `Number("19,90")`
  * retorna `NaN` e o valor digitado é descartado silenciosamente (bug real de cadastro). */
@@ -223,6 +238,10 @@ export function toProductPayload(values: ProductFormValues, galeria: Imagem[] = 
       comprimento: parseOptionalNumber(values.comprimento),
       largura_barra: parseOptionalNumber(values.largura_barra),
     },
+    peso: {
+      valor: parseOptionalNumber(values.peso),
+      unidade: "kg" as const,
+    },
     condicao: {
       estado: values.estado,
       nota: parseOptionalNumber(values.nota),
@@ -289,6 +308,7 @@ export function productToFormValues(product: z.infer<typeof ProductSchema>): Pro
     gancho: product.medidas.gancho?.toString() ?? "",
     comprimento: product.medidas.comprimento?.toString() ?? "",
     largura_barra: product.medidas.largura_barra?.toString() ?? "",
+    peso: product.peso.valor?.toString() ?? "",
     estado: product.condicao.estado,
     nota: product.condicao.nota?.toString() ?? "",
     possui_etiqueta: product.condicao.possui_etiqueta,
@@ -342,6 +362,7 @@ export const DEFAULT_PRODUCT_FORM_VALUES: ProductFormValues = {
   gancho: "",
   comprimento: "",
   largura_barra: "",
+  peso: "",
   estado: "novo",
   nota: "",
   possui_etiqueta: false,

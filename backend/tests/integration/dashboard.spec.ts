@@ -75,6 +75,7 @@ function productDoc(spec: FixtureSpec) {
       fechamento: [],
     },
     medidas: { unidade: "cm", cintura: null, quadril: null, gancho: null, comprimento: null, largura_barra: null },
+    peso: { valor: null, unidade: "kg" },
     condicao: {
       estado: "novo",
       nota: null,

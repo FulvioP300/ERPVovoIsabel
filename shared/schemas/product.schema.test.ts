@@ -18,6 +18,7 @@ function baseProduct() {
     marca: {},
     caracteristicas: {},
     medidas: {},
+    peso: {},
     condicao: { estado: "novo" },
     preco: {},
     estoque: {},
@@ -49,6 +50,24 @@ describe("ProductSchema", () => {
     expect(parsed.preco.moeda).toBe("BRL");
     expect(parsed.ecommerce.publicado).toBe(false);
     expect(parsed.venda.vendido).toBe(false);
+    expect(parsed.peso.valor).toBeNull();
+    expect(parsed.peso.unidade).toBe("kg");
+  });
+
+  it("aceita peso com casas decimais, sempre em kg", () => {
+    const product = baseProduct();
+    product.peso = { valor: 0.35, unidade: "kg" };
+
+    const parsed = ProductSchema.parse(product);
+    expect(parsed.peso.valor).toBe(0.35);
+  });
+
+  it("aceita documento persistido antes de `peso` existir (chave ausente, não só valor null)", () => {
+    const product = baseProduct() as Record<string, unknown>;
+    delete product.peso;
+
+    const parsed = ProductSchema.parse(product);
+    expect(parsed.peso).toEqual({ valor: null, unidade: "kg" });
   });
 
   it("rejeita possui_defeitos=true com defeitos=[] (regra condicional da spec)", () => {

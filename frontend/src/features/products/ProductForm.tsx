@@ -292,6 +292,12 @@ export function ProductForm({ mode, defaultValues, defaultImages = [], onSubmit,
               <input className={inputClass} type="number" step="0.1" {...register("largura_barra")} />
             </label>
           </div>
+          <div>
+            <label className={labelClass}>
+              Peso (kg)
+              <input className={inputClass} type="number" step="0.001" min="0" {...register("peso")} />
+            </label>
+          </div>
         </div>
       </fieldset>
 

@@ -78,6 +78,7 @@ export async function createProduct(input: CreateProductServiceInput): Promise<P
     marca: data.marca ?? {},
     caracteristicas: data.caracteristicas ?? {},
     medidas: data.medidas ?? {},
+    peso: data.peso ?? {},
     condicao: data.condicao,
     preco: data.preco ?? {},
     estoque: data.estoque ?? {},

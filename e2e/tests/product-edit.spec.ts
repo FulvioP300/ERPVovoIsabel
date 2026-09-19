@@ -51,3 +51,24 @@ test("admin edita nome e preço de uma peça e a mudança aparece na listagem", 
   await expect(editedRow).toBeVisible();
   await expect(editedRow).toContainText("149,90");
 });
+
+test("admin preenche o peso (kg, com casas decimais) e o valor persiste após reabrir a edição", async ({
+  page,
+}) => {
+  await loginAsAdmin(page);
+
+  const nome = `E2E Peça Peso ${Date.now()}`;
+  await createMinimalProduct(page, nome);
+
+  const row = page.locator("tr", { hasText: nome });
+  await row.getByText("Editar").click();
+  await page.waitForURL(/\/products\/[a-f0-9]+$/);
+
+  await page.getByLabel("Peso (kg)").fill("0.35");
+  await page.click('button[type="submit"]');
+  await page.waitForURL("**/products");
+
+  await row.getByText("Editar").click();
+  await page.waitForURL(/\/products\/[a-f0-9]+$/);
+  await expect(page.getByLabel("Peso (kg)")).toHaveValue("0.35");
+});
