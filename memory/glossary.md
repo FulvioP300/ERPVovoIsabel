@@ -76,6 +76,13 @@ partir de qualquer estado (exclusão lógica). Ver
 Marcar um registro como `inativo`/`inactive` em vez de removê-lo fisicamente do banco.
 Prática padrão para `users` e `products` — constituição, princípio VIII.
 
+**Encerrar anúncio**
+Tirar do ar um anúncio `publicado` num marketplace (no Mercado Livre, `status = closed`),
+mantendo o registro no ERP com `status = encerrado`. Não é "excluir": o anúncio não é apagado no
+marketplace, e o ERP não altera o status da peça. Sempre ação explícita do operador. Ver
+[011](../specs/011-integracao-marketplaces/spec.md#47-encerrar-anúncio) e
+[012](../specs/012-conector-mercado-livre/spec.md#7-encerrar-anúncio).
+
 **Backoffice**
 Painel administrativo interno (Login, Dashboard, Usuários, Categorias, Produtos), usado por
 `admin`, `operator` e `viewer`. Distinto do e-commerce público (fora do MVP).

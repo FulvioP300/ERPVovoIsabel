@@ -24,7 +24,7 @@ function baseProduct() {
     estoque: {},
     imagens: {},
     ecommerce: {},
-    marketplaces: {},
+    marketplaces: [],
     venda: {},
     ai_metadata: {},
     auditoria: {
@@ -103,6 +103,17 @@ describe("ProductSchema", () => {
     expect(parsed.marca.nome).toBeNull();
     expect(parsed.caracteristicas.cor_principal).toBeNull();
     expect(parsed.caracteristicas.tamanho_etiqueta).toBe("32");
+  });
+
+  it("aceita documento persistido no formato antigo de marketplaces (objeto, não array — spec 011)", () => {
+    const product = baseProduct() as Record<string, unknown>;
+    product.marketplaces = {
+      mercado_livre: { publicado: false, id_anuncio: null },
+      shopee: { publicado: false, id_anuncio: null },
+    };
+
+    const parsed = ProductSchema.parse(product);
+    expect(parsed.marketplaces).toEqual([]);
   });
 
   it("rejeita produto sem nome (identificação incompleta)", () => {

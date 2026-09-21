@@ -6,6 +6,7 @@ import authModule from "./modules/auth.module.js";
 import categoryModule from "./modules/category.module.js";
 import dashboardModule from "./modules/dashboard.module.js";
 import imageModule from "./modules/image.module.js";
+import marketplaceModule from "./modules/marketplace.module.js";
 import productModule from "./modules/product.module.js";
 import userModule from "./modules/user.module.js";
 import cookiePlugin from "./plugins/cookie.plugin.js";
@@ -50,6 +51,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(auditLogModule);
   await app.register(categoryModule);
   await app.register(productModule);
+  await app.register(marketplaceModule);
   await app.register(imageModule);
   await app.register(aiIntakeModule);
   await app.register(dashboardModule);

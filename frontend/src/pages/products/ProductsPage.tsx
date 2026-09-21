@@ -42,6 +42,9 @@ export function ProductsPage() {
       header: "Ações",
       render: (p) => (
         <div className="flex flex-col items-start gap-1">
+          <Link className="text-sm text-wine-700 hover:underline" to={`/products/${p.id}/view`}>
+            Visualizar
+          </Link>
           {canWrite && (
             <Link className="text-sm text-wine-700 hover:underline" to={`/products/${p.id}`}>
               Editar

@@ -12,6 +12,9 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     fs: { allow: [monorepoRoot] },
+    // Túnel HTTPS de desenvolvimento: o Mercado Livre não aceita localhost como redirect URI do
+    // OAuth (spec 012, seção 2.2), então o retorno passa por um host público do ngrok.
+    allowedHosts: [".ngrok-free.app", ".ngrok-free.dev", ".ngrok.app", ".ngrok.io"],
     proxy: {
       "/api": "http://localhost:3333",
     },

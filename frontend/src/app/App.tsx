@@ -4,10 +4,13 @@ import { DashboardPage } from "../pages/DashboardPage";
 import { LoginPage } from "../pages/LoginPage";
 import { AuditLogsPage } from "../pages/admin/AuditLogsPage";
 import { CategoriesPage } from "../pages/admin/CategoriesPage";
+import { MarketplaceAccountsPage } from "../pages/admin/MarketplaceAccountsPage";
+import { OAuthCallbackPage } from "../pages/admin/OAuthCallbackPage";
 import { UserFormPage } from "../pages/admin/UserFormPage";
 import { UsersPage } from "../pages/admin/UsersPage";
 import { ProductAiIntakePage } from "../pages/products/ProductAiIntakePage";
 import { ProductFormPage } from "../pages/products/ProductFormPage";
+import { ProductViewPage } from "../pages/products/ProductViewPage";
 import { ProductsPage } from "../pages/products/ProductsPage";
 import { ProtectedRoute } from "./routes/ProtectedRoute";
 
@@ -52,6 +55,16 @@ export function App() {
             <ProtectedRoute roles={["admin", "operator"]}>
               <AppLayout>
                 <ProductFormPage />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/products/:id/view"
+          element={
+            <ProtectedRoute>
+              <AppLayout>
+                <ProductViewPage />
               </AppLayout>
             </ProtectedRoute>
           }
@@ -102,6 +115,26 @@ export function App() {
             <ProtectedRoute roles={["admin"]}>
               <AppLayout>
                 <CategoriesPage />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/marketplace-accounts"
+          element={
+            <ProtectedRoute roles={["admin"]}>
+              <AppLayout>
+                <MarketplaceAccountsPage />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/marketplace-accounts/oauth/callback"
+          element={
+            <ProtectedRoute roles={["admin"]}>
+              <AppLayout>
+                <OAuthCallbackPage />
               </AppLayout>
             </ProtectedRoute>
           }

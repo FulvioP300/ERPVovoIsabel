@@ -1032,3 +1032,236 @@ prática, "Editar" ficava inacessível pra quem não soubesse descobrir o scroll
   Corrigido pra mirar por rótulo (`getByLabel`), mais robusto a mudanças de tipo de input.
 - Padrão de "última coluna fixa" em `Table.tsx` é genérico — qualquer tela nova que reaproveite
   o componente já herda o comportamento, sem precisar reimplementar.
+
+
+---
+
+## ADR-020 — Rotação da chave de criptografia das credenciais de marketplace: keyring versionado + script de re-cifragem
+
+**Status:** Superada por [ADR-021](#adr-021--chave-de-criptografia-das-credenciais-envelope-encryption-com-rotação-manual-pelo-admin) (nunca chegou a ser usada)
+**Data:** 2026-09-21
+**Specs afetadas:** [011-integracao-marketplaces](../specs/011-integracao-marketplaces/spec.md)
+(seção 3.1), [008-auditoria](../specs/008-auditoria/spec.md) (nova ação
+`MARKETPLACE_CREDENTIAL_KEY_ROTATE`)
+
+### Contexto
+
+Credenciais de conta de marketplace (client secret, access/refresh token) são cifradas de forma
+**reversível** (AES-256-GCM) porque o ERP precisa enviá-las ao Mercado Livre — hash, como nas
+senhas (Argon2id), não serve. A chave ficava numa única variável de ambiente
+(`MARKETPLACE_CREDENTIAL_ENCRYPTION_KEY`) e o ciphertext não indicava com qual chave foi feito:
+trocar a chave tornava **todas** as contas ilegíveis de uma vez (só re-autorizando cada uma no
+marketplace), então na prática a chave nunca poderia ser trocada — nem após um vazamento suspeito.
+
+### Decisão
+
+1. **Keyring versionado** em `MARKETPLACE_CREDENTIAL_ENCRYPTION_KEYS` (`id:chaveBase64,...`): a
+   primeira chave é a **ativa** (única que cifra); todas decifram.
+2. **Ciphertext autodescritivo**: `{keyId}:{iv}:{authTag}:{dados}`. Ids de chave nunca são
+   reutilizados (trocar o material sob o mesmo id equivale a perder as contas).
+3. **Re-cifragem por script operacional** (`npm run rotate:credential-key`, mesmo padrão de
+   `seed:admin`, ADR-004), não por rota HTTP nem job periódico: rotação é rara, manual e feita
+   por quem tem acesso à infraestrutura — exatamente quem já controla a variável de ambiente.
+   Idempotente, com `--dry-run`, falha isolada por conta, e gravação **condicional** ao valor
+   lido (uma edição concorrente de admin nunca é sobrescrita).
+4. **Auditoria** de cada rotação (só contagens e id da chave ativa, nunca credenciais).
+5. **Sem suporte ao formato antigo** (3 partes, sem id): nenhuma conta real existia cifrada nele
+   (a feature ainda não foi implantada); manter um caminho legado seria código morto.
+
+Alternativas descartadas: **Azure Key Vault** (rotação e trilha de acesso melhores, mas nova
+dependência, custo e credencial de acesso a gerenciar — princípio V; reavaliar se surgir exigência
+de auditoria externa); **envelope encryption** com chave por conta (limita o estrago de um
+vazamento, porém exige guardar/rotacionar as chaves de dados e ainda depende de uma chave-mestra
+— a mesma questão em outro nível); **rotação por rota admin** (amplia a superfície de ataque: um
+admin comprometido poderia disparar re-cifragem em massa).
+
+### Consequências
+
+- Rotação sem perda de dados: nova chave à frente → deploy → script → conferir zero contas na
+  chave antiga → remover a antiga (procedimento na spec 011, seção 3.1).
+- **Risco operacional residual**: remover uma chave do keyring antes de a rotação terminar torna as
+  contas sob ela irrecuperáveis. Mitigação: o script imprime quantas contas estavam sob cada chave
+  e sai com código 1 se alguma falhar; a regra de ouro está documentada em `.env.example` e na
+  spec.
+- Continua valendo: a chave só protege contra vazamento **do banco isolado**; quem comprometer o
+  processo da aplicação tem chave e dados. Guardar cópia da chave fora do Azure e usar chaves
+  distintas por ambiente continua sendo responsabilidade operacional.
+- **Antes do primeiro deploy** da 011, a produção precisa de um keyring próprio
+  (`v1:<chave nova>`, como *secret* do Container App) — a variável só existe no `.env` local.
+
+
+---
+
+## ADR-021 — Chave de criptografia das credenciais: envelope encryption com rotação manual pelo admin
+
+**Status:** Aceita
+**Data:** 2026-09-21
+**Specs afetadas:** [011-integracao-marketplaces](../specs/011-integracao-marketplaces/spec.md)
+(seção 3.1), [008-auditoria](../specs/008-auditoria/spec.md) (ação
+`MARKETPLACE_CREDENTIAL_KEY_ROTATE`)
+
+### Contexto
+
+O [ADR-020](#adr-020--rotação-da-chave-de-criptografia-das-credenciais-de-marketplace-keyring-versionado--script-de-re-cifragem)
+resolveu a rotação com um *keyring* em variável de ambiente e um script operacional. O pedido
+seguinte foi **simplificar**: o administrador deve gerar e trocar a chave por um botão na tela de
+contas de marketplace. Isso é incompatível com uma chave em variável de ambiente — a aplicação não
+pode reescrever a configuração do Container App. E guardar a chave no banco em texto puro anularia a
+proteção (o vazamento do banco expõe dados e chave juntos).
+
+### Decisão
+
+**Envelope encryption**, duas camadas:
+
+1. **Chave-mestra** (`MARKETPLACE_CREDENTIAL_MASTER_KEY`, variável de ambiente, definida uma vez por
+   ambiente) — única chave fora do banco; só embrulha chaves de dados.
+2. **Chaves de dados** versionadas (`k1`, `k2`, ...) na collection `credential_keys`, **sempre
+   cifradas pela chave-mestra** (AES-256-GCM, id da chave como AAD). Cifram as credenciais; o
+   ciphertext carrega o id da chave (`k2:iv:tag:dados`). A ativa é a de **maior versão**, o que
+   torna a ativação atômica e dispensa flag de status, índice parcial e transação.
+3. **Botão "Rotacionar chave de criptografia"** (admin, manual, com confirmação): cria a próxima
+   versão, re-cifra todas as contas e audita. Chaves antigas são **retidas** (só decifram), então
+   nenhuma credencial se perde se alguma conta falhar. Duas rotações simultâneas: a segunda leva
+   `409` (`_id` duplicado). Gravação de cada conta é condicional ao valor lido.
+4. A primeira chave de dados é **criada sozinha**; ninguém gera nem cola chave.
+5. Chave lida do banco **a cada operação, sem cache** — correto com várias réplicas, ao custo de uma
+   leitura pequena por cifra/decifra (raras e dominadas pela chamada de rede ao marketplace).
+6. O script e o keyring do ADR-020 foram removidos; sem suporte a formato anterior (nenhuma conta
+   real existia cifrada).
+
+Alternativas descartadas: manter o script e só adicionar o botão (o botão não teria como trocar a
+variável de ambiente); **Azure Key Vault** com API de rotação (dependência, custo e permissão de
+escrita na infraestrutura a partir da aplicação — princípio V); chave de dados em texto puro no banco
+(anula a proteção).
+
+### Consequências
+
+- Admin rotaciona sozinho, sem acesso à infraestrutura. O que o admin vê são só metadados (id,
+  versão, data, contagem por chave) — nunca material de chave.
+- A **chave-mestra vira o segredo crítico**: perdê-la ou trocá-la torna todas as chaves de dados
+  ilegíveis (contas precisam ser recadastradas). Guardar cópia fora do Azure; valores diferentes por
+  ambiente; em produção, como *secret* do Container App. Sua própria rotação (re-embrulhar as
+  chaves de dados, poucas) é rara e **fora de escopo** por ora.
+- Como a chave-mestra e o banco estão no mesmo ambiente de execução, quem comprometer o processo da
+  aplicação tem acesso a ambos — a proteção continua sendo contra vazamento **do banco isolado**
+  (backups, dumps, cópia de cluster).
+- Rotacionar não apaga chaves antigas: a rotação limita o uso futuro de uma chave, não remove
+  ciphertexts já copiados em backups antigos cifrados com ela.
+- **Antes do primeiro deploy** da 011: gerar `MARKETPLACE_CREDENTIAL_MASTER_KEY` de produção e
+  configurá-la como *secret* do Container App (hoje só existe no `.env` local).
+
+
+## ADR-022 — Exclusão física de conta de marketplace, condicionada a Desconectar → Desativar → Apagar
+
+**Status:** Aceita
+**Data:** 2026-09-21
+**Specs afetadas:** [011-integracao-marketplaces](../specs/011-integracao-marketplaces/spec.md)
+(seção 2.2.2), [008-auditoria](../specs/008-auditoria/spec.md) (ações
+`MARKETPLACE_ACCOUNT_DISCONNECT` e `MARKETPLACE_ACCOUNT_DELETE`)
+
+### Contexto
+
+A spec 011 previa só exclusão lógica para contas de marketplace (`active = false`). Na prática o
+admin acumula contas de teste e tentativas de cadastro que não voltarão a ser usadas, e cada uma
+mantém no banco Client ID/Secret (e tokens) cifrados. Pedido: além de desativar, poder **apagar**,
+com fluxo obrigatório Desconectar → Desativar → Apagar.
+
+### Decisão
+
+1. `DELETE /api/marketplace-accounts/:id` remove fisicamente o documento — a **única remoção física**
+   do sistema. O princípio VIII da constituição veda remoção física "por padrão" de usuários e
+   produtos; esta é uma exceção deliberada para um registro cujo conteúdo é segredo.
+2. A ordem é **imposta pelo backend** (`409` com o passo faltante), não só pela tela: desativar exige
+   conta desconectada; apagar exige desconectada **e** desativada.
+3. **Desconectar** (`POST /:id/disconnect`) descarta os tokens OAuth guardados (mantém Client
+   ID/Secret, então dá para reconectar) e cancela qualquer autorização em andamento. É local ao ERP;
+   não revoga a autorização no Mercado Livre.
+4. Auditoria de desconexão e de exclusão (`MARKETPLACE_ACCOUNT_DISCONNECT`,
+   `MARKETPLACE_ACCOUNT_DELETE`), com marketplace e apelido — nunca a credencial. O registro de
+   auditoria é o que sobrevive à conta.
+5. **Não se bloqueia** apagar conta com anúncios publicados: `products.marketplaces[]` já guarda
+   `conta_id` + `conta_apelido` (snapshot), então produtos e selos continuam corretos; só se perde a
+   capacidade de republicar por aquela conta.
+
+Alternativas descartadas: manter só exclusão lógica (segredos ficariam para sempre no banco);
+permitir apagar direto de qualquer estado (um clique errado descartaria uma conta conectada em uso);
+bloquear a exclusão enquanto houver anúncios (o admin ficaria preso a contas mortas — os anúncios
+já não dependem da conta no ERP).
+
+### Consequências
+
+- Apagar é irreversível; a tela pede confirmação. Recuperar exige recadastrar a conta.
+- `accountsByKeyId` (rotação de chave) deixa de contar contas apagadas — e a rotação nunca mais
+  precisa re-cifrar um segredo que o admin já descartou.
+- Uma tentativa de republicar/retentar por conta apagada responde "Conta de marketplace não
+  encontrada" (404), como já ocorria para conta inexistente.
+
+### Adendo (2026-09-21) — anúncios no ar ao desconectar/apagar
+
+A decisão 5 ("não se bloqueia apagar conta com anúncios publicados") **continua valendo**, mas a
+revisão da spec passou a tratar o custo dela: encerrar um anúncio exige a conta ativa e conectada
+([011](../specs/011-integracao-marketplaces/spec.md), seção 4.7), então desconectar ou apagar uma
+conta com anúncios `publicado` deixa esses anúncios sem como ser encerrados pelo ERP. Em vez de
+bloquear (o que travaria contas sem tokens), as confirmações de **Desconectar** e **Apagar**
+mostram quantos anúncios `publicado` usam a conta e lembram de encerrá-los antes (seção 2.2.2). A
+ordem recomendada passa a ser: Encerrar anúncios → Desconectar → Desativar → Apagar.
+
+## ADR-023 — Conector Mercado Livre: trava por conta, modelo *User Products*, SKU em `SELLER_SKU` e pacote padrão configurável
+
+**Status:** Aceita
+**Data:** 2026-09-21
+**Specs afetadas:** [012-conector-mercado-livre](../specs/012-conector-mercado-livre/spec.md),
+[011-integracao-marketplaces](../specs/011-integracao-marketplaces/spec.md) (porta, seção 4.1; status
+`encerrado`, seção 4.2; encerrar, seção 4.7)
+
+### Contexto
+
+A spec 012 entrega o primeiro adaptador real de marketplace. Ler a documentação do Mercado Livre
+(páginas salvas em `DocumentacaoMercadoLivre/`, setembro/2026) mostrou restrições que moldam o
+desenho: o `refresh_token` é de **uso único**; o modelo de publicação é o *User Products* (`family_name`
+no lugar de `title`); o SKU vai no atributo `SELLER_SKU`; o Mercado Envios 2 exige dimensões de pacote
+que o ERP não guarda; domínios de moda exigem tabela de medidas; e **não existe sandbox** (testes só
+com usuários de teste).
+
+### Decisão
+
+1. **Trava por conta (*lease*) no documento da conta**, cobrindo a **operação inteira** (publicar,
+   atualizar, encerrar), não só a renovação do token: campos internos `operationLeaseOwner` e
+   `operationLeaseExpiresAt`, validade de 120 s, espera de até 15 s e depois `409`. Quem chega depois
+   relê a credencial já renovada. Sem Redis nem fila (princípio V).
+2. **A porta muda:** `publish` cria *ou atualiza* (decidido pelo `id_anuncio` da entrada), ganha `close`, e
+   ambas devolvem `updatedCredential` no resultado **e** no erro. O adaptador **nunca** toca no MongoDB
+   nem guarda estado por conta; quem grava o par novo é o serviço, de forma **condicional ao valor lido**
+   (uma conta desconectada durante a operação descarta o par novo). A rotação de chave pula a conta
+   ocupada.
+3. **Modelo *User Products*:** o payload de criação usa `family_name` (sem `title`, sem `variations`)
+   quando o vendedor tem a tag `user_product_seller`; sem a tag, o modelo antigo.
+4. **SKU em `attributes[SELLER_SKU]`** (não em `seller_custom_field`); a busca da "resposta perdida" é
+   `GET /users/{user_id}/items/search?seller_sku=`.
+5. **Pacote padrão configurável** em `MERCADO_LIVRE_PACKAGE_DEFAULTS` (JSON validado por Zod), resolvido
+   por categoria > departamento > padrão, com o peso do produto quando existir. Dimensões por produto no
+   cadastro ficam como evolução (spec 005).
+6. **Moda:** a v1 usa só tabelas de medidas `BRAND` e `STANDARD` já existentes; criar tabelas `SPECIFIC`
+   fica fora de escopo. Sem tabela ou linha correspondente, a publicação falha antes do `POST`.
+7. **Encerrar** é ação explícita do operador (princípio II), idempotente, e é a única forma de remoção;
+   excluir o anúncio e reativar ficam fora de escopo.
+8. **Testes reais só com usuário de teste**, como manda a documentação; a primeira publicação real é uso,
+   não teste.
+
+Alternativas descartadas: trava só no refresh (deixaria duas operações concorrentes na mesma conta);
+Redis ou fila (princípio V); manter `title` + `variations` (o Mercado Livre deixa de aceitá-los após a
+ativação do vendedor); `seller_custom_field` (a documentação de publicação manda `SELLER_SKU`);
+dimensões por produto já na v1 (muda o cadastro, o formulário e a IA de cadastro antes de sabermos se o
+pacote padrão basta); tela de administração do pacote padrão já na v1.
+
+### Consequências
+
+- O `refresh_token` de uso único deixa de ser um risco de corrida, ao custo de operações na mesma conta
+  serem serializadas (aceitável para o volume do brechó).
+- Uma trava órfã (processo que cai no meio) segura a conta por até 120 s.
+- O pacote padrão é uma aproximação: peças volumosas precisam de entrada própria em `por_categoria`; a
+  configuração é uma variável de ambiente, editada por quem administra o ambiente.
+- Peças de moda cujo tamanho não case com as linhas das tabelas `BRAND`/`STANDARD` **não publicam** até
+  haver normalização de tamanhos ou tabelas `SPECIFIC` (tarefa T050 mede isso com dados reais).
+- O Mercado Livre fecha sozinho peças usadas de moda ao vender; o ERP só sabe se o operador encerrar ou
+  marcar como vendida (sincronização de status segue fora de escopo).

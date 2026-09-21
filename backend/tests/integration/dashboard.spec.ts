@@ -96,10 +96,7 @@ function productDoc(spec: FixtureSpec) {
       ? { principal: { id: "img1", url: "https://example.com/1.jpg", ordem: 0, tipo: null }, galeria: [] }
       : { principal: null, galeria: [] },
     ecommerce: { publicado: false, slug: "produto-de-teste", titulo_seo: null, tags: [] },
-    marketplaces: {
-      mercado_livre: { publicado: false, id_anuncio: null },
-      shopee: { publicado: false, id_anuncio: null },
-    },
+    marketplaces: [],
     venda: { vendido: false, data_venda: null, canal_venda: null, valor_venda: null },
     ai_metadata: { generated: false, model: null, generated_at: null, fields: {} },
     auditoria: {

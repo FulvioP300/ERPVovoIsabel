@@ -38,7 +38,18 @@ USER_CREATE, USER_UPDATE, USER_DISABLE
 PRODUCT_CREATE, PRODUCT_UPDATE, PRODUCT_DISABLE, PRODUCT_PUBLISH, PRODUCT_SOLD
 PRICE_UPDATE
 CATEGORY_CREATE, CATEGORY_UPDATE, CATEGORY_DISABLE
+
+# Integração com marketplaces (specs 011 e 012)
+PRODUCT_UNPUBLISH                                  (encerrar anúncio — 011, seção 4.7)
+MARKETPLACE_ACCOUNT_CREATE, MARKETPLACE_ACCOUNT_UPDATE, MARKETPLACE_ACCOUNT_DISABLE,
+MARKETPLACE_ACCOUNT_DISCONNECT, MARKETPLACE_ACCOUNT_DELETE, MARKETPLACE_ACCOUNT_VIEW
+MARKETPLACE_CREDENTIAL_KEY_ROTATE
 ```
+
+O enum existe em **dois** lugares — `backend/src/schemas/audit-log.schema.ts` e
+`frontend/src/schemas/audit-log.schema.ts` (cópia própria, mais o rótulo em `AuditLogsPage.tsx`). Um
+teste de contrato no backend falha se as listas divergirem: uma ação desconhecida do lado do
+frontend faz a tela de Auditoria inteira falhar ao carregar.
 
 ## 4. Regras de negócio
 

@@ -26,7 +26,7 @@ const sectionTitleClass = "font-display text-base font-semibold text-wine-900";
 const gridClass = "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3";
 
 interface ProductFormProps {
-  mode: "create" | "edit";
+  mode: "create" | "edit" | "view";
   defaultValues: ProductFormValues;
   defaultImages?: Imagem[];
   onSubmit: (values: ProductFormValues, imagens: Imagem[]) => Promise<void>;
@@ -64,6 +64,11 @@ export function ProductForm({ mode, defaultValues, defaultImages = [], onSubmit,
 
   return (
     <form className="space-y-6" onSubmit={(e) => void handleSubmit(submit)(e)} noValidate>
+      {/* `disabled` num <fieldset> cascateia pra todo controle descendente — inclusive os
+          <fieldset> das seções abaixo, aninhados dentro deste (spec 005: modo "view" reaproveita
+          o mesmo formulário de cadastro/edição, só travado). `contents` não interfere no layout
+          (grid/spacing) das seções internas. */}
+      <fieldset disabled={mode === "view"} className="contents">
       <fieldset className={sectionClass}>
         <legend className={sectionTitleClass}>Identificação</legend>
         <div className={gridClass}>
@@ -109,7 +114,7 @@ export function ProductForm({ mode, defaultValues, defaultImages = [], onSubmit,
 
       <fieldset className={sectionClass}>
         <legend className={sectionTitleClass}>Fotos</legend>
-        <ImageUploader images={images} onChange={setImages} disabled={isSubmitting} />
+        <ImageUploader images={images} onChange={setImages} disabled={isSubmitting || mode === "view"} />
       </fieldset>
 
       <fieldset className={sectionClass}>
@@ -476,11 +481,15 @@ export function ProductForm({ mode, defaultValues, defaultImages = [], onSubmit,
         </div>
       </fieldset>
 
+      </fieldset>
+
       {errors.root?.message && <p className={errorClass}>{errors.root.message}</p>}
 
-      <button type="submit" className={buttonClass} disabled={isSubmitting}>
-        {isSubmitting ? "Salvando..." : mode === "create" ? "Cadastrar produto" : "Salvar alterações"}
-      </button>
+      {mode !== "view" && (
+        <button type="submit" className={buttonClass} disabled={isSubmitting}>
+          {isSubmitting ? "Salvando..." : mode === "create" ? "Cadastrar produto" : "Salvar alterações"}
+        </button>
+      )}
     </form>
   );
 }

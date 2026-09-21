@@ -87,7 +87,7 @@ export async function createProduct(input: CreateProductServiceInput): Promise<P
       ...(data.ecommerce ?? {}),
       slug: data.ecommerce?.slug ?? slugify(data.identificacao.nome),
     },
-    marketplaces: {},
+    marketplaces: [],
     venda: {},
     ai_metadata: data.ai_metadata ?? {},
     auditoria: {

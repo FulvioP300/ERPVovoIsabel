@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MarketplaceListingSchema } from "./marketplace.schema.js";
 
 /**
  * Modelo canônico de produto (specs/005-produtos-cadastro-manual/spec.md, seção 2) — fonte
@@ -164,16 +165,23 @@ export const EcommerceSchema = z.object({
   tags: stringArray(),
 });
 
-/** Existe no schema para compatibilidade futura — sem funcionalidade ativa no MVP (spec, seção 8). */
-export const MarketplaceStatusSchema = z.object({
-  publicado: z.boolean().default(false),
-  id_anuncio: nullableString().default(null),
-});
-
-export const MarketplacesSchema = z.object({
-  mercado_livre: MarketplaceStatusSchema.default({ publicado: false, id_anuncio: null }),
-  shopee: MarketplaceStatusSchema.default({ publicado: false, id_anuncio: null }),
-});
+/**
+ * Lista de publicações, uma por combinação (marketplace, conta) — spec 011, seção 4.2.
+ * Substitui o antigo objeto fixo por nome de marketplace (005/007, sem funcionalidade ativa no
+ * MVP — nunca existiu recurso real de publicação até 011), que não suportava mais de uma conta
+ * por marketplace.
+ *
+ * `z.preprocess` trata qualquer valor que não seja array (o formato antigo, ex.:
+ * `{mercado_livre: {...}, shopee: {...}}`, ou `undefined`/chave ausente) como lista vazia —
+ * sem isso, revalidar um documento já persistido no formato antigo (`ProductSchema.parse()`,
+ * usado nas rotas de listagem/detalhe) quebra com "Expected array, received object". Seguro
+ * porque o campo nunca teve funcionalidade real antes de 011: nenhum dado de publicação
+ * genuíno existe para converter, só o default `{publicado:false,...}` de antes.
+ */
+export const MarketplacesSchema = z.preprocess(
+  (value) => (Array.isArray(value) ? value : []),
+  z.array(MarketplaceListingSchema).default([]),
+);
 
 export const VendaSchema = z.object({
   vendido: z.boolean().default(false),

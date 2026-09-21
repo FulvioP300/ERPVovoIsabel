@@ -1,5 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { ProductForm } from "../../features/products/ProductForm";
+import { PublishToMarketplace } from "../../features/products/PublishToMarketplace";
 import { useProduct } from "../../hooks/useProduct";
 import { useProductMutations } from "../../hooks/useProducts";
 import {
@@ -59,13 +60,16 @@ function EditProductSection({
       {isLoading && <p className="text-sm text-gray-500">Carregando...</p>}
       {isError && <p className="text-sm text-red-600">Produto não encontrado.</p>}
       {product && (
-        <ProductForm
-          mode="edit"
-          defaultValues={productToFormValues(product)}
-          defaultImages={product.imagens.galeria}
-          onSubmit={handleUpdate}
-          isSubmitting={update.isPending}
-        />
+        <>
+          <PublishToMarketplace product={product} />
+          <ProductForm
+            mode="edit"
+            defaultValues={productToFormValues(product)}
+            defaultImages={product.imagens.galeria}
+            onSubmit={handleUpdate}
+            isSubmitting={update.isPending}
+          />
+        </>
       )}
     </div>
   );

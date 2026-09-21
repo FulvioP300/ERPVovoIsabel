@@ -38,6 +38,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
             Categorias
           </Link>
           <Link
+            to="/admin/marketplace-accounts"
+            className="font-medium text-wine-700 hover:text-wine-900"
+            onClick={() => setMenuOpen(false)}
+          >
+            Marketplaces
+          </Link>
+          <Link
             to="/admin/users"
             className="font-medium text-wine-700 hover:text-wine-900"
             onClick={() => setMenuOpen(false)}

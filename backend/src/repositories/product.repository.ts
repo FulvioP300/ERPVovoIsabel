@@ -1,5 +1,6 @@
 import { ObjectId, type Collection, type Db, type Filter } from "mongodb";
 import type { Product } from "../schemas/product.schema.js";
+import type { MarketplaceListing } from "../../../shared/dist/schemas/marketplace.schema.js";
 
 export type ProductDocument = Omit<Product, "id"> & { _id: ObjectId };
 
@@ -83,5 +84,43 @@ export const productRepository = {
   async softDelete(db: Db, id: string): Promise<void> {
     if (!ObjectId.isValid(id)) return;
     await collection(db).updateOne({ _id: new ObjectId(id) }, { $set: { status: "inativo" } });
+  },
+
+  /**
+   * Upsert por combinação (marketplace, conta) — spec 011, seção 4.2: atualiza o item
+   * existente (`$` posicional) se já houver uma publicação para essa combinação, ou adiciona
+   * um item novo (`$push`) caso contrário. Nunca duplica.
+   */
+  async upsertMarketplaceListing(db: Db, productId: string, listing: MarketplaceListing): Promise<void> {
+    if (!ObjectId.isValid(productId)) return;
+
+    const updateResult = await collection(db).updateOne(
+      {
+        _id: new ObjectId(productId),
+        marketplaces: { $elemMatch: { marketplace: listing.marketplace, conta_id: listing.conta_id } },
+      },
+      { $set: { "marketplaces.$": listing } },
+    );
+
+    if (updateResult.matchedCount === 0) {
+      await collection(db).updateOne({ _id: new ObjectId(productId) }, { $push: { marketplaces: listing } });
+    }
+  },
+
+  /**
+   * Quantos anúncios `publicado` cada conta de marketplace tem (spec 011, seção 2.2.2), por `conta_id`.
+   * Conta **todos** os produtos, inclusive `vendido`/`inativo` — são justamente os que precisam ter o
+   * anúncio encerrado. Um só `aggregate` para todas as contas. Documentos no formato antigo de
+   * `marketplaces` (objeto) não casam com o `$match` e são ignorados.
+   */
+  async countPublishedListingsByAccount(db: Db): Promise<Map<string, number>> {
+    const rows = await collection(db)
+      .aggregate<{ _id: string; count: number }>([
+        { $unwind: "$marketplaces" },
+        { $match: { "marketplaces.status": "publicado" } },
+        { $group: { _id: "$marketplaces.conta_id", count: { $sum: 1 } } },
+      ])
+      .toArray();
+    return new Map(rows.map((row) => [row._id, row.count]));
   },
 };

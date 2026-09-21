@@ -13,11 +13,19 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   PRODUCT_UPDATE: "Produto atualizado",
   PRODUCT_DISABLE: "Produto desativado",
   PRODUCT_PUBLISH: "Produto publicado",
+  PRODUCT_UNPUBLISH: "Anúncio encerrado",
   PRODUCT_SOLD: "Produto vendido",
   PRICE_UPDATE: "Preço alterado",
   CATEGORY_CREATE: "Categoria criada",
   CATEGORY_UPDATE: "Categoria atualizada",
   CATEGORY_DISABLE: "Categoria desativada",
+  MARKETPLACE_ACCOUNT_CREATE: "Conta de marketplace criada",
+  MARKETPLACE_ACCOUNT_UPDATE: "Conta de marketplace atualizada",
+  MARKETPLACE_ACCOUNT_DISABLE: "Conta de marketplace desativada",
+  MARKETPLACE_ACCOUNT_DISCONNECT: "Conta de marketplace desconectada",
+  MARKETPLACE_ACCOUNT_DELETE: "Conta de marketplace apagada",
+  MARKETPLACE_ACCOUNT_VIEW: "Conta de marketplace consultada",
+  MARKETPLACE_CREDENTIAL_KEY_ROTATE: "Chave de criptografia rotacionada",
 };
 
 const selectClass =
