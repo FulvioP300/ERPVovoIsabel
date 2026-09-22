@@ -224,10 +224,13 @@ spec e, se mudar algo, para os passos seguintes.
    padrão**; o peso vem do produto (kg → g, arredondado para cima), com `peso_g` da configuração como
    reserva. Sem configuração válida, a publicação falha antes do `POST`. Os **valores reais** dependem
    das embalagens do brechó (T051).
-10. **Tamanhos do ERP × linhas das tabelas** (spec 3.5) — ⚠ só dados reais respondem: os valores de
-    `tamanho_etiqueta` que o brechó guarda (P/M/G, 38/40…) casam com as linhas das tabelas
-    `STANDARD`/`BRAND` do Mercado Livre? Se não casarem, a política "falha antes do `POST`" bloqueia
-    muitas peças e a criação de tabelas `SPECIFIC` sobe de prioridade. (T050)
+10. **Tamanhos do ERP × tabelas de medidas** (spec 3.5) — ✅ **medido (T050, 21/09/2026)**: só calçados
+    têm tabela `STANDARD` (5 domínios) ou `BRAND` (9); **nenhum domínio de roupa tem**. Roupas exigem uma
+    tabela `SPECIFIC` do vendedor — ⚠ decisão T053 (achar tabelas criadas pela dona do brechó × criar por
+    API). No ERP de dev, 7 de 9 produtos não têm `tamanho_etiqueta`, e o `SIZE` é obrigatório. Também
+    ⚠ decisão T054: o preditor devolveu domínios inesperados para peças comuns ("camisa masculina" →
+    `MLB-RUGBY_JERSEYS`, "jaqueta masculina" → `MLB-FOOTBALL_JACKETS`) — proposta: mapeamento
+    configurável categoria do ERP → categoria/domínio do Mercado Livre, com o preditor como reserva.
 11. **Domínio ativo = tabela obrigatória?** (spec 3.5) — ⚠ a documentação não diz que toda a lista de
     `active_domains` é obrigatória; tratamos como obrigatória (lado seguro).
 12. **Texto exato do *warning* de preço ignorado** (spec 3.1) — não documentado; confirma-se na Fase 8.
@@ -408,13 +411,12 @@ O Mercado Livre **não tem sandbox** e manda testar com **usuários de teste** (
 
 ## 7. Riscos / decisões em aberto
 
-- **Lacunas que ainda podem bloquear a publicação de roupas**: (a) o **casamento entre
-  `tamanho_etiqueta` e as linhas das tabelas de medidas** `STANDARD`/`BRAND` só se resolve com dados
-  reais (T050) — se falhar, criar tabelas `SPECIFIC` (`POST /catalog/charts`), hoje fora de escopo,
-  passa a ser necessário; (b) o **pacote padrão** precisa de valores reais (T051) — pacote errado não
-  bloqueia a publicação, mas pode gerar frete cobrado a menos ou a mais. São as coisas que mais podem
-  atrasar o primeiro anúncio real; T023/T025 só fecham depois de T050 e T052 (o esqueleto do adaptador e
-  as demais fases não dependem delas).
+- **Roupas não publicam sem tabela de medidas `SPECIFIC`** (T050): nenhum domínio de roupa tem tabela
+  `STANDARD`/`BRAND`. Sem decidir T053 (achar as tabelas que a dona do brechó criar × criar por API),
+  só calçados publicam com a v1. É o maior risco para o primeiro anúncio real de roupas. Somam-se: o
+  `tamanho_etiqueta` é obrigatório (7 de 9 produtos de dev não têm) e o preditor pode errar o domínio
+  (T054). O **pacote padrão** também precisa de valores reais (T051) — pacote errado não bloqueia a
+  publicação, mas pode cobrar frete a mais ou a menos.
 - **Pacote padrão é uma aproximação**: peças de tamanho muito diferente na mesma categoria dividem a
   mesma embalagem configurada. Aceito na v1; a saída é acrescentar entradas em `por_categoria` ou,
   depois, dimensões por produto (spec 005) e uma tela de administração da configuração.

@@ -22,6 +22,9 @@ export const MarketplaceAccountSchema = z.object({
   active: z.boolean(),
   /** Anúncios `publicado` que usam esta conta (spec 011, seção 2.2.2) — só informativo, não bloqueia. */
   publishedListingsCount: z.number().int().nonnegative(),
+  /** Usuário do Mercado Livre esperado (apelido ou ID) e quem de fato autorizou — spec 012, seção 2.5. */
+  expectedUser: z.string().nullable(),
+  connectedNickname: z.string().nullable(),
   createdBy: z.string(),
   createdAt: z.date(),
   updatedAt: z.date(),
@@ -32,6 +35,8 @@ export const CreateMarketplaceAccountSchema = z.object({
   marketplace: MarketplaceEnum,
   label: z.string().min(1, "Apelido da conta é obrigatório."),
   credential: z.string().min(1, "Credencial é obrigatória."),
+  /** Mercado Livre: usuário que a conta vai usar (spec 012, seção 2.5). Obrigatório na tela; a API aceita ausente. */
+  expectedUser: z.string().trim().min(1).max(100).optional(),
 });
 export type CreateMarketplaceAccountInput = z.infer<typeof CreateMarketplaceAccountSchema>;
 
@@ -43,8 +48,9 @@ export const UpdateMarketplaceAccountSchema = z
   .object({
     label: z.string().min(1).optional(),
     credential: z.string().min(1).optional(),
+    expectedUser: z.string().trim().min(1).max(100).optional(),
   })
-  .refine((data) => data.label !== undefined || data.credential !== undefined, {
+  .refine((data) => data.label !== undefined || data.credential !== undefined || data.expectedUser !== undefined, {
     message: "Informe ao menos um campo para atualizar.",
   });
 export type UpdateMarketplaceAccountInput = z.infer<typeof UpdateMarketplaceAccountSchema>;

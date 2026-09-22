@@ -13,6 +13,7 @@ import { CredentialKeyRotationConflictError } from "../services/credential-key.s
 import {
   InvalidOAuthStateError,
   OAuthNotSupportedError,
+  UnexpectedMercadoLivreUserError,
   completeMercadoLivreAuthorization,
   getMercadoLivreRedirectUri,
   startMercadoLivreAuthorization,
@@ -135,6 +136,7 @@ export default async function marketplaceAccountRoutes(fastify: FastifyInstance)
     } catch (err) {
       if (
         err instanceof InvalidOAuthStateError ||
+        err instanceof UnexpectedMercadoLivreUserError ||
         err instanceof InvalidCredentialFormatError ||
         err instanceof MercadoLivreOAuthError
       ) {

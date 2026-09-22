@@ -9,6 +9,7 @@ import { marketplaceAccountRepository } from "../repositories/marketplace-accoun
 import { parseMercadoLivreCredential, type MercadoLivreCredential } from "../schemas/mercado-livre-credential.schema.js";
 import type { MarketplaceAccount as MarketplaceAccountOutput } from "../schemas/marketplace-account.schema.js";
 import { record } from "./audit-log.service.js";
+import { matchesExpectedUser, type MercadoLivreUserIdentity } from "./mercado-livre-user-match.js";
 import { decryptCredential, encryptCredential } from "./credential-encryption.service.js";
 import {
   InvalidCredentialFormatError,
@@ -40,6 +41,16 @@ export class InvalidOAuthStateError extends Error {
   constructor() {
     super("Autorização inválida, expirada ou já utilizada. Clique em Conectar de novo.");
     this.name = "InvalidOAuthStateError";
+  }
+}
+
+/** Quem autorizou o aplicativo no Mercado Livre não é o usuário configurado na conta (spec 012, seção 2.5). */
+export class UnexpectedMercadoLivreUserError extends Error {
+  constructor(authorized: MercadoLivreUserIdentity, expected: string) {
+    super(
+      `O Mercado Livre autorizou o usuário ${authorized.nickname ?? "(sem apelido)"} (ID ${authorized.id}), mas esta conta está configurada para ${expected}. Saia do Mercado Livre e conecte de novo com o usuário correto.`,
+    );
+    this.name = "UnexpectedMercadoLivreUserError";
   }
 }
 
@@ -143,6 +154,13 @@ export async function completeMercadoLivreAuthorization(
     codeVerifier: consumed.codeVerifier,
   });
 
+  // Confere quem autorizou (spec 012, seção 2.5) ANTES de gravar qualquer coisa: se for outro usuário,
+  // os tokens são descartados. Contas antigas, sem usuário esperado, não são conferidas.
+  const authorizedUser = await client.fetchCurrentUser(tokens.accessToken);
+  if (account.expectedUser && !matchesExpectedUser(account.expectedUser, authorizedUser)) {
+    throw new UnexpectedMercadoLivreUserError(authorizedUser, account.expectedUser);
+  }
+
   const connected: MercadoLivreCredential = {
     client_id: credential.client_id,
     client_secret: credential.client_secret,
@@ -151,10 +169,16 @@ export async function completeMercadoLivreAuthorization(
     expires_at: new Date(Date.now() + (tokens.expiresIn || TOKEN_LIFETIME_FALLBACK_S) * 1000).toISOString(),
     ...(tokens.userId !== undefined ? { user_id: tokens.userId } : {}),
   };
-  await marketplaceAccountRepository.saveConnectedCredential(db, account.id, await encryptCredential(JSON.stringify(connected)));
+  await marketplaceAccountRepository.saveConnectedCredential(db, account.id, await encryptCredential(JSON.stringify(connected)), {
+    userId: String(authorizedUser.id),
+    nickname: authorizedUser.nickname,
+  });
 
   // Nunca registra tokens nem segredos — só o fato de que a conta foi conectada.
-  await record("MARKETPLACE_ACCOUNT_UPDATE", "marketplace_account", account.id, actingAdminId, { oauthConnected: true });
+  await record("MARKETPLACE_ACCOUNT_UPDATE", "marketplace_account", account.id, actingAdminId, {
+    oauthConnected: true,
+    mlUserId: String(authorizedUser.id),
+  });
 
   const updated = await marketplaceAccountRepository.findById(db, account.id);
   if (!updated) throw new MarketplaceAccountNotFoundError();

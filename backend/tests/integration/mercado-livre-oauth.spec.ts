@@ -49,7 +49,8 @@ beforeAll(async () => {
       return "APP_USR-token-do-aplicativo";
     },
     async fetchCurrentUser(accessToken) {
-      testCalls[testCalls.length - 1]!.bearer = accessToken;
+      const last = testCalls[testCalls.length - 1];
+      if (last) last.bearer = accessToken;
       if (fakeUserError) throw fakeUserError;
       return { id: 987654, nickname: "VOVOISABEL" };
     },
@@ -352,6 +353,127 @@ describe("cadastro do Mercado Livre por OAuth (spec 012, seção 2.2)", () => {
     const items = audit.json().data.items as { metadata?: { oauthConnected?: boolean } }[];
 
     expect(items.some((item) => item.metadata?.oauthConnected === true)).toBe(true);
+    expect(JSON.stringify(items)).not.toContain("APP_USR-access-novo");
+    expect(JSON.stringify(items)).not.toContain(CLIENT_SECRET);
+  });
+});
+
+describe("usuário do Mercado Livre da conta (spec 012, seção 2.5)", () => {
+  async function startedFor(expectedUser?: string) {
+    const id = (await createAccount(expectedUser === undefined ? {} : { expectedUser })).json().data.id as string;
+    const url = new URL((await authorize(id)).json().data.authorizationUrl);
+    return { id, state: url.searchParams.get("state")! };
+  }
+
+  async function connectedTokens(id: string) {
+    const { getActiveMarketplaceAccountForConnector } = await import("../../src/services/marketplace-account.service.js");
+    return JSON.parse((await getActiveMarketplaceAccountForConnector(id)).credential) as Record<string, unknown>;
+  }
+
+  it("guarda o usuário esperado no cadastro e o devolve na resposta", async () => {
+    const created = await createAccount({ expectedUser: "  VovoIsabelSalesML " });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json().data).toMatchObject({ expectedUser: "VovoIsabelSalesML", connectedNickname: null });
+  });
+
+  it("confere pelo apelido (sem diferenciar maiúsculas): conecta e guarda quem autorizou", async () => {
+    const { id, state } = await startedFor("@vovoisabel");
+    const response = await complete({ code: "TG-1", state });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({ connectionStatus: "connected", connectedNickname: "VOVOISABEL" });
+    expect((await storedAccount(id))?.connectedUserId).toBe("987654");
+  });
+
+  it("confere pelo ID numérico", async () => {
+    const { state } = await startedFor("987654");
+
+    expect((await complete({ code: "TG-1", state })).statusCode).toBe(200);
+  });
+
+  it("usuário diferente do esperado: 400 com a mensagem certa e NADA é gravado", async () => {
+    const { id, state } = await startedFor("OutraLoja");
+    const response = await complete({ code: "TG-1", state });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toContain("VOVOISABEL");
+    expect(response.json().error).toContain("987654");
+    expect(response.json().error).toContain("OutraLoja");
+
+    const stored = await storedAccount(id);
+    expect(stored?.connectionStatus).toBe("disconnected");
+    expect(stored?.connectedUserId).toBeUndefined();
+    expect(await connectedTokens(id)).not.toHaveProperty("access_token");
+    // o state foi consumido: repetir o retorno não reaproveita a autorização
+    expect((await complete({ code: "TG-1", state })).statusCode).toBe(400);
+  });
+
+  it("conta antiga, sem usuário esperado, conecta sem conferência (mostra 'não informado' na tela)", async () => {
+    const { state } = await startedFor();
+    const response = await complete({ code: "TG-1", state });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data).toMatchObject({ expectedUser: null, connectedNickname: "VOVOISABEL" });
+  });
+
+  it("editar o usuário esperado de uma conta conectada a desconecta e descarta os tokens", async () => {
+    const { id, state } = await startedFor("VOVOISABEL");
+    await complete({ code: "TG-1", state });
+
+    const patch = await app.inject({
+      method: "PATCH",
+      url: `/api/marketplace-accounts/${id}`,
+      cookies: { accessToken: adminCookie },
+      payload: { expectedUser: "OutraLoja" },
+    });
+
+    expect(patch.statusCode).toBe(200);
+    expect(patch.json().data).toMatchObject({
+      expectedUser: "OutraLoja",
+      connectionStatus: "disconnected",
+      connectedNickname: null,
+    });
+    expect(await connectedTokens(id)).toEqual({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET });
+  });
+
+  it("reenviar o mesmo usuário esperado não desconecta a conta", async () => {
+    const { id, state } = await startedFor("VOVOISABEL");
+    await complete({ code: "TG-1", state });
+
+    const patch = await app.inject({
+      method: "PATCH",
+      url: `/api/marketplace-accounts/${id}`,
+      cookies: { accessToken: adminCookie },
+      payload: { expectedUser: "VOVOISABEL" },
+    });
+
+    expect(patch.json().data.connectionStatus).toBe("connected");
+  });
+
+  it("desconectar limpa a identidade conectada", async () => {
+    const { id, state } = await startedFor("VOVOISABEL");
+    await complete({ code: "TG-1", state });
+
+    const disconnected = await app.inject({
+      method: "POST",
+      url: `/api/marketplace-accounts/${id}/disconnect`,
+      cookies: { accessToken: adminCookie },
+    });
+
+    expect(disconnected.json().data).toMatchObject({ connectionStatus: "disconnected", connectedNickname: null });
+    expect((await storedAccount(id))?.connectedUserId).toBeUndefined();
+  });
+
+  it("a auditoria de conexão registra o ID do usuário, sem tokens nem segredos", async () => {
+    const audit = await app.inject({
+      method: "GET",
+      url: "/api/audit-logs?action=MARKETPLACE_ACCOUNT_UPDATE",
+      cookies: { accessToken: adminCookie },
+    });
+    const items = audit.json().data.items as { metadata?: { oauthConnected?: boolean; mlUserId?: string } }[];
+
+    expect(items.some((item) => item.metadata?.oauthConnected === true && item.metadata.mlUserId === "987654")).toBe(true);
     expect(JSON.stringify(items)).not.toContain("APP_USR-access-novo");
     expect(JSON.stringify(items)).not.toContain(CLIENT_SECRET);
   });

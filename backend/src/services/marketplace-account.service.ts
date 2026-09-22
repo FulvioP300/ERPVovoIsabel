@@ -63,6 +63,8 @@ export function toMarketplaceAccountOutput(
     connectionStatus: account.connectionStatus,
     active: account.active,
     publishedListingsCount,
+    expectedUser: account.expectedUser,
+    connectedNickname: account.connectedNickname,
     createdBy: account.createdBy,
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
@@ -88,6 +90,7 @@ export interface CreateMarketplaceAccountServiceInput {
   marketplace: Marketplace;
   label: string;
   credential: string;
+  expectedUser?: string | undefined;
   actingAdminId: string;
 }
 
@@ -103,6 +106,7 @@ export async function createMarketplaceAccount(
     credential: await encryptCredential(input.credential),
     credentialPreview: previewFor(input.marketplace, input.credential),
     createdBy: input.actingAdminId,
+    ...(input.expectedUser !== undefined ? { expectedUser: input.expectedUser } : {}),
   });
 
   await record("MARKETPLACE_ACCOUNT_CREATE", "marketplace_account", account.id, input.actingAdminId, {
@@ -150,6 +154,18 @@ export async function getMarketplaceAccountById(
 export interface UpdateMarketplaceAccountServiceInput {
   label?: string;
   credential?: string;
+  expectedUser?: string;
+}
+
+/**
+ * A credencial do Mercado Livre sem os tokens — só Client ID e Client Secret (spec 011, seção 2.2.2).
+ * `undefined` se a conta não for do Mercado Livre ou a credencial estiver em formato inesperado.
+ */
+async function credentialWithoutTokens(account: MarketplaceAccountRecord): Promise<string | undefined> {
+  if (account.marketplace !== "mercado_livre") return undefined;
+  const parsed = parseMercadoLivreCredential(await decryptCredential(account.credential));
+  if (!parsed) return undefined;
+  return encryptCredential(JSON.stringify({ client_id: parsed.client_id, client_secret: parsed.client_secret }));
 }
 
 export async function updateMarketplaceAccountProfile(
@@ -162,26 +178,37 @@ export async function updateMarketplaceAccountProfile(
   if (!before) throw new MarketplaceAccountNotFoundError();
   if (input.credential !== undefined) assertValidCredential(before.marketplace, input.credential);
 
+  const expectedUserChanged =
+    input.expectedUser !== undefined && input.expectedUser.trim() !== (before.expectedUser ?? "");
+
   await marketplaceAccountRepository.updateProfile(db, id, {
     label: input.label,
     credential: input.credential !== undefined ? await encryptCredential(input.credential) : undefined,
     credentialPreview: input.credential !== undefined ? previewFor(before.marketplace, input.credential) : undefined,
+    expectedUser: input.expectedUser,
   });
 
-  // Client ID/Secret novos invalidam os tokens antigos (pertenciam ao aplicativo anterior): a
-  // conta precisa ser reconectada pelo fluxo OAuth (spec 012, seção 2.2).
-  if (input.credential !== undefined && before.marketplace === "mercado_livre") {
-    await marketplaceAccountRepository.updateConnectionStatus(db, id, "disconnected");
+  // Client ID/Secret novos invalidam os tokens antigos (pertenciam ao aplicativo anterior), e trocar o
+  // usuário esperado muda de quem são os tokens: nos dois casos a conta precisa ser reconectada pelo
+  // fluxo OAuth (spec 012, seções 2.2 e 2.5). `markDisconnected` também limpa a identidade conectada e
+  // um OAuth pendente.
+  if (before.marketplace === "mercado_livre" && (input.credential !== undefined || expectedUserChanged)) {
+    // Credencial nova já vem sem tokens; só quando muda apenas o usuário esperado é preciso removê-los.
+    const stripped = input.credential === undefined ? await credentialWithoutTokens(before) : undefined;
+    await marketplaceAccountRepository.markDisconnected(db, id, stripped);
   }
 
   const after = await marketplaceAccountRepository.findById(db, id);
   if (!after) throw new MarketplaceAccountNotFoundError();
 
   // Nunca registra valor antigo/novo da credencial em metadata (spec 011, seção 3) — só o
-  // fato de que ela mudou.
+  // fato de que ela mudou. O usuário esperado não é segredo, então vai com valor antigo/novo.
   await record("MARKETPLACE_ACCOUNT_UPDATE", "marketplace_account", id, actingAdminId, {
     ...(input.label !== undefined ? { label: { oldValue: before.label, newValue: after.label } } : {}),
     ...(input.credential !== undefined ? { credentialChanged: true } : {}),
+    ...(expectedUserChanged
+      ? { expectedUser: { oldValue: before.expectedUser, newValue: after.expectedUser } }
+      : {}),
   });
 
   return presentMarketplaceAccount(after);
@@ -225,16 +252,8 @@ export async function disconnectMarketplaceAccount(
   const before = await marketplaceAccountRepository.findById(db, id);
   if (!before) throw new MarketplaceAccountNotFoundError();
 
-  let credentialWithoutTokens: string | undefined;
-  if (before.marketplace === "mercado_livre") {
-    const parsed = parseMercadoLivreCredential(await decryptCredential(before.credential));
-    if (parsed) {
-      credentialWithoutTokens = await encryptCredential(
-        JSON.stringify({ client_id: parsed.client_id, client_secret: parsed.client_secret }),
-      );
-    }
-  }
-  await marketplaceAccountRepository.markDisconnected(db, id, credentialWithoutTokens);
+  const stripped = await credentialWithoutTokens(before);
+  await marketplaceAccountRepository.markDisconnected(db, id, stripped);
 
   await record("MARKETPLACE_ACCOUNT_DISCONNECT", "marketplace_account", id, actingAdminId, {
     previousConnectionStatus: before.connectionStatus,

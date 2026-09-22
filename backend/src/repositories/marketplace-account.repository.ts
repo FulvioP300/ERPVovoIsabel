@@ -19,6 +19,14 @@ export interface MarketplaceAccountDocument {
   oauthStateExpiresAt?: Date;
   /** PKCE: `code_verifier` do fluxo em andamento — vive e morre junto com o `state`. */
   oauthCodeVerifier?: string;
+  /** Usuário do Mercado Livre que a conta deve usar — apelido ou ID (spec 012, seção 2.5). Não é segredo. */
+  expectedUser?: string;
+  /** Identidade de quem autorizou o aplicativo: preenchida ao conectar, limpa ao desconectar. */
+  connectedUserId?: string;
+  connectedNickname?: string;
+  /** Trava por conta (spec 012, seção 2.3; ADR-023): uma operação do conector por vez. Campos internos. */
+  operationLeaseOwner?: string;
+  operationLeaseExpiresAt?: Date;
 }
 
 export interface MarketplaceAccountRecord {
@@ -32,6 +40,9 @@ export interface MarketplaceAccountRecord {
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
+  expectedUser: string | null;
+  connectedUserId: string | null;
+  connectedNickname: string | null;
 }
 
 export interface CreateMarketplaceAccountRecordInput {
@@ -40,12 +51,14 @@ export interface CreateMarketplaceAccountRecordInput {
   credential: string;
   credentialPreview: string;
   createdBy: string;
+  expectedUser?: string;
 }
 
 export interface UpdateMarketplaceAccountProfileInput {
   label?: string;
   credential?: string;
   credentialPreview?: string;
+  expectedUser?: string;
 }
 
 export interface ListMarketplaceAccountsOptions {
@@ -69,6 +82,9 @@ function toRecord(doc: MarketplaceAccountDocument): MarketplaceAccountRecord {
     createdBy: doc.createdBy.toHexString(),
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
+    expectedUser: doc.expectedUser ?? null,
+    connectedUserId: doc.connectedUserId ?? null,
+    connectedNickname: doc.connectedNickname ?? null,
   };
 }
 
@@ -99,6 +115,7 @@ export const marketplaceAccountRepository = {
       connectionStatus: "disconnected",
       active: true,
       createdBy: new ObjectId(input.createdBy),
+      ...(input.expectedUser !== undefined ? { expectedUser: input.expectedUser } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -108,10 +125,11 @@ export const marketplaceAccountRepository = {
 
   async updateProfile(db: Db, id: string, input: UpdateMarketplaceAccountProfileInput): Promise<void> {
     if (!ObjectId.isValid(id)) return;
-    const patch: Partial<Pick<MarketplaceAccountDocument, "label" | "credential" | "credentialPreview">> = {};
+    const patch: Partial<Pick<MarketplaceAccountDocument, "label" | "credential" | "credentialPreview" | "expectedUser">> = {};
     if (input.label !== undefined) patch.label = input.label;
     if (input.credential !== undefined) patch.credential = input.credential;
     if (input.credentialPreview !== undefined) patch.credentialPreview = input.credentialPreview;
+    if (input.expectedUser !== undefined) patch.expectedUser = input.expectedUser;
 
     await collection(db).updateOne(
       { _id: new ObjectId(id) },
@@ -160,12 +178,29 @@ export const marketplaceAccountRepository = {
       : null;
   },
 
-  /** Grava a credencial completa (com tokens) e marca a conta como conectada. */
-  async saveConnectedCredential(db: Db, id: string, credential: string): Promise<void> {
+  /**
+   * Grava a credencial completa (com tokens), a identidade de quem autorizou (spec 012, seção 2.5) e marca
+   * a conta como conectada.
+   */
+  async saveConnectedCredential(
+    db: Db,
+    id: string,
+    credential: string,
+    identity: { userId: string; nickname?: string | undefined },
+  ): Promise<void> {
     if (!ObjectId.isValid(id)) return;
     await collection(db).updateOne(
       { _id: new ObjectId(id) },
-      { $set: { credential, connectionStatus: "connected", updatedAt: new Date() } },
+      {
+        $set: {
+          credential,
+          connectionStatus: "connected",
+          connectedUserId: identity.userId,
+          updatedAt: new Date(),
+          ...(identity.nickname !== undefined ? { connectedNickname: identity.nickname } : {}),
+        },
+        ...(identity.nickname === undefined ? { $unset: { connectedNickname: "" } } : {}),
+      },
     );
   },
 
@@ -192,9 +227,55 @@ export const marketplaceAccountRepository = {
           updatedAt: new Date(),
           ...(credentialWithoutTokens !== undefined ? { credential: credentialWithoutTokens } : {}),
         },
-        $unset: { oauthState: "", oauthStateExpiresAt: "", oauthCodeVerifier: "" },
+        $unset: {
+          oauthState: "",
+          oauthStateExpiresAt: "",
+          oauthCodeVerifier: "",
+          connectedUserId: "",
+          connectedNickname: "",
+        },
       },
     );
+  },
+
+  /**
+   * Tenta obter a trava da conta (uma operação do conector por vez — ADR-023): só passa se não há
+   * trava ou se a anterior venceu. Atômico (`findOneAndUpdate` com o filtro na própria condição).
+   */
+  async acquireOperationLease(db: Db, id: string, owner: string, ttlMs: number): Promise<boolean> {
+    if (!ObjectId.isValid(id)) return false;
+    const now = new Date();
+    const doc = await collection(db).findOneAndUpdate(
+      {
+        _id: new ObjectId(id),
+        $or: [{ operationLeaseExpiresAt: { $exists: false } }, { operationLeaseExpiresAt: { $lte: now } }],
+      },
+      { $set: { operationLeaseOwner: owner, operationLeaseExpiresAt: new Date(now.getTime() + ttlMs) } },
+      { returnDocument: "after" },
+    );
+    return doc?.operationLeaseOwner === owner;
+  },
+
+  /** Solta a trava só se ainda for do mesmo dono (uma trava vencida e retomada por outro não é tocada). */
+  async releaseOperationLease(db: Db, id: string, owner: string): Promise<void> {
+    if (!ObjectId.isValid(id)) return;
+    await collection(db).updateOne(
+      { _id: new ObjectId(id), operationLeaseOwner: owner },
+      { $unset: { operationLeaseOwner: "", operationLeaseExpiresAt: "" } },
+    );
+  },
+
+  /**
+   * Marca a conta como `expired` (refresh_token recusado — spec 012, seção 2.3), mas **só** se ela não
+   * mudou desde a leitura (mesmo ciphertext) e não foi desconectada no meio da operação.
+   */
+  async markExpiredIfUnchanged(db: Db, id: string, expectedCiphertext: string): Promise<boolean> {
+    if (!ObjectId.isValid(id)) return false;
+    const result = await collection(db).updateOne(
+      { _id: new ObjectId(id), credential: expectedCiphertext, connectionStatus: { $ne: "disconnected" } },
+      { $set: { connectionStatus: "expired", updatedAt: new Date() } },
+    );
+    return result.modifiedCount === 1;
   },
 
   /** Remoção física (ADR-022) — só o serviço, depois de validar a ordem Desconectar → Desativar. */

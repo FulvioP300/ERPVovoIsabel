@@ -35,6 +35,17 @@ antes de o plano existir (cadastro por OAuth, PKCE e teste de integração — s
       `/admin/marketplace-accounts/oauth/callback`, botão Conectar/Reconectar na lista, redirect URI
       exibido a partir de `FRONTEND_URL` — depende de T001, T003.
 
+
+- [x] T055 Usuário do Mercado Livre na conta (spec, seção 2.5): campo `expectedUser` (apelido ou ID) no cadastro e na edição;
+      após o OAuth o backend confere `GET /users/me` com o esperado — divergência é `400` sem gravar tokens; a conta
+      guarda `connectedUserId`/`connectedNickname` (limpos ao desconectar); editar o esperado desconecta a conta;
+      coluna "Usuário" na lista de contas. Testes unitários do casamento (apelido, ID, `@`, maiúsculas) e de integração
+      (confere, diverge, conta antiga sem esperado, editar desconecta) — depende de T001, T003, T004.
+      **Feito** (21/09/2026): casamento em `mercado-livre-user-match.ts`; conferência em
+      `completeMercadoLivreAuthorization` (`GET /users/me` após a troca do `code`); `expectedUser`,
+      `connectedUserId` e `connectedNickname` na conta; `UnexpectedMercadoLivreUserError` → `400`; auditoria com
+      `mlUserId`. A conta já conectada continua sem usuário esperado ("não informado") até ser editada.
+
 ## Fase 0 — Confirmações na documentação e no app (bloqueiam partes da Fase 4)
 
 A documentação do Mercado Livre respondeu 403 para leitura automática; estas tarefas são de
@@ -86,15 +97,22 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
 - [x] T048 [P] "Identificadores de produtos" lida — `EMPTY_GTIN_REASON` confirmado (`Artesanal` 17055158, `Kit`
       17055159, `No registrado` 17055160, `Otro` 17055161; `value_id` vindo de `GET /categories/{id}/
       attributes`); implementação em T023.
-- [ ] T050 [P] **Tamanhos do ERP × linhas das tabelas de medidas** (spec, seção 3.5) — com a conta conectada,
-      chamar `GET /catalog/charts/MLB/configurations/active_domains` e, para alguns domínios do brechó
-      (ex.: camisas, calças, vestidos), `POST /catalog/charts/search` e `GET /catalog/charts/{id}`; conferir
-      se os valores de `tamanho_etiqueta` que o brechó guarda (P/M/G, 38/40…) casam com o `SIZE` das linhas
-      `STANDARD`/`BRAND`. Se não casarem, decidir entre normalizar os tamanhos no cadastro, mapear
-      ERP → tabela ou passar a criar tabelas `SPECIFIC` (evolução hoje fora de escopo). Bloqueia T023 e T025
-      para moda.
-
-
+- [x] T050 [P] **Tamanhos do ERP × tabelas de medidas** (spec, seção 3.5) — medido em 21/09/2026 com a conta real
+      conectada (só leituras): `active_domains` tem 59 domínios (quase todos os de roupa); `STANDARD` existe só para
+      5 domínios de calçado e `BRAND` só para 9 de calçado; **nenhum domínio de roupa tem tabela pronta** (busca
+      `STANDARD` devolve 0). No ERP de dev, 7 de 9 produtos não têm `tamanho_etiqueta`; as linhas de calçado usam
+      `"34,0 BR"` e o ERP guarda `"32"`. Consequências e decisões em T053 e T054.
+- [ ] T053 [P] **Decisão — tabela de medidas de roupas** (spec, seção 3.5): como obter a tabela `SPECIFIC` que o
+      Mercado Livre exige para roupas — (1) **achar** as tabelas que a dona do brechó criar no painel do Mercado
+      Livre (uma por domínio e gênero, uma linha por tamanho) e escolher a linha pelo `SIZE`; (2) **criar** por API
+      (`POST /catalog/charts`, com medidas da peça por linha — domínios `TOPS`/`BOTTOMS`, `CLOTHING_MEASURE`); ou (3)
+      limitar a v1 a calçados e publicar roupas depois. Recomendação: (1) na v1 — o conector só lê. Bloqueia T023 e
+      T025 para roupas.
+- [ ] T054 [P] **Decisão — categoria do Mercado Livre por peça** (spec, seção 4): trocar o preditor por um
+      **mapeamento configurável categoria do ERP → categoria/domínio do Mercado Livre** (as 12 categorias do brechó:
+      BERM, CALC, CAMI, POLO, JAQU, VEST, BLUS, SAIA, SAPT, BOLS, ACES, CHAP), com o preditor só como reserva. O T050
+      mostrou o preditor errando o domínio de peças comuns. Se aprovado, entra em T023 (mapeador) e T052 (mesma
+      configuração do pacote padrão). Bloqueia T023 e T025.
 - [ ] T051 [P] **Valores reais do pacote padrão** (spec, seção 3.4) — a dona do brechó informa as medidas (altura,
       largura, comprimento em cm) e o peso típico da embalagem por tipo de peça (ex.: peça leve dobrada em
       saco, calçado, casaco); com isso se monta o JSON de `MERCADO_LIVRE_PACKAGE_DEFAULTS` (`padrao`,
@@ -125,26 +143,29 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
 
 ## Fase 2 — Porta, registro de conectores e migração dos dublês
 
-- [ ] T015 `plugins/marketplaces/marketplace-connector.port.ts`: `publish({ product, listing, account,
+- [x] T015 `plugins/marketplaces/marketplace-connector.port.ts`: `publish({ product, listing, account,
       credential })` e `close({ listing, account, credential })`, ambos → `ConnectorOutcome<T> = { value;
       updatedCredential? }`; `PublishResult = { id_anuncio, url_anuncio, pendencia: string | null }`;
       `MarketplaceConnectorError { updatedCredential?, reconnectRequired }` — depende de T011.
-- [ ] T016 `plugins/marketplaces/connector-registry.ts`: `getConnector(marketplace)`; o override de teste
+- [x] T016 `plugins/marketplaces/connector-registry.ts`: `getConnector(marketplace)`; o override de teste
       (`setMarketplaceConnectorForTesting`, mantido) vale para qualquer marketplace; sem override usa o
       registro; marketplace sem conector → erro "Nenhum conector configurado para X" (comportamento
       atual) — depende de T015.
-- [ ] T017 Adaptar `publishListing` ao contrato novo **sem mudar comportamento** e migrar os dublês de
+- [x] T017 Adaptar `publishListing` ao contrato novo **sem mudar comportamento** e migrar os dublês de
       `marketplace-listing.service.test.ts` e `tests/integration/marketplace-listings.spec.ts`: todos os
       testes existentes de 011 continuam passando com as mesmas afirmações — depende de T016.
+      **Feito** (21/09/2026): `publishListing` passa `{ product, listing, account, credential }` ao conector (a conta sem a
+      credencial cifrada) e grava `erro = pendencia`; o seam `setMarketplaceConnectorForTesting` segue exportado do
+      serviço; testes novos do registro e do contrato da porta.
 
 ## Fase 3 — Trava por conta e persistência de credencial
 
-- [ ] T018 `marketplace-account.repository.ts`: `acquireOperationLease(db, id, owner, ttlMs)`
+- [x] T018 `marketplace-account.repository.ts`: `acquireOperationLease(db, id, owner, ttlMs)`
       (`findOneAndUpdate` condicionado a "sem trava ou trava vencida", campos internos
       `operationLeaseOwner`/`operationLeaseExpiresAt`, nunca expostos) e `releaseOperationLease(db, id,
       owner)` (só libera se o dono for o mesmo). Testes com MongoDB em memória: dois donos disputando,
       trava vencida retomada, liberação por dono errado ignorada.
-- [ ] T019 `services/account-operation.service.ts` — `runAccountOperation(accountId, op)`: espera a trava
+- [x] T019 `services/account-operation.service.ts` — `runAccountOperation(accountId, op)`: espera a trava
       (poll de 250 ms, até 15 s, senão `AccountBusyError`), validade da trava 120 s; relê a conta e
       decifra a credencial; roda `op`; no `finally` persiste `updatedCredential` (condicional ao
       ciphertext lido, via `replaceCredentialCiphertext` — no sucesso **e** no erro), aplica
@@ -152,7 +173,11 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
       duas operações na mesma conta rodam em série; ocupada além de 15 s → `AccountBusyError`; par novo
       descartado se a conta foi desconectada durante a operação; `expired` só com `reconnectRequired` —
       depende de T015, T018.
-- [ ] T020 `credential-key-rotation.service.ts`: tenta a trava por conta e **pula** a ocupada (conta em
+      **Feito** (21/09/2026): `account-operation.service.ts` (`runAccountOperation`, `tryAcquireAccountLease`,
+      `AccountBusyError`); repositório com `acquireOperationLease`/`releaseOperationLease` e `markExpiredIfUnchanged`
+      (só marca `expired` se a conta não mudou nem foi desconectada); `tests/integration/account-operation.spec.ts`
+      (19 casos).
+- [x] T020 `credential-key-rotation.service.ts`: tenta a trava por conta e **pula** a ocupada (conta em
       `skippedConcurrent`); atualizar `credential-key-rotation.service.test.ts` e
       `tests/integration/credential-key-rotation.spec.ts` — depende de T018.
 
@@ -189,7 +214,7 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
       `capPictures` (`max_pictures_per_item`, capa primeiro), `sanitizePlainText` (só `\n`, sem
       HTML/emoji, `max_description_length`), `immediateTag`, `assertPriceInRange` (falha antes de qualquer
       `POST`/`PUT`), garantia (sem garantia; nunca "Recondicionado"), `available_quantity = 1`,
-      `listing_type_id` configurável. Testes em tabela — depende de T008, T050, T052.
+      `listing_type_id` configurável. Testes em tabela — depende de T008, T052, T053, T054.
 - [ ] T024 `plugins/marketplaces/mercado-livre.connector.ts` — token: lê a credencial
       (`parseMercadoLivreCredential`); sem tokens → erro "conta não conectada" (`reconnectRequired`);
       `expires_at` a menos de 5 min → `refreshToken()` e devolve o par novo em `updatedCredential`; um
@@ -300,6 +325,10 @@ no mesmo dia.
       ambientação ao modelo *User Products* pelo formulário da documentação (ativação a cada 7 dias); cadastrar
       a conta no ERP com o Client ID/Secret do app e conectá-la por OAuth logando como o usuário de teste;
       registrar o resultado — status "Conectada" e renovação de token funcionando — depende de T004, T032.
+      **Andamento (21/09/2026):** conta real conectada no ambiente de desenvolvimento (token válido, tag
+      `user_product_seller` presente); usuário de teste vendedor **criado** (id 3699839278; credenciais em
+      `humandevnotes.md`, ignorado pelo git). Faltam o formulário de ambientação ao modelo *User Products* e conectar
+      o usuário de teste por OAuth.
 - [ ] T043 Publicar uma peça de teste — título "Item de Teste – Por favor, NÃO OFERTAR!", categoria "Outros",
       `MERCADO_LIVRE_LISTING_TYPE_ID` diferente de `gold`/`gold_premium` — e conferir o anúncio no Mercado Livre
       (nome/título, preço, fotos, descrição, dimensões do pacote, tipo de anúncio) — depende de T009, T041, T042.
@@ -307,8 +336,9 @@ no mesmo dia.
       mostra "Encerrado"; registrar o que o Mercado Livre devolveu — em especial o formato real do *warning*
       de preço ignorado (`warnings` da resposta do `PUT`), a resposta do encerramento e o efeito do
       `sandbox_mode` — depende de T043.
-- [ ] T049 Primeira **publicação real** (uma peça de verdade na conta da loja, com o tipo de anúncio decidido
-      em T010): é uso, não teste; conferir e, se algo divergir do teste, registrar — depende de T010, T044, T050, T051.
+- [ ] T049 Primeira **publicação real** (uma peça de verdade na conta da loja — a conta de produção é a que já está
+      conectada, `user_id` 3692153317, decisão de 21/09/2026 — com o tipo de anúncio decidido
+      em T010): é uso, não teste; conferir e, se algo divergir do teste, registrar — depende de T010, T044, T051, T053.
 - [ ] T045 Documentação: registrar na [spec](spec.md) o que a Fase 8 confirmou (formato do *warning*, resposta
       do encerramento, `sandbox_mode`, decisões de T008 e T010); mudar o `Status` da spec de Draft para o
       estado real; registrar em `specs/011-integracao-marketplaces/tasks.md` uma fase nova com a
@@ -320,7 +350,7 @@ no mesmo dia.
 ```
 T001 → T002, T003 → T004                      (Fase A, já entregue)
 T005, T006, T007, T008 → T022                 (todas confirmadas)
-T008, T050, T052 → T023                       (T050 ainda aberto: dados reais)
+T008, T052, T053, T054 → T023                 (T053 e T054 são decisões abertas)
 T015 → T052
 T023, T024 → T025, T026    T022, T024 → T027
 T010 → T049    T009 → T043
@@ -337,19 +367,22 @@ T016, T025, T026, T027 → T028
 T031 → T033 → T034, T035 → T036, T037
 T028 → T039 → T040 → T041   (T036, T038 também alimentam T041)
 T004, T032 → T042 → T043 → T044 → T049 → T045
-T050, T051 → T049
+T053, T051 → T049
 ```
 
 ## Nota
 
-T005 a T009, T046, T047 e T048 estão confirmados ou decididos. O que mais mudou o desenho: o **modelo
-*User Products*** (`family_name` no lugar de `title`), o **SKU em `SELLER_SKU`**, a **tabela de medidas**
-em domínios de moda (`SIZE_GRID_ID`/`SIZE_GRID_ROW_ID`, com tabela `BRAND`/`STANDARD` encontrada por
-busca), o **pacote padrão configurável** (T046, decidido) e o fato de o Mercado Livre **não ter sandbox**
-(a Fase 8 usa usuário de teste). Continuam abertos: T010 (tipo de anúncio — decisão da dona do brechó),
-**T050 (tamanhos do ERP × linhas das tabelas — só dados reais respondem)** e **T051 (valores reais do pacote
-— informação da dona do brechó)**. T050 e T051 são os que podem afetar o primeiro anúncio real de roupas; as
-fases 1 a 3 e as tarefas T021, T022, T024, T027 e T052 (código do pacote padrão) não dependem deles. Pontos
-cinza menores: o texto exato do *warning* de preço ignorado e se todo domínio de `active_domains` é de fato
-obrigatório (plano, seção 7) — ambos têm tratamento seguro e são confirmados na Fase 8. Nenhuma tarefa de
-código depende de T010 ou T051.
+T005 a T009, T046 a T048 e T050 estão confirmados, decididos ou medidos. O que mais mudou o desenho: o
+**modelo *User Products*** (`family_name` no lugar de `title`), o **SKU em `SELLER_SKU`**, o **pacote padrão
+configurável** (T046) e o fato de o Mercado Livre **não ter sandbox** (a Fase 8 usa usuário de teste). A
+**conta de produção** é a que já está conectada (decisão de 21/09/2026).
+
+O T050 mudou o escopo de roupas: **nenhum domínio de roupa tem tabela de medidas pronta** (só calçados), então
+roupas exigem uma tabela `SPECIFIC` do vendedor — decisão **T053**. Junto veio a decisão **T054** (o preditor de
+categorias errou o domínio de peças comuns; proposta de mapeamento configurável) e o requisito de que o
+`tamanho_etiqueta` seja obrigatório para publicar moda (hoje 7 de 9 produtos de dev não têm).
+
+Continuam abertos: **T053** e **T054** (decisões), **T051** (valores reais do pacote — dona do brechó) e
+T010 (tipo de anúncio). As fases 1 a 3 e as tarefas T021, T022, T024, T027 e T052 não dependem deles; **calçados**
+já poderiam publicar com a tabela `STANDARD`. Pontos cinza menores: o texto exato do *warning* de preço ignorado
+(plano, seção 7). Nenhuma tarefa de código depende de T010 ou T051.

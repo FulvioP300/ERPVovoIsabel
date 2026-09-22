@@ -47,11 +47,14 @@ export const marketplaceAccountService = {
   async create(values: CreateMarketplaceAccountFormValues): Promise<MarketplaceAccount> {
     // Monta o valor único de `credential` a partir dos campos específicos do marketplace
     // escolhido (spec 011, seção 2.2 — o backend continua vendo uma string opaca só).
-    const payload = {
+    const payload: Record<string, string> = {
       marketplace: values.marketplace,
       label: values.label,
       credential: buildCredentialPayload(values.marketplace, values),
     };
+    if (values.marketplace === "mercado_livre" && values.expectedUser?.trim()) {
+      payload.expectedUser = values.expectedUser.trim();
+    }
 
     const response = await fetch("/api/marketplace-accounts", {
       method: "POST",
@@ -67,6 +70,8 @@ export const marketplaceAccountService = {
     // (spec 011, seção 2.2). `credentialFieldsFilled` já garante (via Zod) que ou todos estão
     // preenchidos, ou nenhum está.
     const payload: Record<string, string> = { label: values.label };
+    // Em branco = manter o usuário esperado atual (trocar desconecta a conta — spec 012, seção 2.5).
+    if (values.expectedUser?.trim()) payload.expectedUser = values.expectedUser.trim();
     if (credentialFieldsFilled(values.marketplace, values).filledCount > 0) {
       payload.credential = buildCredentialPayload(values.marketplace, values);
     }

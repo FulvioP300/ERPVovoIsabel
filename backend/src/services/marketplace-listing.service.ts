@@ -4,7 +4,9 @@ import { getProductById } from "./product.service.js";
 import { getActiveMarketplaceAccountForConnector } from "./marketplace-account.service.js";
 import type { Marketplace } from "../schemas/marketplace-account.schema.js";
 import type { Product } from "../schemas/product.schema.js";
-import type { MarketplaceConnectorPort } from "../plugins/marketplaces/marketplace-connector.port.js";
+import { getConnector, setMarketplaceConnectorForTesting } from "../plugins/marketplaces/connector-registry.js";
+import type { ConnectorAccount } from "../plugins/marketplaces/marketplace-connector.port.js";
+import type { MarketplaceAccountRecord } from "../repositories/marketplace-account.repository.js";
 import { record } from "./audit-log.service.js";
 
 export class ProductMissingRequiredFieldsError extends Error {
@@ -21,26 +23,29 @@ export class MarketplaceAccountMismatchError extends Error {
   }
 }
 
-let connector: MarketplaceConnectorPort | undefined;
-
 /**
- * Nenhum adapter concreto (Mercado Livre, Shopee, eBay) é registrado por padrão nesta spec
- * (011) — implementação real fica a cargo da spec de cada conector (012+, spec 011 seção 5).
- * Chamar `publishListing` sem antes injetar um conector real (produção) ou um dublê (teste)
- * lança um erro claro — nunca falha silenciosa nem finge sucesso.
+ * O conector de cada marketplace vem do registro (`plugins/marketplaces/connector-registry.ts`). Um
+ * marketplace sem conector **não finge sucesso**: `getConnector` lança um erro claro, que
+ * `publishListing` grava como `erro` na entrada (spec 011, seção 4.6). O seam de teste segue
+ * exportado daqui para não mexer nos testes existentes.
  */
-function getConnector(): MarketplaceConnectorPort {
-  if (!connector) {
-    throw new Error(
-      "Nenhum conector de marketplace configurado — a implementação concreta é escopo de uma spec própria por marketplace (011, seção 5).",
-    );
-  }
-  return connector;
-}
+export { setMarketplaceConnectorForTesting };
 
-/** Seam de teste/produção — injeta o adapter concreto de um conector (ou um dublê de teste). */
-export function setMarketplaceConnectorForTesting(fake: MarketplaceConnectorPort): void {
-  connector = fake;
+/** A conta como o conector a vê: sem a credencial cifrada (ela chega decifrada, à parte). */
+function toConnectorAccount(account: MarketplaceAccountRecord): ConnectorAccount {
+  return {
+    id: account.id,
+    marketplace: account.marketplace,
+    label: account.label,
+    credentialPreview: account.credentialPreview,
+    connectionStatus: account.connectionStatus,
+    active: account.active,
+    expectedUser: account.expectedUser,
+    connectedNickname: account.connectedNickname,
+    createdBy: account.createdBy,
+    createdAt: account.createdAt,
+    updatedAt: account.updatedAt,
+  };
 }
 
 /** Dados mínimos obrigatórios para publicar (spec 011, seção 4.6). */
@@ -82,8 +87,18 @@ export async function publishListing(input: PublishListingInput): Promise<Produc
 
   const db = getDb();
 
+  // Entrada atual desta conta no produto: é ela que o conector usa para decidir criar × atualizar
+  // (spec 012, seção 3.1).
+  const existing =
+    product.marketplaces.find((l) => l.marketplace === input.marketplace && l.conta_id === account.id) ?? null;
+
   try {
-    const result = await getConnector().publish(product, account, credential);
+    const { value: result } = await getConnector(input.marketplace).publish({
+      product,
+      listing: existing,
+      account: toConnectorAccount(account),
+      credential,
+    });
 
     await productRepository.upsertMarketplaceListing(db, input.productId, {
       marketplace: input.marketplace,
@@ -94,7 +109,8 @@ export async function publishListing(input: PublishListingInput): Promise<Produc
       url_anuncio: result.url_anuncio,
       publicado_em: new Date(),
       encerrado_em: null,
-      erro: null,
+      // Pendência com o anúncio no ar (ex.: descrição não enviada) — spec 012, seção 3.1.
+      erro: result.pendencia,
     });
 
     await record("PRODUCT_PUBLISH", "product", input.productId, input.actingUserId, {

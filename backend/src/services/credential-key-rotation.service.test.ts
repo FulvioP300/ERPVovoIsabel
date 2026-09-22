@@ -7,6 +7,8 @@ const store = vi.hoisted(() => ({ keys: new Map<string, CredentialKeyRecord>() }
 const listMock = vi.fn();
 const replaceMock = vi.fn();
 const recordMock = vi.fn();
+const leaseMock = vi.fn();
+const releaseMock = vi.fn();
 
 vi.mock("../repositories/credential-key.repository.js", () => ({
   isDuplicateKeyError: (err: unknown) => (err as { code?: number })?.code === 11000,
@@ -23,6 +25,8 @@ vi.mock("../repositories/marketplace-account.repository.js", () => ({
   marketplaceAccountRepository: {
     list: (...args: unknown[]) => listMock(...args),
     replaceCredentialCiphertext: (...args: unknown[]) => replaceMock(...args),
+    acquireOperationLease: (...args: unknown[]) => leaseMock(...args),
+    releaseOperationLease: (...args: unknown[]) => releaseMock(...args),
   },
 }));
 vi.mock("./audit-log.service.js", () => ({ record: (...args: unknown[]) => recordMock(...args) }));
@@ -47,6 +51,9 @@ function makeAccount(id: string, credential: string): MarketplaceAccountRecord {
     createdBy: "admin-1",
     createdAt: new Date(),
     updatedAt: new Date(),
+    expectedUser: null,
+    connectedUserId: null,
+    connectedNickname: null,
   };
 }
 
@@ -59,6 +66,8 @@ describe("credential-key-rotation.service", () => {
     listMock.mockReset();
     replaceMock.mockReset().mockResolvedValue(true);
     recordMock.mockReset().mockResolvedValue(undefined);
+    leaseMock.mockReset().mockResolvedValue(true);
+    releaseMock.mockReset().mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -95,6 +104,31 @@ describe("credential-key-rotation.service", () => {
     expect(report.rotated).toBe(1);
     expect(report.failed).toHaveLength(1);
     expect(report.failed[0]?.accountId).toBe("acc-ruim");
+  });
+
+  it("conta ocupada por uma operação do conector (trava por conta) é pulada, sem re-cifrar", async () => {
+    listMock.mockResolvedValue([
+      makeAccount("acc-ocupada", await encryptCredential("a")),
+      makeAccount("acc-livre", await encryptCredential("b")),
+    ]);
+    leaseMock.mockImplementation(async (_db: unknown, id: string) => id !== "acc-ocupada");
+
+    const report = await rotateCredentialKey("admin-1");
+
+    expect(report).toMatchObject({ total: 2, rotated: 1, skippedConcurrent: 1 });
+    expect(replaceMock).toHaveBeenCalledTimes(1);
+    expect((replaceMock.mock.calls[0] as unknown[])[1]).toBe("acc-livre");
+  });
+
+  it("solta a trava de cada conta que obteve, inclusive a que falha ao re-cifrar", async () => {
+    listMock.mockResolvedValue([
+      makeAccount("acc-ruim", "k1:AAAA:AAAA:AAAA"),
+      makeAccount("acc-ok", await encryptCredential("ok")),
+    ]);
+
+    await rotateCredentialKey("admin-1");
+
+    expect(releaseMock.mock.calls.map((call) => (call as unknown[])[1])).toEqual(["acc-ruim", "acc-ok"]);
   });
 
   it("conta editada durante a rotação (atualização condicional não casa) é ignorada, não sobrescrita", async () => {

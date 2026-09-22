@@ -28,6 +28,8 @@ export const MarketplaceAccountSchema = z.object({
   connectionStatus: ConnectionStatusEnum,
   active: z.boolean(),
   publishedListingsCount: z.number().int().nonnegative(),
+  expectedUser: z.string().nullable(),
+  connectedNickname: z.string().nullable(),
   createdBy: z.string(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
@@ -144,9 +146,18 @@ export const CreateMarketplaceAccountFormSchema = z
   .object({
     marketplace: MarketplaceEnum,
     label: z.string().min(1, "Apelido é obrigatório."),
+    // Mercado Livre: usuário que a conta vai usar (spec 012, seção 2.5) — conferido depois do OAuth.
+    expectedUser: z.string().optional(),
     ...CredentialFieldsShape,
   })
   .superRefine((data, ctx) => {
+    if (data.marketplace === "mercado_livre" && !data.expectedUser?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["expectedUser"],
+        message: "Informe o usuário do Mercado Livre (apelido ou ID).",
+      });
+    }
     const { filledCount, totalCount, firstEmptyKey } = credentialFieldsFilled(data.marketplace, data);
     if (filledCount < totalCount && firstEmptyKey) {
       const field = MARKETPLACE_CREDENTIAL_FIELDS[data.marketplace].find((f) => f.key === firstEmptyKey)!;
@@ -169,6 +180,7 @@ export const EditMarketplaceAccountFormSchema = z
   .object({
     marketplace: MarketplaceEnum,
     label: z.string().min(1, "Apelido é obrigatório."),
+    expectedUser: z.string().optional(),
     ...CredentialFieldsShape,
   })
   .superRefine((data, ctx) => {

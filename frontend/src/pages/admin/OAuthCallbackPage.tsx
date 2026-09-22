@@ -37,7 +37,14 @@ export function OAuthCallbackPage() {
   } else if (completeOAuth.isSuccess) {
     content = (
       <p className="text-sm text-green-700">
-        Conta <strong>{completeOAuth.data.label}</strong> conectada ao Mercado Livre.
+        Conta <strong>{completeOAuth.data.label}</strong> conectada ao Mercado Livre
+        {completeOAuth.data.connectedNickname ? (
+          <>
+            {" "}
+            como <strong>{completeOAuth.data.connectedNickname}</strong>
+          </>
+        ) : null}
+        .
       </p>
     );
   } else {

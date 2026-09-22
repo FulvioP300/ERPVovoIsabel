@@ -202,6 +202,20 @@ function CreateMarketplaceAccountForm() {
         <input className={`${inputClass} w-48`} placeholder="Apelido da loja" {...register("label")} />
         {errors.label && <p className={errorClass}>{errors.label.message}</p>}
       </div>
+      {isMercadoLivre && (
+        <div>
+          <label className={labelClass}>
+            Usuário do Mercado Livre
+            <input
+              autoComplete="off"
+              className={`${inputClass} mt-1 block w-72`}
+              placeholder="apelido ou ID (ex.: VovoIsabelSalesML)"
+              {...register("expectedUser")}
+            />
+          </label>
+          {errors.expectedUser && <p className={errorClass}>{errors.expectedUser.message}</p>}
+        </div>
+      )}
       {/* Um campo por informação da credencial, com legenda indicando o que vai em cada um
           (spec 011, seção 2.2.1) — Mercado Livre usa OAuth (spec 012): só Client ID e Client
           Secret; os tokens são obtidos ao conectar. */}
@@ -257,7 +271,8 @@ function CreateMarketplaceAccountForm() {
       {errors.root?.message && <p className={errorClass}>{errors.root.message}</p>}
       {isMercadoLivre && (
         <p className="w-full text-xs text-gray-500">
-          Informe o Client ID e o Client Secret do seu aplicativo no Mercado Livre e clique em{" "}
+          Informe o usuário do Mercado Livre que esta conta vai usar (o ERP confere, depois da autorização, se foi
+          ele mesmo que autorizou), o Client ID e o Client Secret do seu aplicativo no Mercado Livre e clique em{" "}
           <strong>Testar integração</strong> — o botão de criar só é liberado depois que o teste passar. Ao criar, você
           será levado ao Mercado Livre para autorizar a conta — os tokens de acesso são obtidos e renovados
           automaticamente. No aplicativo, cadastre esta URL como <strong>URL de redirecionamento</strong>:{" "}
@@ -282,6 +297,7 @@ function EditMarketplaceAccountRow({ account, onDone }: { account: MarketplaceAc
       credential: "",
       credential_client_id: "",
       credential_client_secret: "",
+      expectedUser: "",
     },
   });
 
@@ -297,6 +313,17 @@ function EditMarketplaceAccountRow({ account, onDone }: { account: MarketplaceAc
   return (
     <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate>
       <input className={`${inputClass} w-40`} {...register("label")} />
+      {account.marketplace === "mercado_livre" && (
+        <label className={labelClass}>
+          Usuário do Mercado Livre
+          <input
+            autoComplete="off"
+            className={`${inputClass} mt-1 block w-56`}
+            placeholder={account.expectedUser ?? "apelido ou ID"}
+            {...register("expectedUser")}
+          />
+        </label>
+      )}
       {MARKETPLACE_CREDENTIAL_FIELDS[account.marketplace].map((field) => (
         <label key={field.key} className={labelClass}>
           {field.label}
@@ -319,7 +346,8 @@ function EditMarketplaceAccountRow({ account, onDone }: { account: MarketplaceAc
       {credentialError && <p className={`${errorClass} w-full`}>{credentialError}</p>}
       {account.marketplace === "mercado_livre" && (
         <p className="w-full text-xs text-gray-500">
-          Trocar o Client ID/Secret desconecta a conta — conecte de novo depois para obter os tokens.
+          Trocar o Client ID/Secret ou o usuário do Mercado Livre desconecta a conta — conecte de novo depois para
+          obter os tokens.
         </p>
       )}
     </form>
@@ -371,6 +399,16 @@ export function MarketplaceAccountsPage() {
           <EditMarketplaceAccountRow account={a} onDone={() => setEditingId(null)} />
         ) : (
           a.label
+        ),
+    },
+    {
+      key: "mlUser",
+      header: "Usuário ML",
+      render: (a) =>
+        a.marketplace !== "mercado_livre" ? (
+          "—"
+        ) : (
+          (a.connectedNickname ?? a.expectedUser ?? <span className="text-gray-400">não informado</span>)
         ),
     },
     {

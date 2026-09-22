@@ -33,3 +33,6 @@ mongodbEnvironments/
 
 # Notas locais de desenvolvedor (podem conter credenciais de dev, ex.: admin seed)
 humandevnotes.md
+
+# Páginas salvas da documentação do Mercado Livre (consulta local; conteúdo de terceiros, ~80 MB)
+DocumentacaoMercadoLivre/

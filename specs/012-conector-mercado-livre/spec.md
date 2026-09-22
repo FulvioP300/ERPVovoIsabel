@@ -81,7 +81,7 @@ a URL de autorização do Mercado Livre e capturando o `code` de retorno. O cada
 conta Mercado Livre segue, portanto:
 
 ```
-Admin informa Client ID e Client Secret (só isso — access/refresh token NUNCA são digitados),
+Admin informa Client ID, Client Secret e o **usuário do Mercado Livre** da conta (seção 2.5) — access/refresh token NUNCA são digitados —
 clica em "Testar integração" (seção 2.4) e, com o teste OK, em "Criar e conectar ao Mercado Livre"
         ↓
 Backend cria a conta (connectionStatus = "disconnected"; credential = {client_id, client_secret})
@@ -97,8 +97,8 @@ Mercado Livre redireciona para o redirect URI com ?code=...&state=...
 A página envia {code, state} ao backend, que consome o `state` (atômico, antes de qualquer
 chamada externa) e troca o code por access_token/refresh_token usando o Client ID/Secret da conta
         ↓
-Backend acrescenta os tokens ao JSON da seção 2.1, criptografa (011, seção 3) e marca
-connectionStatus = "connected"
+Backend confere o usuário autorizado com o esperado (seção 2.5), acrescenta os tokens ao JSON da
+seção 2.1, criptografa (011, seção 3) e marca connectionStatus = "connected"
 ```
 
 Pontos de projeto:
@@ -169,6 +169,30 @@ POST /api/marketplace-accounts/mercado-livre/test-connection   { client_id, clie
 - O resultado vale só para o par testado: editar Client ID ou Client Secret invalida o teste e
   bloqueia o botão de criar de novo. A garantia é de interface — o backend continua aceitando
   `POST /api/marketplace-accounts` sem teste (o OAuth da seção 2.2 é a validação definitiva).
+
+### 2.5 Usuário do Mercado Livre da conta
+
+O cadastro pede **qual usuário do Mercado Livre a conta vai usar** — o apelido (ex.: `VovoIsabelSalesML`)
+ou o ID numérico — e o ERP **confere** isso depois do OAuth. Motivo: quem autoriza o aplicativo é o usuário
+que estiver logado no Mercado Livre naquele navegador; sem conferência, é fácil conectar o usuário errado (um
+usuário de teste no lugar da loja, ou uma conta pessoal).
+
+- **Campo `expectedUser`** (texto, não é segredo): obrigatório na tela para contas **novas** do Mercado
+  Livre. A API o aceita ausente — contas anteriores a esta regra não o têm; nesse caso a conexão não é
+  conferida e a tela mostra "não informado".
+- **Conferência ao completar o OAuth** (seção 2.2): depois de trocar o `code`, o backend chama `GET
+  /users/me` com o token novo. Se `expectedUser` tiver só dígitos, compara com o `id`; senão, com o
+  `nickname`, sem diferenciar maiúsculas de minúsculas (um `@` inicial é ignorado). **Divergiu → `400`**:
+  nada é gravado (os tokens são descartados) e a mensagem diz quem autorizou e quem era esperado ("O
+  Mercado Livre autorizou o usuário X (ID N), mas esta conta está configurada para Y. Saia do Mercado
+  Livre e conecte de novo com o usuário correto.").
+- **Identidade conectada:** ao conectar, o ERP guarda `connectedUserId` e `connectedNickname` (não são
+  segredo; aparecem na tela e a auditoria registra `mlUserId`). Desconectar limpa os dois.
+- **Editar** o `expectedUser` de uma conta muda a identidade esperada: a conta é **desconectada** (mesmo
+  tratamento de trocar o Client ID/Secret) e precisa ser reconectada.
+- A lista de contas mostra o usuário: o apelido conectado ou, enquanto desconectada, o esperado.
+- Vale também para o **usuário de teste** (`TESTUSER…`): informa-se o apelido dele, e a conferência
+  impede confundi-lo com a conta de produção.
 
 ## 3. Mapeamento de campos — produto do ERP → `POST /items`
 
@@ -359,7 +383,7 @@ devolve o `domain_id` (ex.: `MLB-SHIRTS`), o conector segue:
    prefixo do site, ex.: "SHIRTS"), site_id: "MLB", seller_id, attributes: [{ id: "GENDER", values:
    [{ name }] }, { id: "BRAND", values: [{ name }] }] }` → `{ paging, charts: [{ id, type,
    main_attribute_id, … }] }`. Ordem de preferência: **`BRAND`** (se a marca da peça tiver tabela),
-   depois **`STANDARD`**, depois **`SPECIFIC`** do vendedor. Domínio sem tabela ativa responde
+   depois **`STANDARD`**, depois **`SPECIFIC`** do vendedor (para roupas é a única que existe — ver o resultado do T050 abaixo). Domínio sem tabela ativa responde
    `400 domain_not_active`; busca sem resultado, `charts: []`.
 4. **Escolher a linha:** `GET /catalog/charts/{chart_id}` → `rows: [{ id: "569686:1", attributes: [{
    id: "SIZE", values: [{ name: "17" }] }, …] }]`. A linha certa é a cujo `SIZE` é **igual** ao
@@ -373,14 +397,34 @@ O `GENDER` sai do departamento da categoria do ERP (Masculino, Feminino, Infanti
 valores de `GET /categories/$CATEGORY_ID/attributes`; o Mercado Livre pode pedir também `AGE_GROUP`
 por *warning* de validação (seção 3.6). O `GENDER` é validado ainda contra o título.
 
+**Resultado do T050 (21/09/2026, conta real conectada, só leituras).** `active_domains` lista 59
+domínios no MLB, e quase todos os de roupa que interessam ao brechó (camisas, camisetas, vestidos, blusas,
+calças, shorts, saias, jaquetas e casacos) exigem tabela — mas **só calçados têm tabela pronta**:
+`POST /catalog/charts/domains/search` lista tabelas `STANDARD` apenas para `SNEAKERS`,
+`BOOTS_AND_BOOTIES`, `FOOTBALL_SHOES` e `LOAFERS_AND_OXFORDS`, e tabelas `BRAND` apenas para 9 domínios de
+calçado; para roupas, a busca `STANDARD` devolve 0 tabelas. Logo, a política "só `BRAND`/`STANDARD`"
+**não publica roupas**: é preciso uma tabela `SPECIFIC`, do próprio vendedor. Há duas formas:
+
+1. **Achar** as tabelas `SPECIFIC` que a dona do brechó criar no painel do Mercado Livre (uma por domínio e
+   gênero, com uma linha por tamanho vendido) e escolher a linha pelo `SIZE` — o conector só lê
+   (`POST /catalog/charts/search` com `type: SPECIFIC`, `seller_id`).
+2. **Criar** por API (`POST /catalog/charts`): nos domínios `TOPS` e `BOTTOMS` é possível
+   `measure_type: CLOTHING_MEASURE`, mas cada linha pede medidas da peça (comprimento, cintura, quadril,
+   coxa…) — mais escopo, e dados que o ERP só tem em parte (`medidas`).
+
+⚠ **Decisão em aberto (T053)**. Para calçados, a tabela `STANDARD`/`BRAND` basta.
+
+Consequências já certas:
+- **`SIZE` é obrigatório** e precisa ser igual ao da linha. No ERP de desenvolvimento, 7 de 9 produtos
+  não têm `tamanho_etiqueta`; publicar moda exige o tamanho, senão a publicação falha antes do `POST`
+  ("Informe o tamanho da peça").
+- **Vocabulário de tamanhos:** as linhas `STANDARD` de calçado usam `"34,0 BR"`; o ERP guarda `"32"` —
+  é preciso normalizar (número → `"N,0 BR"`). Numa tabela `SPECIFIC`, o vocabulário é o que a dona do
+  brechó escolher (P/M/G, 38/40…); o ERP e a tabela devem usar os mesmos rótulos.
+
 **Sem tabela ou sem linha correspondente:** a publicação falha **antes** do `POST`, com `status =
 erro` e mensagem clara ("Não há tabela de medidas para <domínio>/<gênero>/<marca> com o tamanho
-<X>"). **Criar** tabelas `SPECIFIC` (`POST /catalog/charts`, com o corpo dado pela ficha técnica da
-tabela — `GET /domains/{id}/technical_specs?section=grids`; nome de até 60 caracteres, sem
-caracteres especiais; `domain_id` sem prefixo; token de usuário do mesmo site) fica **fora de
-escopo** desta versão (seção 8). ⚠ Se os tamanhos que o ERP guarda em `tamanho_etiqueta` não casarem
-com as linhas das tabelas `STANDARD`/`BRAND` (tarefa T050), essa política bloqueia muitas peças, e a
-criação de tabelas `SPECIFIC` sobe de prioridade.
+<X>").
 
 Erros de validação da tabela (`type` `error` bloqueia): `missing.fashion_grid.grid_id.values`,
 `missing.fashion_grid.grid_row_id.values`, `missing.fashion_grid.size.values` (falta `SIZE`),
@@ -420,6 +464,12 @@ então uma tela de confirmação/correção é uma funcionalidade real, mas fica
 futura, quando houver uso real que demonstre que o preditor erra com frequência suficiente para
 justificar a complexidade extra (constituição, princípio V). O preditor também devolve atributos já
 reconhecidos (ex.: `BRAND`), que o conector pode aproveitar quando o ERP não tem o dado.
+
+⚠ **Precisão do preditor (T050).** Com consultas de peças comuns o preditor devolveu domínios inesperados —
+"camisa masculina" → `MLB-RUGBY_JERSEYS` e "jaqueta masculina" → `MLB-FOOTBALL_JACKETS` — e o domínio
+decide a tabela de medidas (seção 3.5). Como o brechó tem um conjunto pequeno e fixo de categorias (003), a
+proposta é um **mapeamento configurável categoria do ERP → categoria/domínio do Mercado Livre**, com o
+preditor só como reserva (decisão T054).
 
 Com o `category_id` resolvido, o conector consulta dois recursos:
 
@@ -558,6 +608,9 @@ a um catalog_product_id
 
 - O cadastro de uma conta Mercado Livre pede só Client ID e Client Secret; access/refresh
   token nunca são digitados.
+- O cadastro de conta nova do Mercado Livre pede o usuário do Mercado Livre (apelido ou ID); depois do OAuth, se
+  o usuário que autorizou for outro, a conexão é recusada (`400`) sem gravar tokens, e a mensagem diz quem
+  autorizou e quem era esperado (seção 2.5). Editar o usuário esperado desconecta a conta.
 - O botão "Criar e conectar ao Mercado Livre" fica bloqueado até "Testar integração" passar
   (seção 2.4), e volta a bloquear se Client ID ou Client Secret for editado depois.
 - Cadastrar uma conta Mercado Livre completa o fluxo OAuth (seção 2.2) e persiste

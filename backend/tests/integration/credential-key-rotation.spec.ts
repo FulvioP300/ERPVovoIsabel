@@ -143,3 +143,31 @@ describe("botão 'Rotacionar chave de criptografia' (spec 011, seção 3.1; ADR-
     expect(JSON.stringify(items)).not.toContain("credencial-");
   });
 });
+
+describe("rotação × trava por conta (spec 012, seção 2.3)", () => {
+  it("conta ocupada por uma operação do conector é pulada; a rotação seguinte a alcança e a credencial segue legível", async () => {
+    const busyId = await createAccount("Loja ocupada", "credencial-ocupada");
+    const { tryAcquireAccountLease } = await import("../../src/services/account-operation.service.js");
+    const release = (await tryAcquireAccountLease(busyId))!;
+    const before = await storedCiphertext(busyId);
+
+    const first = await app.inject({
+      method: "POST",
+      url: "/api/marketplace-accounts/rotate-key",
+      cookies: { accessToken: adminCookie },
+    });
+    expect(first.json().data.skippedConcurrent).toBeGreaterThanOrEqual(1);
+    expect(await storedCiphertext(busyId)).toBe(before); // não foi re-cifrada
+
+    await release();
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/marketplace-accounts/rotate-key",
+      cookies: { accessToken: adminCookie },
+    });
+    expect((await storedCiphertext(busyId)).startsWith(`${second.json().data.newKeyId}:`)).toBe(true);
+
+    const { getActiveMarketplaceAccountForConnector } = await import("../../src/services/marketplace-account.service.js");
+    expect((await getActiveMarketplaceAccountForConnector(busyId)).credential).toBe("credencial-ocupada");
+  });
+});

@@ -93,6 +93,9 @@ function makeAccount(overrides: Partial<MarketplaceAccountRecord> = {}): Marketp
     createdBy: "admin-1",
     createdAt: new Date(),
     updatedAt: new Date(),
+    expectedUser: null,
+    connectedUserId: null,
+    connectedNickname: null,
     ...overrides,
   };
 }
@@ -103,7 +106,10 @@ beforeEach(() => {
   upsertListingMock.mockReset().mockResolvedValue(undefined);
   recordMock.mockReset().mockResolvedValue(undefined);
   publishMock.mockReset();
-  setMarketplaceConnectorForTesting({ publish: (...args: unknown[]) => publishMock(...args) });
+  setMarketplaceConnectorForTesting({
+    publish: (...args: unknown[]) => publishMock(...args),
+    close: vi.fn(),
+  } as never);
 });
 
 describe("marketplace-listing.service.publishListing", () => {
@@ -141,11 +147,15 @@ describe("marketplace-listing.service.publishListing", () => {
   it("publicação bem-sucedida grava status=publicado e audita sucesso", async () => {
     getProductByIdMock.mockResolvedValue(makeProduct());
     getActiveAccountMock.mockResolvedValue({ account: makeAccount(), credential: "plain-credential" });
-    publishMock.mockResolvedValue({ id_anuncio: "MLB123", url_anuncio: "https://example.com/MLB123" });
+    publishMock.mockResolvedValue({
+      value: { id_anuncio: "MLB123", url_anuncio: "https://example.com/MLB123", pendencia: null },
+    });
 
     await publishListing({ productId: "prod-1", marketplace: "mercado_livre", accountId: "acc-1", actingUserId: "u1" });
 
-    expect(publishMock).toHaveBeenCalledWith(expect.anything(), expect.anything(), "plain-credential");
+    expect(publishMock).toHaveBeenCalledWith(
+      expect.objectContaining({ credential: "plain-credential", listing: null, product: expect.anything() }),
+    );
     expect(upsertListingMock).toHaveBeenCalledWith(
       expect.anything(),
       "prod-1",
@@ -184,6 +194,73 @@ describe("marketplace-listing.service.publishListing", () => {
       "prod-1",
       "u1",
       expect.objectContaining({ success: false }),
+    );
+  });
+});
+
+describe("marketplace-listing.service.publishListing — contrato novo da porta (spec 012, plano Fase 2)", () => {
+  it("passa ao conector a entrada atual da conta no produto (é ela que decide criar × atualizar)", async () => {
+    const existing = {
+      marketplace: "mercado_livre" as const,
+      conta_id: "acc-1",
+      conta_apelido: "Vovó Isabel - Loja 1",
+      status: "publicado" as const,
+      id_anuncio: "MLB123",
+      url_anuncio: "https://example.com/MLB123",
+      publicado_em: new Date(),
+      encerrado_em: null,
+      erro: null,
+    };
+    const otherAccount = { ...existing, conta_id: "acc-2", id_anuncio: "MLB999" };
+    getProductByIdMock.mockResolvedValue(makeProduct({ marketplaces: [otherAccount, existing] }));
+    getActiveAccountMock.mockResolvedValue({ account: makeAccount(), credential: "plain-credential" });
+    publishMock.mockResolvedValue({
+      value: { id_anuncio: "MLB123", url_anuncio: "https://example.com/MLB123", pendencia: null },
+    });
+
+    await publishListing({ productId: "prod-1", marketplace: "mercado_livre", accountId: "acc-1", actingUserId: "u1" });
+
+    expect(publishMock).toHaveBeenCalledWith(expect.objectContaining({ listing: existing }));
+  });
+
+  it("nunca entrega ao conector a credencial cifrada da conta, só a decifrada à parte", async () => {
+    getProductByIdMock.mockResolvedValue(makeProduct());
+    getActiveAccountMock.mockResolvedValue({
+      account: makeAccount({ credential: "CIFRADA-NAO-VAZAR" }),
+      credential: "plain-credential",
+    });
+    publishMock.mockResolvedValue({
+      value: { id_anuncio: "MLB1", url_anuncio: "https://example.com/MLB1", pendencia: null },
+    });
+
+    await publishListing({ productId: "prod-1", marketplace: "mercado_livre", accountId: "acc-1", actingUserId: "u1" });
+
+    const input = publishMock.mock.calls[0]![0] as { account: Record<string, unknown> };
+    expect(input.account).not.toHaveProperty("credential");
+    expect(JSON.stringify(input.account)).not.toContain("CIFRADA-NAO-VAZAR");
+  });
+
+  it("pendência do conector é gravada em `erro` com o anúncio no ar (status publicado)", async () => {
+    getProductByIdMock.mockResolvedValue(makeProduct());
+    getActiveAccountMock.mockResolvedValue({ account: makeAccount(), credential: "plain-credential" });
+    publishMock.mockResolvedValue({
+      value: {
+        id_anuncio: "MLB123",
+        url_anuncio: "https://example.com/MLB123",
+        pendencia: "Anúncio criado, mas a descrição não foi enviada: texto inválido",
+      },
+    });
+
+    await publishListing({ productId: "prod-1", marketplace: "mercado_livre", accountId: "acc-1", actingUserId: "u1" });
+
+    expect(upsertListingMock).toHaveBeenCalledWith(
+      expect.anything(),
+      "prod-1",
+      expect.objectContaining({
+        status: "publicado",
+        id_anuncio: "MLB123",
+        erro: "Anúncio criado, mas a descrição não foi enviada: texto inválido",
+      }),
     );
   });
 });

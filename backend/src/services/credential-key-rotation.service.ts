@@ -1,8 +1,12 @@
 import { getDb } from "../database/mongo.client.js";
 import { marketplaceAccountRepository } from "../repositories/marketplace-account.repository.js";
+import { tryAcquireAccountLease } from "./account-operation.service.js";
 import { record } from "./audit-log.service.js";
 import { decryptCredential, encryptCredential, getCredentialKeyId } from "./credential-encryption.service.js";
 import { createNextCredentialKey, getActiveKeyInfo, type ActiveKeyInfo } from "./credential-key.service.js";
+
+/** Re-cifrar uma conta é rápido; a trava só precisa cobrir isso. */
+const ROTATION_LEASE_TTL_MS = 30_000;
 
 export interface CredentialKeyRotationReport {
   previousKeyId: string;
@@ -10,7 +14,10 @@ export interface CredentialKeyRotationReport {
   total: number;
   rotated: number;
   alreadyCurrent: number;
-  /** Conta editada por um admin durante a rotação — nada foi sobrescrito. */
+  /**
+   * Conta editada por um admin durante a rotação, ou **ocupada por uma operação do conector** (trava por
+   * conta — spec 012, seção 2.3) — nada foi sobrescrito; uma nova rotação tenta de novo.
+   */
   skippedConcurrent: number;
   /** Continuam legíveis (as chaves antigas nunca são apagadas); uma nova rotação tenta de novo. */
   failed: { accountId: string; reason: string }[];
@@ -61,6 +68,14 @@ export async function rotateCredentialKey(actingAdminId: string): Promise<Creden
       continue;
     }
 
+    // Uma publicação/encerramento em andamento pode estar renovando os tokens desta conta: re-cifrar agora
+    // roubaria a gravação dela. Conta ocupada é pulada e fica para a próxima rotação (spec 012, seção 2.3).
+    const release = await tryAcquireAccountLease(account.id, ROTATION_LEASE_TTL_MS);
+    if (!release) {
+      report.skippedConcurrent += 1;
+      continue;
+    }
+
     try {
       const reencrypted = await encryptCredential(await decryptCredential(account.credential));
       const replaced = await marketplaceAccountRepository.replaceCredentialCiphertext(
@@ -76,6 +91,8 @@ export async function rotateCredentialKey(actingAdminId: string): Promise<Creden
         accountId: account.id,
         reason: err instanceof Error ? err.message : "Falha desconhecida ao re-cifrar.",
       });
+    } finally {
+      await release();
     }
   }
 

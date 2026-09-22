@@ -95,12 +95,21 @@ beforeAll(async () => {
   // Dublê do conector (spec 011, seção 1: nenhum adapter real nesta spec) — simula sucesso,
   // exceto para uma credencial-sentinela usada no teste de falha.
   setMarketplaceConnectorForTesting({
-    async publish(_product, _account, credential) {
+    async publish({ credential }) {
       if (credential.includes("credencial-invalida")) {
         throw new Error("Credencial expirada");
       }
       fakePublishCounter += 1;
-      return { id_anuncio: `MLB-${fakePublishCounter}`, url_anuncio: `https://example.com/MLB-${fakePublishCounter}` };
+      return {
+        value: {
+          id_anuncio: `MLB-${fakePublishCounter}`,
+          url_anuncio: `https://example.com/MLB-${fakePublishCounter}`,
+          pendencia: null,
+        },
+      };
+    },
+    async close() {
+      return { value: { encerrado: true as const } };
     },
   });
 

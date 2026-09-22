@@ -70,6 +70,9 @@ function makeAccount(overrides: Partial<MarketplaceAccountRecord> = {}): Marketp
     createdBy: "admin-1",
     createdAt: new Date(),
     updatedAt: new Date(),
+    expectedUser: null,
+    connectedUserId: null,
+    connectedNickname: null,
     ...overrides,
   };
 }
