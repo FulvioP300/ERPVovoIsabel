@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  MercadoLivreInvalidGrantError,
   MercadoLivreOAuthError,
   buildAuthorizationUrl,
   mercadoLivreOAuthClient,
@@ -83,11 +84,22 @@ describe("teste de integração do Mercado Livre", () => {
     await expect(mercadoLivreOAuthClient.fetchCurrentUser("APP_USR-abc")).resolves.toEqual({
       id: 1234567,
       nickname: "VOVOISABEL",
+      tags: [],
     });
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://api.mercadolibre.com/users/me");
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer APP_USR-abc");
+  });
+
+  it("fetchCurrentUser: devolve as tags (ex.: user_product_seller, spec 012, seção 3.3)", async () => {
+    stubFetch(200, { id: 1234567, nickname: "VOVOISABEL", tags: ["user_product_seller", "normal"] });
+
+    await expect(mercadoLivreOAuthClient.fetchCurrentUser("APP_USR-abc")).resolves.toEqual({
+      id: 1234567,
+      nickname: "VOVOISABEL",
+      tags: ["user_product_seller", "normal"],
+    });
   });
 
   it("fetchCurrentUser: 401/403, outros HTTP e corpo inesperado são falhas do teste", async () => {
@@ -155,5 +167,89 @@ describe("mercadoLivreOAuthClient.exchangeCode", () => {
 
     stubFetch(200, { access_token: "so-o-access" });
     await expect(mercadoLivreOAuthClient.exchangeCode(input)).rejects.toThrow(/Resposta inesperada/);
+  });
+});
+
+describe("mercadoLivreOAuthClient.refreshToken (spec 012, seção 2.3)", () => {
+  it("POST form-urlencoded em /oauth/token com grant_type=refresh_token", async () => {
+    const fetchMock = stubFetch(200, {
+      access_token: "APP_USR-novo",
+      refresh_token: "TG-novo",
+      expires_in: 21600,
+      user_id: 1234567,
+    });
+
+    const tokens = await mercadoLivreOAuthClient.refreshToken({
+      clientId: input.clientId,
+      clientSecret: input.clientSecret,
+      refreshToken: "TG-antigo",
+    });
+
+    expect(tokens).toEqual({ accessToken: "APP_USR-novo", refreshToken: "TG-novo", expiresIn: 21600, userId: 1234567 });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.mercadolibre.com/oauth/token");
+    expect(Object.fromEntries(init.body as URLSearchParams)).toEqual({
+      grant_type: "refresh_token",
+      client_id: input.clientId,
+      client_secret: input.clientSecret,
+      refresh_token: "TG-antigo",
+    });
+  });
+
+  it("invalid_grant (refresh_token gasto ou expirado) lança MercadoLivreInvalidGrantError", async () => {
+    stubFetch(400, { error: "invalid_grant", message: "invalid refresh token" });
+
+    const error = await mercadoLivreOAuthClient
+      .refreshToken({ clientId: input.clientId, clientSecret: input.clientSecret, refreshToken: "TG-usado" })
+      .then(
+        () => new Error("deveria ter falhado"),
+        (err: Error) => err,
+      );
+
+    expect(error).toBeInstanceOf(MercadoLivreInvalidGrantError);
+    expect(error).toBeInstanceOf(MercadoLivreOAuthError);
+  });
+
+  it("erro de rede ou 5xx NÃO é MercadoLivreInvalidGrantError (não deve marcar a conta como expirada)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNRESET")));
+    const networkError = await mercadoLivreOAuthClient
+      .refreshToken({ clientId: input.clientId, clientSecret: input.clientSecret, refreshToken: "TG-x" })
+      .then(
+        () => new Error("deveria ter falhado"),
+        (err: Error) => err,
+      );
+    expect(networkError).toBeInstanceOf(MercadoLivreOAuthError);
+    expect(networkError).not.toBeInstanceOf(MercadoLivreInvalidGrantError);
+
+    stubFetch(500, {});
+    const serverError = await mercadoLivreOAuthClient
+      .refreshToken({ clientId: input.clientId, clientSecret: input.clientSecret, refreshToken: "TG-x" })
+      .then(
+        () => new Error("deveria ter falhado"),
+        (err: Error) => err,
+      );
+    expect(serverError).not.toBeInstanceOf(MercadoLivreInvalidGrantError);
+  });
+
+  it("nunca inclui client_secret nem refresh_token nas mensagens de erro", async () => {
+    stubFetch(400, { error: "invalid_grant" });
+
+    const error = await mercadoLivreOAuthClient
+      .refreshToken({ clientId: input.clientId, clientSecret: input.clientSecret, refreshToken: "TG-secreto-nao-vazar" })
+      .then(
+        () => new Error("deveria ter falhado"),
+        (err: Error) => err,
+      );
+
+    expect(error.message).not.toContain(input.clientSecret);
+    expect(error.message).not.toContain("TG-secreto-nao-vazar");
+  });
+
+  it("resposta com formato inesperado vira erro claro", async () => {
+    stubFetch(200, { access_token: "só-o-access" });
+
+    await expect(
+      mercadoLivreOAuthClient.refreshToken({ clientId: input.clientId, clientSecret: input.clientSecret, refreshToken: "TG-x" }),
+    ).rejects.toThrow(/Resposta inesperada/);
   });
 });

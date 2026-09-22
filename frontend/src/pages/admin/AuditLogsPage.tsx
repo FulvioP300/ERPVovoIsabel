@@ -26,6 +26,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   MARKETPLACE_ACCOUNT_DELETE: "Conta de marketplace apagada",
   MARKETPLACE_ACCOUNT_VIEW: "Conta de marketplace consultada",
   MARKETPLACE_CREDENTIAL_KEY_ROTATE: "Chave de criptografia rotacionada",
+  MERCADO_LIVRE_PACKAGE_SETTINGS_UPDATE: "Pacote padrão do Mercado Livre atualizado",
 };
 
 const selectClass =

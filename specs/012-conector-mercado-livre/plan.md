@@ -14,7 +14,7 @@
 | Serialização por conta | Trava (*lease*) no próprio documento de `marketplace_accounts` no MongoDB — sem Redis nem fila (princípio V) |
 | Validação | Zod (respostas do Mercado Livre lidas defensivamente; o que não for reconhecido vira erro claro, nunca `undefined` propagado) |
 | Frontend | React + TanStack Query — mesmas telas de 011 (`PublishToMarketplace`, `MarketplaceAccountsPage`, `ProductsPage`) |
-| Configuração | `MERCADO_LIVRE_LISTING_TYPE_ID` (padrão `gold_special`, spec 3.2), `MERCADO_LIVRE_PACKAGE_DEFAULTS` (pacote padrão, spec 3.4) e `MERCADO_LIVRE_API_BASE_URL` (padrão `https://api.mercadolibre.com`; existe para os testes E2E apontarem para um servidor falso — produção não define) |
+| Configuração | `MERCADO_LIVRE_API_BASE_URL` (padrão `https://api.mercadolibre.com`; existe para os testes E2E apontarem para um servidor falso — produção não define) é a **única** variável de ambiente específica do conector. Pacote padrão (spec 3.4; ADR-027) e tipo de anúncio (spec 3.2; ADR-026) **não** são variáveis de ambiente — o pacote é editado numa tela de admin e gravado no banco, o tipo de anúncio o operador escolhe a cada publicação |
 
 ## 2. Contexto técnico
 
@@ -219,18 +219,24 @@ spec e, se mudar algo, para os passos seguintes.
 
 **Decidido e ainda aberto**
 
-9. **Dimensões do pacote** (spec 3.4) — ✅ **decidido (b)**: pacote padrão configurável em
-   `MERCADO_LIVRE_PACKAGE_DEFAULTS` (JSON validado por Zod), resolvido por **categoria > departamento >
-   padrão**; o peso vem do produto (kg → g, arredondado para cima), com `peso_g` da configuração como
-   reserva. Sem configuração válida, a publicação falha antes do `POST`. Os **valores reais** dependem
-   das embalagens do brechó (T051).
+9. **Dimensões do pacote** (spec 3.4) — ✅ **decidido (ADR-027, 22/09/2026)**: pacote padrão **único**,
+   editado numa tela de admin ("Contas de marketplace → Pacote padrão do Mercado Livre") e gravado no
+   banco — não mais variável de ambiente, sem exceção por categoria/departamento; o peso vem do produto
+   (kg → g, arredondado para cima), com o peso do pacote padrão (sempre obrigatório no formulário) como
+   reserva. Sem pacote configurado, a publicação falha antes do `POST`. Os **valores reais** dependem
+   das embalagens do brechó (T051) — preenchidos direto na tela.
 10. **Tamanhos do ERP × tabelas de medidas** (spec 3.5) — ✅ **medido (T050, 21/09/2026)**: só calçados
-    têm tabela `STANDARD` (5 domínios) ou `BRAND` (9); **nenhum domínio de roupa tem**. Roupas exigem uma
-    tabela `SPECIFIC` do vendedor — ⚠ decisão T053 (achar tabelas criadas pela dona do brechó × criar por
-    API). No ERP de dev, 7 de 9 produtos não têm `tamanho_etiqueta`, e o `SIZE` é obrigatório. Também
-    ⚠ decisão T054: o preditor devolveu domínios inesperados para peças comuns ("camisa masculina" →
-    `MLB-RUGBY_JERSEYS`, "jaqueta masculina" → `MLB-FOOTBALL_JACKETS`) — proposta: mapeamento
-    configurável categoria do ERP → categoria/domínio do Mercado Livre, com o preditor como reserva.
+    têm tabela `STANDARD` (5 domínios) ou `BRAND` (9); **nenhum domínio de roupa tem**. **Decisão (T053,
+    ADR-024, 22/09/2026):** o ERP cria/estende tabelas `SPECIFIC` por API, com as medidas reais de cada
+    peça — cada peça é única (constituição, princípio X), então a medida real já é o que a tabela precisa.
+    Exige estender `medidas` (`coxa`, `entrepasso` — T056; confirmado só para calças/shorts/saias, partes
+    de cima dependem de `technical_specs` na implementação). No ERP de dev, 7 de 9 produtos não têm
+    `tamanho_etiqueta`, e o `SIZE` é obrigatório. Também **decisão (T054, ADR-025, 22/09/2026):** o
+    preditor devolveu domínios inesperados para peças comuns ("camisa masculina" →
+    `MLB-RUGBY_JERSEYS`, "jaqueta masculina" → `MLB-FOOTBALL_JACKETS`) — revisão humana **obrigatória
+    em toda publicação** (criar, republicar, recriar), com o preditor só sugerindo e o operador
+    confirmando/corrigindo numa lista curada de categorias de Roupas/Calçados/Bolsas; sem mapeamento
+    configurável (rejeitado — a revisão sempre presente já cobre o risco que ele cobriria).
 11. **Domínio ativo = tabela obrigatória?** (spec 3.5) — ⚠ a documentação não diz que toda a lista de
     `active_domains` é obrigatória; tratamos como obrigatória (lado seguro).
 12. **Texto exato do *warning* de preço ignorado** (spec 3.1) — não documentado; confirma-se na Fase 8.
@@ -333,9 +339,10 @@ verificados na Fase 8 com um **usuário de teste**.
      recuse `closed` → mensagem do Mercado Livre ao operador.
    - Todo erro é lançado como `MarketplaceConnectorError` **carregando o `updatedCredential`** se houve
      renovação antes da falha.
-5. `MERCADO_LIVRE_LISTING_TYPE_ID` e `MERCADO_LIVRE_API_BASE_URL` lidos na criação do conector;
-   `MERCADO_LIVRE_PACKAGE_DEFAULTS` lido e validado só quando o conector precisa dele
-   (`mercado-livre-package.config.ts`); `.env.example` documenta as três.
+5. `MERCADO_LIVRE_API_BASE_URL` lida na criação do conector, documentada em `.env.example`. Pacote
+   padrão e tipo de anúncio **não** são variáveis de ambiente: o pacote vem do banco
+   (`mercado-livre-package.config.ts` lê `mercadoLivrePackageSettingsRepository`, ADR-027) e o tipo de
+   anúncio (`listingTypeId`) vem da revisão do operador (ADR-026, T059).
 
 ### Fase 5 — Serviços e rotas de anúncio
 
@@ -376,9 +383,9 @@ O Mercado Livre **não tem sandbox** e manda testar com **usuários de teste** (
    a cada 7 dias) — sem isso o teste exercita o modelo antigo (`title`).
 2. Cadastrar uma conta do Mercado Livre no ERP com o Client ID/Secret do app e conectá-la por OAuth
    **logando como o usuário de teste**.
-3. Publicar uma peça de teste — título "Item de Teste – Por favor, NÃO OFERTAR!", categoria "Outros" e
-   `MERCADO_LIVRE_LISTING_TYPE_ID` diferente de `gold`/`gold_premium` — → conferir o anúncio → republicar
-   (mudando o preço) → **encerrar**. Aqui se confirma o formato do *warning* de preço, o corpo do
+3. Publicar uma peça de teste — título "Item de Teste – Por favor, NÃO OFERTAR!", categoria "Outros" e,
+   na revisão, um tipo de anúncio diferente de `gold`/`gold_premium` (ADR-026) — → conferir o anúncio →
+   republicar (mudando o preço) → **encerrar**. Aqui se confirma o formato do *warning* de preço, o corpo do
    encerramento e as dimensões do pacote.
 4. Só depois, a **primeira publicação real** (uma peça de verdade, na conta da loja, com o tipo de anúncio
    decidido pela dona do brechó) — isso não é teste, é uso.
@@ -411,15 +418,22 @@ O Mercado Livre **não tem sandbox** e manda testar com **usuários de teste** (
 
 ## 7. Riscos / decisões em aberto
 
-- **Roupas não publicam sem tabela de medidas `SPECIFIC`** (T050): nenhum domínio de roupa tem tabela
-  `STANDARD`/`BRAND`. Sem decidir T053 (achar as tabelas que a dona do brechó criar × criar por API),
-  só calçados publicam com a v1. É o maior risco para o primeiro anúncio real de roupas. Somam-se: o
-  `tamanho_etiqueta` é obrigatório (7 de 9 produtos de dev não têm) e o preditor pode errar o domínio
-  (T054). O **pacote padrão** também precisa de valores reais (T051) — pacote errado não bloqueia a
-  publicação, mas pode cobrar frete a mais ou a menos.
-- **Pacote padrão é uma aproximação**: peças de tamanho muito diferente na mesma categoria dividem a
-  mesma embalagem configurada. Aceito na v1; a saída é acrescentar entradas em `por_categoria` ou,
-  depois, dimensões por produto (spec 005) e uma tela de administração da configuração.
+- **Roupas exigem tabela `SPECIFIC` criada pelo próprio ERP** (T050/T053, ADR-024): nenhum domínio de
+  roupa tem tabela `STANDARD`/`BRAND`. A implementação (T023/T025) cria/estende a tabela com as medidas
+  reais da peça (`medidas`, T056), o que é mais escopo do que só ler uma tabela pronta — inclui criar a
+  tabela na primeira peça de cada domínio+gênero e decidir, a cada peça seguinte, se a combinação
+  tamanho+medidas já existe (reaproveita linha) ou não (adiciona linha nova). Somam-se: o
+  `tamanho_etiqueta` e as medidas do domínio são obrigatórios (7 de 9 produtos de dev não têm
+  `tamanho_etiqueta`, e nenhum tem `coxa`/`entrepasso` ainda) e a categoria confirmada na revisão
+  (T054, ADR-025) decide o domínio, que decide quais medidas são pedidas. Partes de cima (camisas, blusas, jaquetas, vestidos) têm os
+  atributos `GARMENT_*` **não confirmados** — só se sabe ao consultar `technical_specs` na implementação;
+  se pedirem medida que o ERP não captura, vira uma extensão nova de `medidas`, decidida então. O
+  **pacote padrão** também precisa de valores reais (T051) — pacote errado não bloqueia a publicação, mas
+  pode cobrar frete a mais ou a menos.
+- **Pacote padrão é uma aproximação**: toda peça, de qualquer categoria, usa o mesmo pacote único
+  (ADR-027). Aceito na v1; a saída é uma exceção por categoria (se o uso real mostrar necessidade)
+  ou, depois, dimensões por produto (spec 005) — a tela de administração da configuração em si já
+  existe desde a ADR-027.
 - **Moderação posterior:** um anúncio de moda criado que descumpra a validação da tabela é pausado
   depois; o ERP mostra `publicado` mesmo assim (sem sincronização de status). Fica como evolução
   natural junto do resto da sincronização.

@@ -1,0 +1,407 @@
+import type { Product } from "../../schemas/product.schema.js";
+import type { CondicaoEstado } from "../../../../shared/dist/schemas/product.schema.js";
+import type { CategoryAttribute, CreateSizeChartInput, CreateSizeChartRowInput, SizeChartRow } from "./mercado-livre-api.client.js";
+import type { ResolvedPackage } from "./mercado-livre-package.config.js";
+
+/**
+ * Funções puras que traduzem o produto do ERP para o formato do Mercado Livre (spec 012, seções
+ * 3 a 6). Nenhuma chamada de rede aqui — o conector (T024/T025/T026) busca os dados (categoria,
+ * tabela de medidas, pacote) e chama estas funções para montar o payload. `categoryId` e
+ * `listingTypeId` chegam já resolvidos pela revisão do operador (spec 012, seção 4; ADR-025,
+ * ADR-026) — este módulo nunca chama o preditor nem decide o tipo de anúncio.
+ */
+
+export class MercadoLivreMappingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MercadoLivreMappingError";
+  }
+}
+
+export interface MercadoLivreAttributeCandidate {
+  id: string;
+  value_id?: string;
+  value_name?: string;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Condição (spec 012, seção 3)
+
+const CONDITION_LABEL: Record<CondicaoEstado, "Novo" | "Usado"> = {
+  novo: "Novo",
+  seminovo: "Usado",
+  usado: "Usado",
+};
+
+/**
+ * `novo → "Novo"`; `seminovo`/`usado → "Usado"` (o Mercado Livre não distingue seminovo). O
+ * `value_id` vem sempre da categoria, nunca fixado aqui — sem o atributo ou sem o valor
+ * correspondente, falha com mensagem clara em vez de adivinhar.
+ */
+export function mapCondition(estado: CondicaoEstado, itemConditionAttribute: CategoryAttribute | undefined): MercadoLivreAttributeCandidate {
+  const label = CONDITION_LABEL[estado];
+  if (!itemConditionAttribute) {
+    throw new MercadoLivreMappingError("A categoria não tem o atributo ITEM_CONDITION — não é possível informar a condição da peça.");
+  }
+  const match = itemConditionAttribute.values.find((v) => v.name === label);
+  if (!match) {
+    throw new MercadoLivreMappingError(`A categoria não aceita a condição "${label}".`);
+  }
+  return { id: "ITEM_CONDITION", value_id: match.id, value_name: match.name };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Filtro final de atributos (spec 012, seção 4)
+
+/** Só o que a categoria de fato aceita; nunca `read_only`, `fixed` ou `inferred` (o Mercado Livre preenche sozinho). */
+export function pickAttributes(
+  candidates: MercadoLivreAttributeCandidate[],
+  categoryAttributes: CategoryAttribute[],
+): MercadoLivreAttributeCandidate[] {
+  const byId = new Map(categoryAttributes.map((a) => [a.id, a]));
+  return candidates.filter((candidate) => {
+    const attribute = byId.get(candidate.id);
+    if (!attribute) return false;
+    if (attribute.tags.readOnly || attribute.tags.fixed || attribute.tags.inferred) return false;
+    return true;
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Atributos individuais (spec 012, seção 3)
+
+/** SKU do ERP em `SELLER_SKU` (nunca `seller_custom_field`) — identifica a peça se a resposta do `POST` se perder. */
+export function skuAttribute(sku: string): MercadoLivreAttributeCandidate {
+  return { id: "SELLER_SKU", value_name: sku };
+}
+
+/** Dimensões e peso do pacote, sempre inteiros, no formato `"{n} cm"`/`"{n} g"` (spec 012, seção 3.4). */
+export function packageAttributes(pkg: ResolvedPackage): MercadoLivreAttributeCandidate[] {
+  return [
+    { id: "SELLER_PACKAGE_HEIGHT", value_name: `${pkg.altura_cm} cm` },
+    { id: "SELLER_PACKAGE_WIDTH", value_name: `${pkg.largura_cm} cm` },
+    { id: "SELLER_PACKAGE_LENGTH", value_name: `${pkg.comprimento_cm} cm` },
+    { id: "SELLER_PACKAGE_WEIGHT", value_name: `${pkg.peso_g} g` },
+  ];
+}
+
+/** Peça de brechó nunca tem GTIN válido — `EMPTY_GTIN_REASON`, com o `value_id` sempre vindo da categoria (spec 012, seção 5). */
+export function gtinAttribute(reason: { valueId: string; valueName: string }): MercadoLivreAttributeCandidate {
+  return { id: "EMPTY_GTIN_REASON", value_id: reason.valueId, value_name: reason.valueName };
+}
+
+/**
+ * Sinônimo conhecido — confirmado ao vivo (T043): o departamento "Unissexo" (003) não bate
+ * textualmente com nenhum valor de `GENDER` do Mercado Livre ("Sem gênero", "Sem gênero infantil"
+ * — nunca "Unissexo"). Só esse par; qualquer outro departamento sem correspondência continua
+ * devolvendo `null` (nunca inventa).
+ */
+const DEPARTAMENTO_GENDER_SYNONYMS: Record<string, string> = {
+  unissexo: "sem gênero",
+};
+
+/**
+ * `GENDER` a partir do departamento do ERP, casado (melhor esforço, sem acento/maiúscula) com os
+ * valores que a categoria aceita — nunca inventa um `value_id`. `null` se não houver correspondência
+ * (a categoria não tem `GENDER`, ou nenhum valor bate com o departamento, mesmo com o sinônimo).
+ */
+export function genderAttribute(departamento: string, genderAttributeDef: CategoryAttribute | undefined): MercadoLivreAttributeCandidate | null {
+  if (!genderAttributeDef) return null;
+  const normalized = departamento.trim().toLowerCase();
+  const candidates = [normalized, DEPARTAMENTO_GENDER_SYNONYMS[normalized]].filter((v): v is string => v !== undefined);
+  const match = genderAttributeDef.values.find((v) => candidates.includes(v.name.trim().toLowerCase()));
+  if (!match) return null;
+  return { id: "GENDER", value_id: match.id, value_name: match.name };
+}
+
+/** Marca — melhor esforço, só quando a categoria tem `BRAND` (spec 012, seção 3). */
+export function brandAttribute(marcaNome: string | null, hasBrandAttribute: boolean): MercadoLivreAttributeCandidate | null {
+  if (!marcaNome || !hasBrandAttribute) return null;
+  return { id: "BRAND", value_name: marcaNome };
+}
+
+/**
+ * `MODEL` — muitas categorias de acessórios/moda exigem esse atributo de texto livre ("o nome
+ * específico do produto", não documentado em nenhuma fonte salva; confirmado ao vivo, T043). O
+ * ERP não tem um campo "modelo" — decisão (22/09/2026): reaproveitar `identificacao.nome`, dado
+ * real do cadastro, nunca um texto genérico inventado.
+ */
+export function modelAttribute(nome: string, hasModelAttribute: boolean): MercadoLivreAttributeCandidate | null {
+  if (!hasModelAttribute) return null;
+  return { id: "MODEL", value_name: nome };
+}
+
+/**
+ * Cor principal — melhor esforço, em `COLOR` e/ou `MAIN_COLOR`, conforme a categoria tiver.
+ * Envia os dois quando a categoria tem os dois: confirmado ao vivo (T043) que algumas categorias
+ * têm `COLOR` como `required` e `MAIN_COLOR` como opcional ao mesmo tempo — usar só um dos dois
+ * (a escolha antiga priorizava `MAIN_COLOR`) deixava de enviar o que era exigido.
+ */
+export function colorAttributes(cor: string | null, categoryAttributes: CategoryAttribute[]): MercadoLivreAttributeCandidate[] {
+  if (!cor) return [];
+  const ids = categoryAttributes.filter((a) => a.id === "COLOR" || a.id === "MAIN_COLOR").map((a) => a.id);
+  return ids.map((id) => ({ id, value_name: cor }));
+}
+
+/** `SIZE`, `SIZE_GRID_ID` e `SIZE_GRID_ROW_ID` — moda com tabela de medidas (spec 012, seção 3.5). */
+export function sizeChartAttributes(size: string, chartId: string, rowId: string): MercadoLivreAttributeCandidate[] {
+  return [
+    { id: "SIZE", value_name: size },
+    { id: "SIZE_GRID_ID", value_name: chartId },
+    { id: "SIZE_GRID_ROW_ID", value_name: rowId },
+  ];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Medidas de roupa → GARMENT_* (spec 012, seção 3.5; ADR-024)
+
+/** Confirmado só para partes de baixo (calças/shorts/saias) — ver ADR-024. */
+const GARMENT_MEASURE_BY_ATTRIBUTE: Record<string, keyof Product["medidas"]> = {
+  GARMENT_LENGTH_FROM: "comprimento",
+  GARMENT_WAIST_WIDTH_FROM: "cintura",
+  GARMENT_HIP_WIDTH_FROM: "quadril",
+  GARMENT_THIGH_WIDTH_FROM: "coxa",
+  GARMENT_INSEAM_LENGTH_FROM: "entrepasso",
+  GARMENT_FRONT_RISE_FROM: "gancho",
+};
+
+export interface GarmentMeasureResult {
+  attributes: MercadoLivreAttributeCandidate[];
+  /**
+   * Atributos `GARMENT_*` que o domínio exige e que `medidas` não cobre — porque o campo é `null`
+   * (peça sem essa medida preenchida) ou porque o atributo não está no mapeamento acima (domínio de
+   * parte de cima ainda não confirmado, ADR-024 — nunca adivinhado). O conector decide a mensagem.
+   */
+  missingAttributeIds: string[];
+}
+
+/**
+ * Monta os atributos `GARMENT_*` que o domínio exige (`requiredAttributeIds`, de
+ * `technical_specs`), a partir de `medidas`. **Formato do valor**: mesma convenção do pacote
+ * padrão (`"{n} {unidade}"`) — não documentado explicitamente para `GARMENT_*` nas fontes salvas;
+ * a confirmar na Fase 8 (T043/T044) contra a API real.
+ */
+export function garmentMeasureAttributes(requiredAttributeIds: string[], medidas: Product["medidas"]): GarmentMeasureResult {
+  const attributes: MercadoLivreAttributeCandidate[] = [];
+  const missingAttributeIds: string[] = [];
+
+  for (const attributeId of requiredAttributeIds) {
+    const medidaKey = GARMENT_MEASURE_BY_ATTRIBUTE[attributeId];
+    const value = medidaKey ? medidas[medidaKey] : undefined;
+    if (medidaKey === undefined || value === null || value === undefined || typeof value !== "number") {
+      missingAttributeIds.push(attributeId);
+      continue;
+    }
+    attributes.push({ id: attributeId, value_name: `${value} ${medidas.unidade}` });
+  }
+
+  return { attributes, missingAttributeIds };
+}
+
+/**
+ * `true` se `attributeId` já tem mapeamento confirmado em `medidas` (ADR-024) — distingue, entre os
+ * `missingAttributeIds` de `garmentMeasureAttributes`, "peça sem essa medida preenchida" (pedir para
+ * completar o cadastro) de "domínio pede um atributo que o ERP ainda não captura" (extensão de
+ * `MedidasSchema` necessária, nunca adivinhada).
+ */
+export function isKnownGarmentMeasureAttribute(attributeId: string): boolean {
+  return attributeId in GARMENT_MEASURE_BY_ATTRIBUTE;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tabela de medidas — achar a linha certa (spec 012, seção 3.5)
+
+/** `"32"` → `"32,0 BR"` (vocabulário das tabelas `STANDARD`/`BRAND` de calçado); já normalizado passa direto. */
+export function normalizeFootwearSize(sizeLabel: string): string {
+  const trimmed = sizeLabel.trim();
+  if (/^\d+$/.test(trimmed)) return `${trimmed},0 BR`;
+  return trimmed;
+}
+
+export interface ChartRowMatchCriterion {
+  id: string;
+  value: string;
+}
+
+/**
+ * Acha a linha cuja combinação de atributos bate exatamente com `criteria` — calçado usa só
+ * `SIZE`; roupa usa `SIZE` + todos os `GARMENT_*` (peças de tamanho igual podem ter medidas reais
+ * diferentes, princípio X). `null` se nenhuma bater — o conector decide criar/adicionar linha.
+ */
+export function pickChartRow(rows: SizeChartRow[], criteria: ChartRowMatchCriterion[]): SizeChartRow | null {
+  return (
+    rows.find((row) =>
+      criteria.every((criterion) => {
+        const rowAttribute = row.attributes.find((a) => a.id === criterion.id);
+        return rowAttribute?.values.includes(criterion.value) ?? false;
+      }),
+    ) ?? null
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Nome da tabela `SPECIFIC` (spec 012, seção 3.5)
+
+/** ≤ 60 caracteres, só letras/números/espaços — o operador nunca digita o nome da tabela. */
+export function buildChartName(domainName: string, genderName: string): string {
+  // O Mercado Livre rejeitou "—" no nome (invalid_chart_name), confirmado ao vivo no T043, mesmo
+  // dentro do limite de 60 caracteres — só letras, números e espaço (a regra de fato, apesar do
+  // exemplo da spec 012, seção 3.5, mostrar um "—" que a API real não aceita).
+  const raw = `Tabela Vovo Isabel ${domainName} ${genderName}`.replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim();
+  return truncateName(raw, 60);
+}
+
+/**
+ * Corpo de `POST /catalog/charts/{id}/rows` — `SIZE` + todos os `GARMENT_*` da peça, mais
+ * `FILTRABLE_SIZE` (espelha `SIZE`) — exigido pelo Mercado Livre e não documentado nas fontes
+ * salvas; confirmado ao vivo no T043 (`required_row_attribute_not_found`).
+ */
+export function buildChartRowPayload(sizeLabel: string, garmentAttributes: MercadoLivreAttributeCandidate[]): CreateSizeChartRowInput {
+  return {
+    attributes: [
+      { id: "SIZE", values: [sizeLabel] },
+      { id: "FILTRABLE_SIZE", values: [sizeLabel] },
+      ...garmentAttributes.map((a) => ({ id: a.id, values: [a.value_name ?? ""] })),
+    ],
+  };
+}
+
+/** Corpo de `POST /catalog/charts` (criar a tabela `SPECIFIC`, com a primeira linha — spec 012, seção 3.5). */
+export function buildChartPayload(input: {
+  name: string;
+  domainId: string;
+  genderValueName: string;
+  sizeLabel: string;
+  garmentAttributes: MercadoLivreAttributeCandidate[];
+}): CreateSizeChartInput {
+  return {
+    name: input.name,
+    domainId: input.domainId,
+    measureType: "CLOTHING_MEASURE",
+    attributes: [{ id: "GENDER", values: [input.genderValueName] }],
+    mainAttributeId: "SIZE",
+    firstRow: buildChartRowPayload(input.sizeLabel, input.garmentAttributes),
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Utilitários de texto/imagem (spec 012, seções 3, 4)
+
+export function truncateName(name: string, maxLength: number): string {
+  return name.length <= maxLength ? name : name.slice(0, maxLength).trimEnd();
+}
+
+/** Capa (`imagens.principal`) primeiro, depois a galeria em ordem, sem duplicar; corta em `maxPictures` (categoria). */
+export function buildPictureUrls(product: Product, maxPictures: number | undefined): string[] {
+  const urls: string[] = [];
+  if (product.imagens.principal) urls.push(product.imagens.principal.url);
+  for (const imagem of [...product.imagens.galeria].sort((a, b) => a.ordem - b.ordem)) {
+    if (!urls.includes(imagem.url)) urls.push(imagem.url);
+  }
+  return maxPictures === undefined ? urls : urls.slice(0, maxPictures);
+}
+
+/**
+ * Normaliza quebras de linha (`\r\n` → `\n`) e corta em `maxLength`. **Não** tenta remover
+ * HTML/emoji sozinho — a validação real do Mercado Livre (`item.description.type.invalid`, spec
+ * 012, seção 3.6) já aponta a posição do caractere problemático; tentar filtrar aqui arriscaria
+ * mudar silenciosamente um texto que o operador escreveu de propósito.
+ */
+export function sanitizePlainText(text: string, maxLength: number | undefined): string {
+  const normalized = text.replace(/\r\n/g, "\n");
+  return maxLength !== undefined && normalized.length > maxLength ? normalized.slice(0, maxLength) : normalized;
+}
+
+/** `tags: ["immediate_payment"]` só quando a categoria exige (spec 012, seção 3). */
+export function immediateTag(immediatePayment: string | undefined): string[] {
+  return immediatePayment === "required" ? ["immediate_payment"] : [];
+}
+
+export class PriceOutOfRangeError extends MercadoLivreMappingError {}
+
+/** Falha **antes** de qualquer chamada de escrita se o preço estiver fora da faixa da categoria (spec 012, seção 6). */
+export function assertPriceInRange(price: number, minimumPrice: number | null, maximumPrice: number | null): void {
+  if (minimumPrice !== null && price < minimumPrice) {
+    throw new PriceOutOfRangeError(
+      `O preço de venda (R$ ${price.toFixed(2)}) está abaixo do mínimo aceito pela categoria (R$ ${minimumPrice.toFixed(2)}).`,
+    );
+  }
+  if (maximumPrice !== null && price > maximumPrice) {
+    throw new PriceOutOfRangeError(
+      `O preço de venda (R$ ${price.toFixed(2)}) está acima do máximo aceito pela categoria (R$ ${maximumPrice.toFixed(2)}).`,
+    );
+  }
+}
+
+/**
+ * Garantia (spec 012, seção 6): sem garantia por padrão. O Mercado Livre só exige quando
+ * `ITEM_CONDITION = "Recondicionado"` — e `mapCondition` **nunca** mapeia para isso (o ERP não
+ * distingue recondicionado ainda). Sempre vazio nesta versão; existe como função própria para
+ * documentar a decisão e já ter onde crescer se o cadastro (005) um dia distinguir recondicionado.
+ */
+export function warrantyTerms(): MercadoLivreAttributeCandidate[] {
+  return [];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Payload de criação/atualização (spec 012, seções 3, 3.1, 3.3)
+
+export interface CreateItemPayloadInput {
+  categoryId: string;
+  /** `family_name` (modelo *User Products*) quando `true`; senão `title` (spec 012, seção 3.3). */
+  useUserProducts: boolean;
+  name: string;
+  price: number;
+  attributes: MercadoLivreAttributeCandidate[];
+  pictureUrls: string[];
+  listingTypeId: string;
+  tags: string[];
+}
+
+export function buildCreatePayload(input: CreateItemPayloadInput): Record<string, unknown> {
+  return {
+    category_id: input.categoryId,
+    ...(input.useUserProducts ? { family_name: input.name } : { title: input.name }),
+    price: input.price,
+    currency_id: "BRL",
+    available_quantity: 1,
+    buying_mode: "buy_it_now",
+    listing_type_id: input.listingTypeId,
+    pictures: input.pictureUrls.map((url) => ({ source: url })),
+    attributes: input.attributes,
+    ...(input.tags.length > 0 ? { tags: input.tags } : {}),
+  };
+}
+
+export interface UpdateItemPayloadInput {
+  useUserProducts: boolean;
+  name: string;
+  /** `title` só é reenviado quando `soldQuantity === 0` (spec 012, seção 3.1) — `family_name` nunca, ver nota abaixo. */
+  soldQuantity: number;
+  price: number;
+  attributes: MercadoLivreAttributeCandidate[];
+  pictureUrls: string[];
+}
+
+/**
+ * `family_name` **nunca** é reenviado em `PUT /items/{id}` — confirmado ao vivo (T044,
+ * 22/09/2026): o Mercado Livre rejeita com `"The field family name is invalid"` mesmo reenviando
+ * o valor idêntico ou um texto simples sem acento, no modelo *User Products*. Diferente do que a
+ * spec 012, seção 3.1, presumia ("family_name... só é editável enquanto sold_quantity = 0") —
+ * editável talvez seja, mas não por este payload; a forma real de editar `family_name` de um item
+ * já criado continua sem confirmação (possível endpoint próprio). `title` (modelo antigo) segue a
+ * regra original, não testada ao vivo (a conta de produção já está no modelo *User Products*).
+ */
+export function buildUpdatePayload(input: UpdateItemPayloadInput): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    price: input.price,
+    currency_id: "BRL",
+    available_quantity: 1,
+    pictures: input.pictureUrls.map((url) => ({ source: url })),
+    attributes: input.attributes,
+  };
+  if (!input.useUserProducts && input.soldQuantity === 0) {
+    payload.title = input.name;
+  }
+  return payload;
+}

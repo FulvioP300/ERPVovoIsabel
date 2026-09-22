@@ -14,6 +14,9 @@ import {
   type EditMarketplaceAccountFormValues,
   type Marketplace,
   type MarketplaceAccount,
+  MercadoLivrePackageSettingsRecordSchema,
+  type MercadoLivrePackageSettingsFormValues,
+  type MercadoLivrePackageSettingsRecord,
 } from "../schemas/marketplace-account.schema";
 
 export class ApiError extends Error {}
@@ -133,6 +136,23 @@ export const marketplaceAccountService = {
       credentials: "include",
     });
     return KeyRotationReportSchema.parse(await parseEnvelope<unknown>(response));
+  },
+
+  /** Pacote padrão do Mercado Livre (spec 012, seção 3.4; ADR-027) — `null` se ainda não configurado. */
+  async getMercadoLivrePackageSettings(): Promise<MercadoLivrePackageSettingsRecord | null> {
+    const response = await fetch("/api/marketplace-accounts/mercado-livre-package-settings", { credentials: "include" });
+    const data = await parseEnvelope<unknown>(response);
+    return data === null ? null : MercadoLivrePackageSettingsRecordSchema.parse(data);
+  },
+
+  async updateMercadoLivrePackageSettings(values: MercadoLivrePackageSettingsFormValues): Promise<MercadoLivrePackageSettingsRecord> {
+    const response = await fetch("/api/marketplace-accounts/mercado-livre-package-settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(values),
+    });
+    return MercadoLivrePackageSettingsRecordSchema.parse(await parseEnvelope<unknown>(response));
   },
 
   async updateStatus(id: string, active: boolean): Promise<MarketplaceAccount> {

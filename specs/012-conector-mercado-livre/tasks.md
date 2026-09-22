@@ -79,16 +79,22 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
       "Realização de testes": o Mercado Livre **não tem sandbox**; usa-se **usuário de teste** em
       produção. A página não explica o `sandbox_mode` do app; tratado como sem efeito, a confirmar no
       primeiro teste da Fase 8. A Fase 8 passou a usar usuário de teste (título e categoria prescritos).
-- [ ] T010 [P] Decisão de negócio (spec, seção 3.2): a dona do brechó escolhe o
+- [x] T010 [P] Decisão de negócio (spec, seção 3.2): a dona do brechó escolhe o
       `MERCADO_LIVRE_LISTING_TYPE_ID` (custo × exposição). Já reunido: tipos do MLB, `gold_special` e
       `gold_pro` sem prazo, `free` restrito, `listing_prices` para comparar o custo por tipo e categoria
       (exige token). Não bloqueia código (o padrão é `gold_special`), mas bloqueia o primeiro anúncio
       real (T043).
+      **Decidida** (ADR-026, 22/09/2026): **sem** variável de ambiente — o operador escolhe o tipo de
+      anúncio a cada publicação, na mesma tela de revisão da categoria (T059), lista estática ordenada
+      do mais barato (`free`, padrão) ao mais caro (`gold_pro`). Ordem por faixa conhecida, não por preço
+      real (`listing_prices` exige token, não consultado) — a confirmar na Fase 8 (T043/T044).
 - [x] T046 [P] **Dimensões do pacote** (spec, seção 3.4) — decidido (b): pacote padrão configurável em
       `MERCADO_LIVRE_PACKAGE_DEFAULTS` (JSON com `padrao`, `por_departamento` e `por_categoria`; `altura_cm`,
       `largura_cm`, `comprimento_cm` inteiros e `peso_g` opcional), resolvido por categoria > departamento >
       padrão; peso do produto (kg → g, arredondado para cima) com `peso_g` como reserva. Implementação em
       T052; valores reais em T051. (Dimensões por produto no cadastro ficam como evolução — spec 005.)
+      **Superada (ADR-027, 22/09/2026):** a decisão "b" (env var + prioridade categoria/departamento/padrão)
+      foi substituída por um único pacote padrão, editado numa tela de admin e gravado no banco — ver T052.
 - [x] T047 [P] **Moda: `GENDER` e tabela de medidas** (spec, seção 3.5) — leitura concluída ("Primeiros passos",
       "Gerenciar tabela de medidas" e "Validação da tabela de medidas"): domínios com tabela via
       `active_domains`; item leva `GENDER`, `SIZE`, `SIZE_GRID_ID` e `SIZE_GRID_ROW_ID`; tabela encontrada por
@@ -102,21 +108,59 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
       5 domínios de calçado e `BRAND` só para 9 de calçado; **nenhum domínio de roupa tem tabela pronta** (busca
       `STANDARD` devolve 0). No ERP de dev, 7 de 9 produtos não têm `tamanho_etiqueta`; as linhas de calçado usam
       `"34,0 BR"` e o ERP guarda `"32"`. Consequências e decisões em T053 e T054.
-- [ ] T053 [P] **Decisão — tabela de medidas de roupas** (spec, seção 3.5): como obter a tabela `SPECIFIC` que o
-      Mercado Livre exige para roupas — (1) **achar** as tabelas que a dona do brechó criar no painel do Mercado
-      Livre (uma por domínio e gênero, uma linha por tamanho) e escolher a linha pelo `SIZE`; (2) **criar** por API
-      (`POST /catalog/charts`, com medidas da peça por linha — domínios `TOPS`/`BOTTOMS`, `CLOTHING_MEASURE`); ou (3)
-      limitar a v1 a calçados e publicar roupas depois. Recomendação: (1) na v1 — o conector só lê. Bloqueia T023 e
-      T025 para roupas.
-- [ ] T054 [P] **Decisão — categoria do Mercado Livre por peça** (spec, seção 4): trocar o preditor por um
-      **mapeamento configurável categoria do ERP → categoria/domínio do Mercado Livre** (as 12 categorias do brechó:
-      BERM, CALC, CAMI, POLO, JAQU, VEST, BLUS, SAIA, SAPT, BOLS, ACES, CHAP), com o preditor só como reserva. O T050
-      mostrou o preditor errando o domínio de peças comuns. Se aprovado, entra em T023 (mapeador) e T052 (mesma
-      configuração do pacote padrão). Bloqueia T023 e T025.
-- [ ] T051 [P] **Valores reais do pacote padrão** (spec, seção 3.4) — a dona do brechó informa as medidas (altura,
-      largura, comprimento em cm) e o peso típico da embalagem por tipo de peça (ex.: peça leve dobrada em
-      saco, calçado, casaco); com isso se monta o JSON de `MERCADO_LIVRE_PACKAGE_DEFAULTS` (`padrao`,
-      `por_departamento`, `por_categoria`). Bloqueia a primeira publicação real (T049), não o código.
+- [x] T053 [P] **Decisão — tabela de medidas de roupas** (spec, seção 3.5; ADR-024, 22/09/2026): **opção 2** —
+      o ERP cria/estende tabelas `SPECIFIC` por API (`POST /catalog/charts`, `measure_type: CLOTHING_MEASURE`,
+      domínios `TOPS`/`BOTTOMS`), alimentadas pelas medidas reais de cada peça (`medidas`, spec 005) — cada peça é
+      única (constituição, princípio X), então a medida real já é o que a tabela precisa. Uma tabela por
+      domínio+gênero; linha nova só quando a combinação tamanho+medidas não existir ainda
+      (`POST /catalog/charts/{id}/rows`), nunca edita linha existente nem recria a tabela.
+- [x] T056 [P] **Estender `medidas` para as medidas de roupa do Mercado Livre** (ADR-024; spec 005, `MedidasSchema`;
+      spec 012, seção 3.5): `coxa` (`GARMENT_THIGH_WIDTH_FROM`) e `entrepasso` (`GARMENT_INSEAM_LENGTH_FROM`) — os
+      já existentes `cintura`/`quadril`/`gancho`/`comprimento` já mapeiam para `GARMENT_WAIST_WIDTH_FROM`/
+      `GARMENT_HIP_WIDTH_FROM`/`GARMENT_FRONT_RISE_FROM`/`GARMENT_LENGTH_FROM`. Muda
+      `shared/schemas/product.schema.ts` (`MedidasSchema`), `shared/schemas/ai-intake.schema.ts`
+      (`AiMedidasSchema`) e `frontend/src/features/products/ProductForm.tsx` (dois campos novos na seção de
+      medidas) — mesmo padrão dos campos existentes (`nullableNumber().default(null)`, documento antigo sem os
+      campos continua válido). Confirmado só para domínios de parte de baixo; partes de cima (camisas, blusas,
+      jaquetas, vestidos) esperam a leitura de `technical_specs` na implementação (T023) — se pedirem medida que o
+      ERP não captura (busto, ombro, manga), vira uma extensão nova de `MedidasSchema`, decidida então. Bloqueia
+      T023 e T025 para os domínios cobertos por esta extensão.
+      **Feito** (22/09/2026): campos novos em `MedidasSchema`/`AiMedidasSchema`, `ProductForm.tsx` e nos dois
+      schemas de formulário do frontend (`product.schema.ts`, `ai-intake.schema.ts`); fixtures de teste
+      atualizadas em todos os arquivos que montam um `medidas` completo. `npm run build` em `shared/` (20/20) e
+      `tsc --noEmit` limpo em `backend/`/`frontend/`.
+- [x] T054 [P] **Decisão — categoria do Mercado Livre por peça** (spec, seção 4; ADR-025, 22/09/2026):
+      **revisão humana obrigatória em toda publicação** (criar, republicar, recriar) — o preditor só sugere
+      (pré-seleciona), o operador confirma ou escolhe outra categoria numa lista curada de categorias-folha
+      de Roupas/Calçados/Bolsas antes do `POST /items`. **Sem** mapeamento configurável categoria do ERP →
+      categoria do Mercado Livre: rejeitado porque a revisão sempre presente já cobre o risco que o
+      mapeamento cobriria, sem exigir manter 12 categorias em sincronia com a taxonomia do Mercado Livre. O
+      T050 mostrou o preditor errando o domínio de peças comuns ("camisa masculina" →
+      `MLB-RUGBY_JERSEYS`), e a ADR-024 tornou isso mais caro de errar (cria tabela `SPECIFIC` no domínio
+      errado). Desdobra em T057 (levantar a lista curada), T058 (endpoint de sugestão) e T059 (tela de
+      revisão) — ver Fase 4/6. Libera T023 e T025 (que deixam de chamar o preditor internamente: recebem
+      `categoryId` já resolvido).
+- [x] T057 [P] **Levantar a lista curada de categorias para a tela de revisão** (spec, seção 4; ADR-025) —
+      medição contra a conta real conectada, mesmo método da T050: navegar `GET /sites/MLB/categories`
+      até achar o nó "Calçados, Roupas e Bolsas", descer recursivamente (`GET /categories/{id}` →
+      `children_categories`) até as **categorias-folha** (sem filhos — só essas aceitam `POST /items`),
+      e congelar `{ categoryId, categoryName, domainId? }[]` num arquivo versionado no repositório (não
+      `MERCADO_LIVRE_PACKAGE_DEFAULTS`/env var — é taxonomia do Mercado Livre, não configuração da dona
+      do brechó). Bloqueia T058/T059 (a lista é o que preenche o `<select>` de revisão).
+      **Feito** (22/09/2026): `GET /sites/MLB/categories` (listagem plana) devolveu `403
+      PA_UNAUTHORIZED_RESULT_FROM_POLICIES` — sem token, bloqueado por política antibot, não por falta de
+      permissão; contornado sem precisar de conta conectada: `GET /categories/{id}` (id individual, que
+      também devolve `children_categories`) funciona normalmente e sem token, e uma folha conhecida
+      (Camisas, `MLB107292`) trouxe `path_from_root` confirmando a raiz `MLB1430` = "Calçados, Roupas e
+      Bolsas". Script `backend/src/scripts/fetch-mercado-livre-category-catalog.ts`
+      (`npm run fetch:mercado-livre-categories`), 5 chamadas simultâneas no máximo — desceu a árvore
+      inteira (233 categorias visitadas) e gravou 207 categorias-folha, todas com `categoryId` único, em
+      `backend/src/plugins/marketplaces/mercado-livre-category-catalog.json`.
+- [ ] T051 [P] **Valores reais do pacote padrão** (spec, seção 3.4; ADR-027) — a dona do brechó preenche a
+      tela "Contas de marketplace → Pacote padrão do Mercado Livre" com altura, largura, comprimento (cm)
+      e peso (g) — um valor só, que serve para toda peça (sem exceção por categoria/departamento,
+      ADR-027). Bloqueia a primeira publicação real (T049), não o código — a tela e a gravação no banco já
+      estão prontas (T052).
 
 ## Fase 1 — Contrato compartilhado, auditoria e contagem
 
@@ -183,71 +227,172 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
 
 ## Fase 4 — Adaptador do Mercado Livre
 
-- [ ] T021 `mercado-livre-oauth.client.ts`: `refreshToken({ clientId, clientSecret, refreshToken })`
+- [x] T021 `mercado-livre-oauth.client.ts`: `refreshToken({ clientId, clientSecret, refreshToken })`
       (`grant_type=refresh_token`); `invalid_grant` → erro com `reconnectRequired`, erro de rede/5xx sem
       o flag; incluir o método na interface `MercadoLivreOAuthClient` e atualizar os fakes de teste
       (`mercado-livre-oauth.spec.ts`, `marketplace-account-lifecycle.spec.ts`). Testes em
       `mercado-livre-oauth.client.test.ts` (corpo enviado, `invalid_grant`, erro de rede, mensagem sem
       segredo) — depende de T001.
-- [ ] T022 [P] `plugins/marketplaces/mercado-livre-api.client.ts`: uma função por chamada — `GET /users/me`
+      **Feito** (22/09/2026): `MercadoLivreInvalidGrantError` e `refreshToken` em `mercado-livre-oauth.client.ts`;
+      5 testes novos. **Não** atualizados os fakes de `tests/integration/mercado-livre-oauth.spec.ts` e
+      `marketplace-account-lifecycle.spec.ts` — não implementam o método novo, mas nada ali o exercita; como
+      `backend/tsconfig.json` só inclui `src` no `tsc`, isso não aparece nem no type-check nem no vitest
+      (gap pré-existente, fora do escopo desta tarefa).
+- [x] T022 [P] `plugins/marketplaces/mercado-livre-api.client.ts`: uma função por chamada — `GET /users/me`
       (tag `user_product_seller`), predictor de categoria, `GET /categories/{id}`,
       `GET /categories/{id}/attributes`, `POST /categories/{id}/attributes/conditional`,
       `GET /categories/{id}/sale_terms`, `POST`/`PUT /items`, `GET /items/{id}`, multiget
       `GET /items?ids=…&attributes=…` (até 20 ids), `POST`/`PUT /items/{id}/description[?api_version=2]`,
       busca por SKU `GET /users/{user_id}/items/search?seller_sku=…&orders=start_time_desc`,
       `PUT /items/{id}` com `status: closed` e, para moda, `GET /catalog/charts/MLB/configurations/active_domains`,
-      `GET /domains/{id}/technical_specs`, `POST /catalog/charts/search` e `GET /catalog/charts/{id}` — todas
+      `GET /domains/{id}/technical_specs?section=grids`, `POST /catalog/charts/search`, `GET /catalog/charts/{id}`,
+      `POST /catalog/charts` (criar tabela `SPECIFIC`) e `POST /catalog/charts/{id}/rows` (adicionar linha) — todas
       com `Authorization: Bearer`, timeout de 15 s, resposta validada por Zod, erro classificado
       (`MercadoLivreApiError { status, code, causes }`, lendo `cause[]` no formato da spec 3.6), mensagens
       sem token nem `client_secret`; base URL de `MERCADO_LIVRE_API_BASE_URL` (aceita só fora de
       `NODE_ENV=production`). 429/5xx sem repetição; **única** repetição automática: `409` de versão no
       encerramento (espera e repete, até 3×). Testes com `fetch` simulado e relógio falso — depende de
       T005, T006, T007, T008 (todas confirmadas).
-- [ ] T023 [P] `plugins/marketplaces/mercado-livre-item.mapper.ts` — funções **puras**: `buildCreatePayload`
+      **Feito** (22/09/2026): todas as funções listadas implementadas (incluindo o conjunto de tabelas de
+      medidas); 34 testes em `mercado-livre-api.client.test.ts`. `MERCADO_LIVRE_API_BASE_URL` documentada em
+      `backend/.env.example`.
+      **Corrigido no T043 (22/09/2026, testes reais):** `getDomainSizeChartAttributes` tinha um nível de
+      `components` a menos que a estrutura real (`groups[].components[].components[].attributes[]`, dois
+      níveis aninhados) — nunca encontrava nada antes da correção. `MercadoLivreApiError`: `cause` às vezes
+      não é array (quebrava com `.map is not a function` — agora com `Array.isArray()`); formato alternativo
+      `errors` (sem `type`, visto em `/catalog/charts`) passou a ser lido também, sempre como bloqueante. 39
+      testes em `mercado-livre-api.client.test.ts` (+5).
+- [x] T023 [P] `plugins/marketplaces/mercado-livre-item.mapper.ts` — recebe `categoryId` já resolvido pela
+      revisão (spec 012, seção 4; ADR-025) — **não** chama o preditor. Funções **puras**: `buildCreatePayload`
       (`family_name` × `title` conforme o modelo do vendedor), `buildUpdatePayload`, `mapCondition`
       (`novo → "Novo"`; `seminovo`/`usado → "Usado"`, `value_id` dos atributos da categoria, atributo
       `ITEM_CONDITION` — nunca `condition`), `pickAttributes` (só o que a categoria aceita; nunca
       `read_only`/`fixed`/`inferred`), `skuAttribute` (`SELLER_SKU`), `packageAttributes` (inteiros, cm e g; a partir de `resolvePackage`, T052), `gtinAttribute` (`EMPTY_GTIN_REASON` com o `value_id` da categoria,
       só quando exigido), `genderAttribute` (departamento → `GENDER`), `sizeChartAttributes` (`SIZE`,
-      `SIZE_GRID_ID`, `SIZE_GRID_ROW_ID`), `pickChartRow` (`SIZE` igual a `tamanho_etiqueta`, senão
-      `tamanho_equivalente`; `BRAND` > `STANDARD` > `SPECIFIC`), `truncateName` (`max_title_length`),
+      `SIZE_GRID_ID`, `SIZE_GRID_ROW_ID`), `garmentMeasureAttributes` (`medidas` → `GARMENT_*`, tabela da spec
+      3.5 — ADR-024), `pickChartRow` — calçado: `SIZE` igual a `tamanho_etiqueta`, senão `tamanho_equivalente`,
+      `BRAND` > `STANDARD`; roupa: `SIZE` + todos os `GARMENT_*` idênticos numa tabela `SPECIFIC` (achar ou
+      indicar que precisa criar linha) —, `buildChartPayload` (corpo de `POST /catalog/charts` e de
+      `.../rows`, nome ≤ 60 caracteres gerado pelo conector), `truncateName` (`max_title_length`),
       `capPictures` (`max_pictures_per_item`, capa primeiro), `sanitizePlainText` (só `\n`, sem
       HTML/emoji, `max_description_length`), `immediateTag`, `assertPriceInRange` (falha antes de qualquer
       `POST`/`PUT`), garantia (sem garantia; nunca "Recondicionado"), `available_quantity = 1`,
-      `listing_type_id` configurável. Testes em tabela — depende de T008, T052, T053, T054.
-- [ ] T024 `plugins/marketplaces/mercado-livre.connector.ts` — token: lê a credencial
+      `listing_type_id` recebido como parâmetro (nunca configurável por variável de ambiente — ADR-026).
+      Testes em tabela — depende de T008, T052, T054, T056, T010.
+      **Nota (22/09/2026):** T054 decidiu que `categoryId` chega como parâmetro (resolvido na revisão do
+      operador, T058/T059) — o mapeador não chama mais o preditor, só usa o `categoryId` recebido. T010
+      (ADR-026) decidiu o mesmo para `listingTypeId`: chega como parâmetro, escolhido pelo operador na
+      mesma tela.
+      **Feito** (22/09/2026): todas as funções puras listadas implementadas em
+      `mercado-livre-item.mapper.ts`, mais `brandAttribute`/`colorAttribute` (melhor esforço, spec seção 3)
+      e `isKnownGarmentMeasureAttribute` (distingue "medida em branco" de "atributo ainda não confirmado
+      pela ADR-024" nos `missingAttributeIds` de `garmentMeasureAttributes`). `sanitizePlainText` só
+      normaliza `\r\n`→`\n` e corta em `max_description_length` — decidiu **não** tentar filtrar HTML/emoji
+      sozinho (arriscaria mudar um texto do operador sem necessidade; a validação real do Mercado Livre já
+      aponta a posição do caractere problemático, spec seção 3.6). `garmentMeasureAttributes` usa o mesmo
+      formato `"{n} {unidade}"` do pacote padrão — não documentado para `GARMENT_*` nas fontes salvas, a
+      confirmar na Fase 8. 51 testes em `mercado-livre-item.mapper.test.ts`, todos verdes.
+      `getCategory` (T022) ganhou `catalogDomain` (`settings.catalog_domain`) e `fetchCurrentUser` (cliente
+      OAuth) ganhou `tags` (`user_product_seller`) — os dois confirmados contra a API real durante o T057 e
+      necessários para o conector (T025/T026) saber o domínio da categoria e o modelo de publicação.
+      **Ajustado no T043 (22/09/2026, testes reais):** `colorAttribute` virou `colorAttributes` (plural —
+      envia `COLOR` e `MAIN_COLOR` juntos quando a categoria tem os dois, só um dos dois perdia o que era
+      `required`); `modelAttribute` novo (reaproveita `identificacao.nome` para o atributo `MODEL`, texto
+      livre exigido por várias categorias de acessórios — decisão do usuário); sinônimo
+      `"unissexo" → "sem gênero"` em `genderAttribute` (departamento do ERP não bate textualmente com o
+      valor do Mercado Livre); `buildChartName` parou de aceitar "—" (só letras/números/espaço — o Mercado
+      Livre recusava mesmo dentro do limite de 60 caracteres); `buildChartRowPayload` ganhou
+      `FILTRABLE_SIZE` (espelha `SIZE`, exigido e não documentado); `buildUpdatePayload` nunca mais inclui
+      `family_name` (o Mercado Livre rejeita reenviá-lo, mesmo sem mudança — contradiz a suposição original
+      da spec 012, seção 3.1). Todos com teste de regressão.
+- [x] T024 `plugins/marketplaces/mercado-livre.connector.ts` — token: lê a credencial
       (`parseMercadoLivreCredential`); sem tokens → erro "conta não conectada" (`reconnectRequired`);
       `expires_at` a menos de 5 min → `refreshToken()` e devolve o par novo em `updatedCredential`; um
       `401` da API → renova e repete a chamada 1×; lê a tag `user_product_seller` de `GET /users/me`; todo
       erro sai como `MarketplaceConnectorError` **carregando o `updatedCredential`** se houve renovação
       antes da falha. Testes com API/OAuth falsos — depende de T015, T021, T022.
-- [ ] T025 Conector — **criar**: predictor (`q` = nome do produto) → `GET /categories/{id}` (exige
+      **Feito** (22/09/2026): renovação proativa (margem 5 min) e reativa (401 → renova e repete 1×) prontas,
+      com `updatedCredential` sempre presente quando houve renovação antes de uma falha; 15 testes em
+      `mercado-livre.connector.test.ts`. A leitura da tag `user_product_seller` de `GET /users/me` fica para
+      T025 (não é necessária para `close`). `publish()` só lança "não implementado" (T054 em aberto) —
+      `close()` está completo, ver T027.
+      **T025/T026 fecharam (22/09/2026):** `publish()` delega para `mercado-livre-publish.ts` — ver abaixo.
+      `fetchCurrentUser` (cliente OAuth) ganhou `tags` (`user_product_seller`).
+- [x] T025 Conector — **criar**: recebe `categoryId` já confirmado pelo operador (T058/T059; ADR-025 — o
+      conector **não** chama mais o preditor) → `GET /categories/{id}` (exige
       `listing_allowed` e `status = enabled`) → atributos (+ endpoint condicional para o GTIN) → **moda:**
-      se o domínio está em `active_domains`, procura a tabela de medidas e a linha (spec 3.5) e falha
-      **antes do `POST`** com mensagem clara se não houver → valida faixa de preço → `POST /items` →
-      `POST` da descrição; descrição que falha vira `pendencia` (o item não é desfeito); retentativa de
-      entrada sem `id_anuncio` procura antes pelo SKU (`GET /users/{user_id}/items/search?seller_sku=…`),
-      consulta os ids achados em multiget e adota o mais recente que **não** esteja `closed`. Testes:
-      criação completa nos dois modelos (`family_name` e `title`), descrição falha, resposta perdida com
-      adoção por SKU, preço fora da faixa (nenhuma chamada de escrita), categoria sem `listing_allowed`,
-      moda com tabela `BRAND`/`STANDARD`, moda sem linha correspondente, domínio fora de `active_domains`
-      — depende de T023, T024.
-- [ ] T026 Conector — **atualizar**: `GET /items/{id}` (status, `sold_quantity`, categoria) → categoria e
+      se o domínio está em `active_domains` — **calçado:** procura tabela `BRAND`/`STANDARD` e a linha por
+      `SIZE`, falha antes do `POST` se não houver; **roupa (ADR-024):** confere se `medidas` tem o que o
+      domínio exige (senão falha antes do `POST`), procura a tabela `SPECIFIC` do domínio+gênero (cria se
+      não existir) e a linha por `SIZE`+`GARMENT_*` (adiciona se não existir) — → valida faixa de preço →
+      `POST /items` → `POST` da descrição; descrição que falha vira `pendencia` (o item não é desfeito);
+      retentativa de entrada sem `id_anuncio` procura antes pelo SKU
+      (`GET /users/{user_id}/items/search?seller_sku=…`), consulta os ids achados em multiget e adota o
+      mais recente que **não** esteja `closed`. Testes: criação completa nos dois modelos (`family_name` e
+      `title`), descrição falha, resposta perdida com adoção por SKU, preço fora da faixa (nenhuma chamada
+      de escrita), categoria sem `listing_allowed`, calçado com tabela `BRAND`/`STANDARD`, roupa criando
+      tabela `SPECIFIC` na primeira peça, roupa adicionando linha numa tabela `SPECIFIC` existente, roupa
+      reaproveitando linha idêntica, roupa sem `medidas` mínimas, domínio fora de `active_domains` —
+      depende de T023, T024.
+      **Feito** (22/09/2026): `mercado-livre-publish.ts` (`createNewItem`/`buildAttributes`/
+      `resolveGtinAttribute`/`resolveSizeChartAttributes`/`resolveFootwearChart`/`resolveClothingChart`).
+      A categoria→domínio vem de `settings.catalog_domain` (`GET /categories/{id}`, confirmado contra a API
+      real no T057 — `getCategory`, T022, ganhou o campo `catalogDomain`). Calçado × roupa decidido pela
+      `categoria_codigo` do ERP (`SAPT` → calçado; as demais categorias de moda → `SPECIFIC`) — mais simples
+      e confiável que tentar inferir pela taxonomia de domínios do Mercado Livre. Todos os cenários da lista
+      acima cobertos, mais GTIN required/conditional_required e erro claro sem `EMPTY_GTIN_REASON`
+      disponível — 42 testes em `mercado-livre-publish.test.ts`.
+- [ ] T060 [P] **Achar a origem real dos atributos `GARMENT_*` exigidos pela tabela `SPECIFIC`** (spec 012,
+      seção 3.5; ADR-024, pendência do T043) — `GET /domains/{domain}/technical_specs` (com e sem
+      `section=grids`) **não lista `GARMENT_*`** para `MLB-SHORTS` (confirmado ao vivo, parser corrigido);
+      `GET /categories/{id}/attributes` também não. Mesmo assim, `POST /catalog/charts` recusa a linha sem
+      `GARMENT_HIP_WIDTH_FROM` (`required_row_attribute_not_found`). Investigar: um chart `STANDARD`/`BRAND`
+      existente de domínio parecido pode revelar o conjunto de atributos esperado
+      (`GET /catalog/charts/{id}`, olhando os `rows[].attributes` de uma tabela já populada por outro
+      vendedor); ou suporte do Mercado Livre. **Não iterar por tentativa e erro contra a API real** — só
+      testar de novo com uma hipótese fundamentada. Bloqueia: publicar roupa com tabela de medidas
+      (domínios em `active_domains`, fora de calçado) — calçado (`SAPT`) e moda sem tabela não são
+      afetados. Depende de T025 (feita, com a lacuna documentada).
+- [x] T026 Conector — **atualizar**: `GET /items/{id}` (status, `sold_quantity`, categoria) → categoria e
       atributos → `PUT /items/{id}` → descrição por `PUT ...?api_version=2` (queda para `POST` se o item
       ainda não tem descrição); `family_name`/título só se `sold_quantity = 0`; `pictures` sempre incluído;
       `warnings` da resposta (preço ignorado) viram `pendencia`; item já `closed` no Mercado Livre → erro que
       orienta usar "Encerrar anúncio". Testes correspondentes (nome com e sem vendas, *warning* de preço,
       descrição inexistente) — depende de T023, T024.
-- [ ] T027 Conector — **encerrar**: `GET /items/{id}` antes (`status = closed` → sucesso sem `PUT`); senão
+      **Feito** (22/09/2026): `updateExistingItem` em `mercado-livre-publish.ts`, mesmo arquivo/testes do
+      T025 (a montagem de atributos é compartilhada entre criar e atualizar).
+- [x] T027 Conector — **encerrar**: `GET /items/{id}` antes (`status = closed` → sucesso sem `PUT`); senão
       `PUT { status: "closed" }`; `409` repetido antes de falhar; item `under_review`/`payment_required`
       que recuse `closed` → mensagem do Mercado Livre ao operador. Testes — depende de T022, T024.
-- [ ] T028 Configuração e registro: `MERCADO_LIVRE_LISTING_TYPE_ID` (padrão `gold_special`) e
-      `MERCADO_LIVRE_API_BASE_URL` lidos na criação do conector; ambos documentados em
-      `backend/.env.example`; registrar o conector em `connector-registry.ts` — depende de T016, T025,
-      T026, T027.
+      **Feito** (22/09/2026): `close()` idempotente (`GET` antes) com `closeItem` já cobrindo a repetição de
+      `409` (T022); mensagem do Mercado Livre repassada como veio, sem token/credencial.
+- [x] T028 Configuração e registro: `MERCADO_LIVRE_API_BASE_URL` lida na criação do conector,
+      documentada em `backend/.env.example`; registrar o conector em `connector-registry.ts` — depende
+      de T016, T025, T026, T027. ~~`MERCADO_LIVRE_LISTING_TYPE_ID`~~ removida do escopo (ADR-026): tipo de
+      anúncio não é mais variável de ambiente, é `listingTypeId` escolhido pelo operador (T010/T059).
+      **Feito** (22/09/2026): `mercadoLivreConnector` registrado em `connector-registry.ts` (via
+      `marketplace.module.ts`, no bootstrap); `MERCADO_LIVRE_API_BASE_URL` documentada em
+      `backend/.env.example`. `publish()` agora tem efeito real (T025/T026 fecharam) — `create`/`update`/
+      `close` funcionam de ponta a ponta.
+- [ ] T058 Sugestão de categoria (spec 012, seção 4; spec 011, seção 4.5; ADR-025): serviço que chama
+      `predictCategory` (T022) com o nome do produto — falha do preditor (rede, indisponibilidade) não
+      lança, devolve sugestão `null`, a rota segue `200` com a lista curada mesmo assim (a revisão nunca
+      trava por causa do preditor); junta a sugestão (se houver) com a lista curada (T057), marcando qual
+      item é a sugestão. Rota `POST /api/products/:id/marketplace-category-suggestion`, corpo
+      `{ marketplace, accountId }`, `role ∈ {admin, operator}`, mapeia conta inexistente/inativa → `404`.
+      Testes unitários e de rota — depende de T022, T057.
+      **Feito** (22/09/2026): `mercado-livre-category-catalog.ts` (loader do JSON do T057, leitura a cada
+      chamada, `CategoryCatalogError` claro se ausente/vazio/inválido — 6 testes); `suggestCategory`
+      exportado por `mercado-livre.connector.ts` **fora** da `MarketplaceConnectorPort` (reaproveita
+      `callWithFreshToken`, mesma renovação de token de `publish`/`close` — 4 testes novos no conector);
+      `marketplace-category-suggestion.service.ts` (junta sugestão + lista curada, nunca lança por falha
+      do preditor — só `AccountBusyError`/conta inexistente propagam — 7 testes); rota nova em
+      `marketplace-listing.routes.ts`. `tests/integration/marketplace-listings.spec.ts` (existente)
+      continua verde. Sem teste de integração dedicado à rota nova (mesmo padrão do T031 — service com
+      cobertura unitária completa, integração fica para o T032).
 
 
-- [ ] T052 Configuração do pacote padrão (spec, seção 3.4): `plugins/marketplaces/mercado-livre-package.config.ts`
+- [x] T052 Configuração do pacote padrão (spec, seção 3.4): `plugins/marketplaces/mercado-livre-package.config.ts`
       — schema Zod de `MERCADO_LIVRE_PACKAGE_DEFAULTS` (`padrao` obrigatório; entradas com `altura_cm`,
       `largura_cm`, `comprimento_cm` inteiros > 0 e `peso_g` opcional), leitura tardia (só quando o conector
       precisa), `resolvePackage(product)` com prioridade categoria > departamento > padrão e peso do produto
@@ -255,24 +400,54 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
       JSON quebrado e peso inexistente, que o serviço grava como `erro` **antes** do `POST`; exemplo em
       `backend/.env.example`. Testes em tabela (as três prioridades, peso do produto × reserva, variável
       ausente, JSON inválido) — depende de T015.
+      **Feito** (22/09/2026): `resolvePackage` com as três prioridades e a regra de arredondamento (`ceil`);
+      11 testes em `mercado-livre-package.config.test.ts`; exemplo documentado em `backend/.env.example`.
+      Ainda não tem consumidor (T023/T025 seguem não implementadas — T054 já decidida, ver ADR-025).
+      **Refeito (ADR-027, 22/09/2026):** por pedido do usuário, o pacote padrão virou campos de formulário
+      numa tela de admin, gravados no banco — não mais a variável de ambiente acima. Mudanças: schema
+      compartilhado novo `shared/schemas/mercado-livre-package-settings.schema.ts`
+      (`MercadoLivrePackageSettingsSchema`, os 4 campos sempre obrigatórios — `peso_g` deixa de ser
+      opcional); `mercado-livre-package-settings.repository.ts` (documento único, `_id: "default"`) e
+      `...service.ts` (get/update + auditoria `MERCADO_LIVRE_PACKAGE_SETTINGS_UPDATE`); rotas
+      `GET`/`PUT /api/marketplace-accounts/mercado-livre-package-settings` (só admin) em
+      `marketplace-account.routes.ts`; `mercado-livre-package.config.ts` reescrito — `resolvePackage`
+      passa a `resolvePackage(db, product)` (assíncrona, lê o banco), sem mais `por_departamento`/
+      `por_categoria` (ADR-027: só o padrão, sem exceção — mais simples). Frontend:
+      `PackageSettingsCard` em `MarketplaceAccountsPage.tsx` (mesmo padrão do `EncryptionKeyCard`).
+      `.env.example` perde `MERCADO_LIVRE_PACKAGE_DEFAULTS`. Testes: 11 no schema compartilhado, 5 em
+      `mercado-livre-package.config.test.ts` (reescritos, mock do repositório em vez de env var), 6 de
+      integração (`tests/integration/mercado-livre-package-settings.spec.ts` — RBAC, singleton,
+      validação, auditoria). `tsc --noEmit`/`eslint` limpos nos três pacotes.
 
 ## Fase 5 — Serviços e rotas de anúncio
 
-- [ ] T029 `marketplace-listing.service.ts`: `publishListing` sobre `runAccountOperation` e a porta nova,
+- [x] T029 `marketplace-listing.service.ts`: `publishListing` sobre `runAccountOperation` e a porta nova,
       aplicando a tabela de transições da spec 3.1 — criar, atualizar, recriar sobre `encerrado`;
       falha parcial (`publicado` + `erro`); falha de atualização que **mantém** `publicado`; recriação
       que falha mantém `encerrado` com `erro`; `publicado_em` atualizado a cada sucesso; auditoria
       `PRODUCT_PUBLISH` sem credencial. Testes unitários, uma linha da tabela por caso — depende de T012,
       T017, T019, T028.
-- [ ] T030 `closeListing` (novo): entrada existe e está `publicado` (senão `ListingNotPublishedError` →
+      **Feito** (22/09/2026): rodou à frente de T028 formal — a trava (T019) já bastava para religar
+      `publishListing`; usa `marketplaceAccountRepository.findById` direto (falha antes de qualquer trava
+      para conta inexistente/errada) e só entra em `runAccountOperation` depois disso. Tabela de transições
+      completa (criar/republicar/recriar × sucesso/falha) coberta em testes dedicados.
+      **Pendência da ADR-025 fechada (22/09/2026):** `PublishListingInput`/`PublishInput` (porta) e o
+      corpo de `POST /marketplace-listings` ganharam `categoryId?: string | null`, repassado como veio até
+      o conector — ainda sem efeito real, porque `publish()` do Mercado Livre segue lançando "não
+      implementado" (T023/T025). Teste novo confirma a propagação.
+- [x] T030 `closeListing` (novo): entrada existe e está `publicado` (senão `ListingNotPublishedError` →
       `409`); conta existe (`404`), ativa e conectada (senão `AccountNotReadyError` → `409` com o passo
       que resolve, **sem** chamar o conector); `runAccountOperation` → `connector.close`; sucesso grava
       `encerrado` + `encerrado_em`, falha mantém `publicado` com `erro` "Falha ao encerrar: …";
       auditoria `PRODUCT_UNPUBLISH` (marketplace, `accountId`, `id_anuncio`, sucesso/erro). Testes
       unitários — depende de T011, T012, T019, T029.
-- [ ] T031 `routes/marketplace-listing.routes.ts`: `POST /api/products/:id/marketplace-listings/close`
+      **Feito** (22/09/2026): 21 testes cobrindo `publishListing`+`closeListing` juntos em
+      `marketplace-listing.service.test.ts` (`npx vitest run` verde; `tsc --noEmit`/`eslint` limpos).
+- [x] T031 `routes/marketplace-listing.routes.ts`: `POST /api/products/:id/marketplace-listings/close`
       (`admin`/`operator`), corpo `{ marketplace, accountId }` validado por Zod, mapeia 404/409/400 como
       as rotas vizinhas — depende de T030.
+      **Feito** (22/09/2026): rota nova registrada; `AccountBusyError` (409) também passou a ser mapeada na
+      rota de publicar, que ganhou esse caminho de erro com `publishListing` agora usando a trava.
 - [ ] T032 Testes de integração (Fastify + MongoDB em memória, **conector real** com API/OAuth falsos) em
       `tests/integration/marketplace-mercado-livre.spec.ts`: fluxo publicar → republicar → encerrar →
       publicar de novo (id novo); `viewer` recebe `403` em publicar e encerrar; `409` fora de ordem;
@@ -284,13 +459,50 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
 
 ## Fase 6 — Frontend
 
-- [ ] T033 Serviço e hook: `closeListing` em `services/marketplace-listing.service.ts` e `useCloseListing`
+- [x] T033 Serviço e hook: `closeListing` em `services/marketplace-listing.service.ts` e `useCloseListing`
       em `hooks/useMarketplaceListings.ts` (invalida a query do produto) — depende de T031.
-- [ ] T034 `features/products/PublishToMarketplace.tsx`: badge "Encerrado"; "Ver anúncio" só em
+      **Feito** (22/09/2026).
+- [x] T034 `features/products/PublishToMarketplace.tsx`: badge "Encerrado"; "Ver anúncio" só em
       `publicado`; entrada `publicado` com `erro` mostra o aviso de pendência; o botão principal vira
       "Republicar no Mercado Livre" quando a conta escolhida já tem entrada `publicado`; "Encerrar
       anúncio" por linha, com confirmação inline (texto da spec 011, seção 4.7) e o erro da API visível
       — depende de T011, T033.
+      **Feito** (22/09/2026): badge "Encerrado" com "Anúncio encerrado em <data>"; "Ver anúncio" só em
+      `publicado`; aviso de pendência (`erro` com `publicado`) visível; botão principal vira "Republicar no
+      X" quando a conta+marketplace escolhidos já têm entrada `publicado` (só o rótulo — quem decide criar ×
+      atualizar continua sendo o backend/conector, spec 012 seção 3.1); "Encerrar anúncio" por linha com
+      `window.confirm` (texto exato da spec 011, seção 4.7) e erro da API visível. `tsc --noEmit`/`eslint`
+      limpos; sem teste de componente dedicado (nenhum existia antes desta tarefa nesse arquivo).
+- [x] T059 Tela de revisão de categoria (spec 012, seção 4; ADR-025) — novo passo entre "Publicar"/
+      "Republicar" e a publicação de fato, em toda tentativa (não só na criação): ao clicar, chama T058
+      (`POST /marketplace-category-suggestion`), mostra a categoria sugerida pré-selecionada e um
+      `<select>` com a lista curada (T057); operador confirma ou troca; só então chama
+      `POST /marketplace-listings` com o `categoryId` escolhido no corpo. Preditor indisponível → mostra a
+      tela igual, sem pré-seleção, sem travar. Pode viver como um passo dentro de
+      `PublishToMarketplace.tsx` ou um modal próprio — decisão de implementação. Depende de T058; muda o
+      corpo que `usePublishListing`/`marketplaceListingService.publish` envia (novo campo `categoryId`).
+      **Feito** (22/09/2026): passo dentro de `PublishToMarketplace.tsx` (sem modal separado) — clicar em
+      "Publicar"/"Republicar no Mercado Livre" chama `useCategorySuggestion` (novo hook); a resposta abre um
+      painel de revisão substituindo os controles normais, com a sugestão em destaque (ou aviso de que não
+      houve sugestão), um campo de filtro de texto (207 categorias — T057 — filtrado por nome) e o
+      `<select>` pré-selecionado; "Confirmar e publicar" chama `usePublishListing` com `categoryId`;
+      "Cancelar" reseta a revisão sem publicar. Falha de `publish` **mantém** o painel aberto com a seleção
+      feita, para tentar de novo sem repetir a revisão. Só o Mercado Livre passa por este fluxo — outros
+      marketplaces (sem esse passo ainda) publicam direto, como antes. `marketplaceListingService.publish`
+      e a `PublishListingBodySchema`/`PublishInput`/`PublishListingInput` (backend) ganharam `categoryId`
+      opcional, repassado até o conector (ainda sem efeito, T023/T025 pendentes). `tsc --noEmit`/`eslint`
+      limpos nos dois pacotes; sem teste de componente dedicado (mesma lacuna pré-existente da T034).
+      **Ampliado com T010 (ADR-026, 22/09/2026):** o mesmo painel ganhou um segundo `<select>` — tipo de
+      anúncio, lista estática de `MERCADO_LIVRE_LISTING_TYPES` (`frontend/src/schemas/marketplace-account.schema.ts`),
+      sempre pré-selecionado em "Grátis" (mais barato); `listingTypeId` viaja junto do `categoryId` até o
+      conector (mesma porta, mesmo "ainda sem efeito").
+      **Bug real corrigido no T043 (22/09/2026):** a sugestão do preditor pode cair fora da lista curada
+      (aconteceu de verdade: "Item de Teste – Por favor, NÃO OFERTAR!" confundiu o preditor com "Kits Teste
+      Ph e Cloro", uma categoria de piscina) — o painel pré-selecionava um `categoryId` que não existia
+      entre as `<option>` do `<select>`, então o navegador mostrava silenciosamente a primeira opção da
+      lista enquanto o texto "Sugestão do Mercado Livre" seguia citando o valor errado. Corrigido: só
+      pré-seleciona quando a sugestão está de fato na lista curada; fora disso, mostra um aviso âmbar
+      pedindo escolha manual.
 - [ ] T035 `features/products/ActiveListingsNotice.tsx` (novo): aviso "esta peça tem anúncio no ar" com
       "Encerrar anúncios e continuar" / "Continuar sem encerrar" / "Cancelar"; encerra em sequência e, se
       algum encerramento falhar, para, mostra o erro e **não** muda o status da peça — depende de T033.
@@ -320,7 +532,7 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
 Fecha a Fase 0 com evidência. Publicar cria um anúncio **real**: usar uma peça de teste e encerrá-la
 no mesmo dia.
 
-- [ ] T042 Preparar o teste real com **usuário de teste** (o Mercado Livre não tem sandbox): criar o usuário
+- [x] T042 Preparar o teste real com **usuário de teste** (o Mercado Livre não tem sandbox): criar o usuário
       de teste vendedor (`POST /users/test_user`, `{"site_id":"MLB"}`) e **guardar** apelido e senha; pedir a
       ambientação ao modelo *User Products* pelo formulário da documentação (ativação a cada 7 dias); cadastrar
       a conta no ERP com o Client ID/Secret do app e conectá-la por OAuth logando como o usuário de teste;
@@ -329,16 +541,77 @@ no mesmo dia.
       `user_product_seller` presente); usuário de teste vendedor **criado** (id 3699839278; credenciais em
       `humandevnotes.md`, ignorado pelo git). Faltam o formulário de ambientação ao modelo *User Products* e conectar
       o usuário de teste por OAuth.
-- [ ] T043 Publicar uma peça de teste — título "Item de Teste – Por favor, NÃO OFERTAR!", categoria "Outros",
-      `MERCADO_LIVRE_LISTING_TYPE_ID` diferente de `gold`/`gold_premium` — e conferir o anúncio no Mercado Livre
-      (nome/título, preço, fotos, descrição, dimensões do pacote, tipo de anúncio) — depende de T009, T041, T042.
-- [ ] T044 Republicar (mudando o preço) e **encerrar**; conferir que o anúncio saiu do ar e que o ERP
+      **Decisão (22/09/2026):** o usuário pediu para **não** criar/conectar a conta de teste — os testes da
+      Fase 8 (T043/T044) rodaram direto na conta de produção já conectada (`ERPVovoIsabel`). Cada anúncio de
+      teste foi criado e encerrado no mesmo dia, como a spec já previa para minimizar o risco. Formulário de
+      ambientação ao *User Products* segue preenchido (não chegou a ser usado).
+- [x] T043 Publicar uma peça de teste — título "Item de Teste – Por favor, NÃO OFERTAR!", categoria "Outros",
+      escolhendo na revisão um tipo de anúncio diferente de `gold`/`gold_premium` (ADR-026) — e conferir o
+      anúncio no Mercado Livre (nome/título, preço, fotos, descrição, dimensões do pacote, tipo de anúncio)
+      — depende de T009, T041, T042. Aproveitar para **confirmar a ordem de custo real** dos tipos de
+      anúncio (ADR-026, ordem hoje só conceitual).
+      **Feito** (22/09/2026), na conta de produção (T042). Categoria "Outros" não existe na lista curada
+      (T057, restrita a Roupas/Calçados/Bolsas) — usada uma categoria de moda real (`MLB190393`, "Cintos") em
+      vez disso. Publicação criada com sucesso: `id_anuncio` e `url_anuncio` reais, `listing_type_id: "free"`.
+      **Muitos bugs reais encontrados e corrigidos ao vivo** (todos com teste de regressão):
+      1. `domain_id` enviado a `POST /catalog/charts/search`/`POST /catalog/charts` precisa vir **sem** o
+         prefixo do site (`"SHORTS"`, não `"MLB-SHORTS"`) — só esses dois endpoints; o resto da API usa o
+         prefixo. Sem a correção: `"Domain MLB-MLB-SHORTS not active"`.
+      2. Nome da tabela `SPECIFIC` (`buildChartName`) não podia ter "—" (em-dash) — só letras/números/espaço,
+         apesar do exemplo da spec 012, seção 3.5, mostrar um "—".
+      3. Linha de tabela `SPECIFIC` precisa do atributo `FILTRABLE_SIZE` (espelha `SIZE`) — não documentado
+         em nenhuma fonte salva.
+      4. `MercadoLivreApiError`: `cause` às vezes não é array — `(body?.cause ?? [])` sem `Array.isArray()`
+         quebrava com `"(...).map is not a function"` quando um item foi removido do Mercado Livre e o erro
+         veio num formato diferente. Também descoberto um formato alternativo, `errors` (sem `type`, visto em
+         `/catalog/charts`), agora tratado como sempre bloqueante.
+      5. `colorAttribute` priorizava `MAIN_COLOR` sobre `COLOR`; a categoria testada tinha os dois, com só
+         `COLOR` `required` — virou `colorAttributes` (plural), enviando os dois quando os dois existem.
+      6. `SIZE`/`GENDER` só eram enviados quando o domínio tinha tabela de medidas (`active_domains`);
+         confirmado que podem ser atributos comuns exigidos **sem** envolver tabela nenhuma (categoria
+         "Cintos") — agora sempre enviados quando mapeáveis, independente da tabela.
+      7. Atributo `MODEL` (texto livre, "nome específico do produto") exigido por muitas categorias de
+         acessórios, sem fonte nenhuma no ERP — **decisão do usuário**: reaproveitar `identificacao.nome`
+         (dado real, nunca inventado). `modelAttribute` novo no mapeador.
+      8. Departamento "Unissexo" (003) não batia com nenhum valor de `GENDER` do Mercado Livre — sinônimo
+         `"unissexo" → "sem gênero"` adicionado a `genderAttribute` (único par confirmado; qualquer outro
+         departamento sem correspondência continua `null`).
+      9. `getDomainSizeChartAttributes`: a estrutura real de `technical_specs` tem **dois** níveis de
+         `components` aninhados (`groups[].components[].components[].attributes[]`), não um só — corrigido,
+         mas mesmo corrigido **não revelou nenhum atributo `GARMENT_*`** para o domínio testado — ver a
+         pendência nova registrada na ADR-024 (bloqueia publicar roupa com tabela de medidas; não afeta
+         calçado nem moda sem tabela).
+      **UI corrigida também**: a sugestão do preditor pode cair fora da lista curada (ex.: "Item de Teste"
+      confundiu o preditor com "Kits Teste Ph e Cloro") — o painel de revisão pré-selecionava um valor que
+      não existia no `<select>`; agora só pré-seleciona quando a sugestão está na lista curada, e avisa o
+      operador quando não está.
+- [x] T044 Republicar (mudando o preço) e **encerrar**; conferir que o anúncio saiu do ar e que o ERP
       mostra "Encerrado"; registrar o que o Mercado Livre devolveu — em especial o formato real do *warning*
       de preço ignorado (`warnings` da resposta do `PUT`), a resposta do encerramento e o efeito do
       `sandbox_mode` — depende de T043.
+      **Feito** (22/09/2026): republicar (preço alterado) manteve `status: publicado` e o mesmo `id_anuncio`,
+      com *warnings* reais capturados como pendência (`AGE_GROUP` sugerido automaticamente pelo Mercado
+      Livre — a spec 012, seção 3.5, já previa isso; e um aviso de frete grátis). Encerrar funcionou de
+      ponta a ponta (`status: encerrado`, `encerrado_em` preenchido, `erro: null`); encerrar de novo depois
+      é rejeitado com `409` pelo próprio serviço (`ListingNotPublishedError`), antes de chamar o conector —
+      confirma o guard de idempotência no nível certo.
+      **Bug real encontrado e corrigido**: `family_name` (modelo *User Products*) **nunca** pode ser
+      reenviado em `PUT /items/{id}` — o Mercado Livre rejeita com `"The field family name is invalid"`
+      mesmo reenviando o valor idêntico ou um texto simples sem acento. Contradiz a suposição original da
+      spec 012, seção 3.1 ("editável enquanto sold_quantity = 0"). `buildUpdatePayload` corrigido para nunca
+      incluir `family_name`; `title` (modelo antigo) mantém a regra original, não testada ao vivo (a conta
+      de produção já está no modelo novo).
+      **`sandbox_mode`**: sem efeito observado — os anúncios de teste foram criados/encerrados normalmente
+      como anúncios reais, confirmando a T009 (Mercado Livre não tem sandbox de verdade).
 - [ ] T049 Primeira **publicação real** (uma peça de verdade na conta da loja — a conta de produção é a que já está
       conectada, `user_id` 3692153317, decisão de 21/09/2026 — com o tipo de anúncio decidido
       em T010): é uso, não teste; conferir e, se algo divergir do teste, registrar — depende de T010, T044, T051, T053.
+      **Nota (22/09/2026):** já **desbloqueada tecnicamente** para categorias sem tabela de medidas (moda
+      sem `active_domains`, calçado `SAPT` com tabela `BRAND`/`STANDARD`) — T043/T044 validaram o caminho
+      completo. Categorias de roupa com tabela de medidas (`SPECIFIC`) continuam bloqueadas pela pendência
+      da ADR-024 (origem dos atributos `GARMENT_*` não encontrada). Falta só T051 (valores reais do pacote
+      — a tela já está pronta, só precisa dos números reais; os usados no teste foram um placeholder
+      pequeno, 5×20×15 cm / 2 g).
 - [ ] T045 Documentação: registrar na [spec](spec.md) o que a Fase 8 confirmou (formato do *warning*, resposta
       do encerramento, `sandbox_mode`, decisões de T008 e T010); mudar o `Status` da spec de Draft para o
       estado real; registrar em `specs/011-integracao-marketplaces/tasks.md` uma fase nova com a
@@ -350,10 +623,11 @@ no mesmo dia.
 ```
 T001 → T002, T003 → T004                      (Fase A, já entregue)
 T005, T006, T007, T008 → T022                 (todas confirmadas)
-T008, T052, T053, T054 → T023                 (T053 e T054 são decisões abertas)
+T008, T052, T054, T056 → T023                 (T054 decidida — ADR-025; T056 é a extensão de medidas)
 T015 → T052
 T023, T024 → T025, T026    T022, T024 → T027
 T010 → T049    T009 → T043
+T054 → T057 → T058, T059   T022, T057 → T058   T058 → T059
 
 T011 → T015, T029, T030, T034
 T012 → T029, T030
@@ -365,9 +639,10 @@ T001 → T021 → T024
 T015, T021, T022 → T024
 T016, T025, T026, T027 → T028
 T031 → T033 → T034, T035 → T036, T037
+T059 → T034                                    (categoryId no corpo de publicar — ver nota da T029)
 T028 → T039 → T040 → T041   (T036, T038 também alimentam T041)
 T004, T032 → T042 → T043 → T044 → T049 → T045
-T053, T051 → T049
+T051 → T049
 ```
 
 ## Nota
@@ -377,12 +652,61 @@ T005 a T009, T046 a T048 e T050 estão confirmados, decididos ou medidos. O que 
 configurável** (T046) e o fato de o Mercado Livre **não ter sandbox** (a Fase 8 usa usuário de teste). A
 **conta de produção** é a que já está conectada (decisão de 21/09/2026).
 
-O T050 mudou o escopo de roupas: **nenhum domínio de roupa tem tabela de medidas pronta** (só calçados), então
-roupas exigem uma tabela `SPECIFIC` do vendedor — decisão **T053**. Junto veio a decisão **T054** (o preditor de
-categorias errou o domínio de peças comuns; proposta de mapeamento configurável) e o requisito de que o
-`tamanho_etiqueta` seja obrigatório para publicar moda (hoje 7 de 9 produtos de dev não têm).
+O T050 mudou o escopo de roupas: **nenhum domínio de roupa tem tabela de medidas pronta** (só calçados). A
+decisão **T053** (ADR-024, 22/09/2026) foi o ERP **criar/estender** tabelas `SPECIFIC` por API, alimentadas
+pelas medidas reais de cada peça — o que exigiu **T056** (feita, 22/09/2026), a extensão de `medidas` (`coxa`,
+`entrepasso`) para cobrir os atributos `GARMENT_*` que o Mercado Livre pede em calças/shorts/saias; partes de
+cima ainda dependem de confirmar `technical_specs` na implementação. Junto veio a decisão **T054**
+(ADR-025, 22/09/2026, ver acima) — o preditor de categorias errou o domínio de peças comuns; a resposta não
+foi um mapeamento configurável, foi tornar a revisão humana **obrigatória em toda publicação** — e o requisito
+de que o `tamanho_etiqueta` seja obrigatório para publicar moda (hoje 7 de 9 produtos de dev não têm).
 
-Continuam abertos: **T053** e **T054** (decisões), **T051** (valores reais do pacote — dona do brechó) e
-T010 (tipo de anúncio). As fases 1 a 3 e as tarefas T021, T022, T024, T027 e T052 não dependem deles; **calçados**
-já poderiam publicar com a tabela `STANDARD`. Pontos cinza menores: o texto exato do *warning* de preço ignorado
-(plano, seção 7). Nenhuma tarefa de código depende de T010 ou T051.
+22/09/2026: **Fases 4 e 5 implementadas** (menos o mapeador/criar/atualizar) — T021, T022, T024 (com
+`publish()` ainda "não implementado"), T027, T029, T030, T031, T033, T034, T052, T056, T057, T058, T059
+concluídas; conector Mercado Livre registrado no bootstrap. `close()` (encerrar anúncio) e a **revisão
+obrigatória** de categoria (T054/ADR-025 — sugestão do preditor + confirmação numa lista curada de 207
+categorias-folha) **e** de tipo de anúncio (T010/ADR-026 — lista estática do mais barato ao mais caro,
+`free` pré-selecionado, no mesmo painel) funcionam de ponta a ponta, backend e frontend; `categoryId` e
+`listingTypeId` já viajam até o conector (`PublishInput`/`PublishListingInput`/corpo da rota), sem efeito
+real ainda. **T010 decidida** — sem mais bloquear T043, só a ordem de custo (conceitual, não confirmada
+por preço real) fica pendente de confirmação na própria Fase 8.
+
+Ainda 22/09/2026: **T046/T052 refeitas (ADR-027)** — por pedido do usuário, o pacote padrão do Mercado
+Livre deixou de ser a variável de ambiente `MERCADO_LIVRE_PACKAGE_DEFAULTS` (com prioridade
+categoria/departamento/padrão) e virou uma tela de admin ("Contas de marketplace → Pacote padrão do
+Mercado Livre") gravando um único pacote no banco — mais simples (sem exceção por categoria/departamento,
+princípio V), `peso_g` sempre obrigatório (elimina uma categoria de falha inteira). `resolvePackage` agora
+é assíncrona (`resolvePackage(db, product)`).
+
+22/09/2026 (mais tarde): **T023, T025, T026 concluídas — `publish()` funciona de ponta a ponta.**
+`mercado-livre-item.mapper.ts` (T023, funções puras, 51 testes) e `mercado-livre-publish.ts` (T025/T026,
+orquestração de criar/atualizar sobre a API real, 42 testes) fecham o conector: criar (com adoção por SKU
+em caso de resposta perdida), atualizar (respeitando `sold_quantity > 0`), GTIN (`required`/
+`conditional_required`), moda com tabela de medidas (calçado via `BRAND`/`STANDARD`, roupa via `SPECIFIC`
+— cria tabela e/ou linha conforme falte), preço fora da faixa, categoria sem `listing_allowed`, warnings
+viram pendência, descrição com queda de `PUT` para `POST`. A categoria→domínio vem de
+`settings.catalog_domain` (`GET /categories/{id}`, campo novo confirmado contra a API real); calçado ×
+roupa é decidido pela própria `categoria_codigo` do ERP (`SAPT` = calçado), não por inferência da
+taxonomia do Mercado Livre.
+
+22/09/2026 (Fase 8, T042–T044): **testado ao vivo contra a conta de produção real** (o usuário decidiu não
+criar a conta de teste — cada anúncio de teste foi criado e encerrado no mesmo dia). Criar, republicar
+(com preço alterado) e encerrar **funcionam de ponta a ponta**, com `id_anuncio`/`url_anuncio` reais,
+*warnings* capturados como pendência (inclusive o `AGE_GROUP` que a spec 012, seção 3.5, já previa), e o
+encerramento repetido corretamente rejeitado com `409` pelo próprio serviço. Isso só valeu para uma
+categoria **sem** tabela de medidas (moda fora de `active_domains`) — categorias de roupa com tabela de
+medidas continuam bloqueadas pela pendência nova do T060 (ver abaixo). No caminho, **8 bugs reais** foram
+encontrados e corrigidos, todos com teste de regressão (detalhes nas notas de T022/T023/T025/T026/T044 e
+na ADR-024): prefixo duplicado no `domain_id` de `/catalog/charts`, nome de tabela rejeitado por causa do
+"—", `FILTRABLE_SIZE` não documentado, `cause`/`errors` não-array quebrando o parser de erro,
+`COLOR`/`MAIN_COLOR` só um dos dois sendo enviado, `MODEL` sem fonte no ERP (decisão: reaproveitar o nome
+do produto), sinônimo "Unissexo"/"Sem gênero" faltando, e `family_name` nunca podendo ser reenviado numa
+atualização (contradizia a spec original). A tela de revisão também ganhou uma correção real: a sugestão
+do preditor pode cair fora da lista curada, e o painel pré-selecionava um valor inexistente no `<select>`
+sem avisar o operador.
+
+**Só duas pendências na spec 012 agora:** **T060** (achar de onde vêm os atributos `GARMENT_*` exigidos
+pela tabela `SPECIFIC` — `technical_specs` não tem, confirmado ao vivo; bloqueia só roupa com tabela de
+medidas) e **T051** (a dona do brechó preenche a tela do pacote padrão com valores reais — os do teste
+foram um placeholder pequeno, 5×20×15 cm/2 g). T049 (primeira publicação real de uso, não teste) já está
+tecnicamente desbloqueada para categorias sem tabela de medidas.

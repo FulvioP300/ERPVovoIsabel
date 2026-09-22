@@ -299,6 +299,18 @@ export function ProductForm({ mode, defaultValues, defaultImages = [], onSubmit,
           </div>
           <div>
             <label className={labelClass}>
+              Coxa
+              <input className={inputClass} type="number" step="0.1" {...register("coxa")} />
+            </label>
+          </div>
+          <div>
+            <label className={labelClass}>
+              Entrepasso
+              <input className={inputClass} type="number" step="0.1" {...register("entrepasso")} />
+            </label>
+          </div>
+          <div>
+            <label className={labelClass}>
               Peso (kg)
               <input className={inputClass} type="number" step="0.001" min="0" {...register("peso")} />
             </label>

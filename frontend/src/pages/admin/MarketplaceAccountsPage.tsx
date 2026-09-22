@@ -6,8 +6,10 @@ import {
   useEncryptionKeyStatus,
   useMarketplaceAccountMutations,
   useMarketplaceAccounts,
+  useMercadoLivrePackageSettings,
   useOAuthRedirectUri,
   useRotateEncryptionKey,
+  useUpdateMercadoLivrePackageSettings,
 } from "../../hooks/useMarketplaceAccounts";
 import {
   CONNECTION_STATUS_LABELS,
@@ -16,10 +18,12 @@ import {
   MARKETPLACE_CREDENTIAL_FIELDS,
   MARKETPLACE_LABELS,
   MarketplaceEnum,
+  MercadoLivrePackageSettingsFormSchema,
   type ConnectionStatus,
   type CreateMarketplaceAccountFormValues,
   type EditMarketplaceAccountFormValues,
   type MarketplaceAccount,
+  type MercadoLivrePackageSettingsFormValues,
 } from "../../schemas/marketplace-account.schema";
 
 const inputClass =
@@ -130,6 +134,107 @@ function EncryptionKeyCard() {
       {rotate.isError && (
         <p className="text-sm text-red-600">
           {rotate.error instanceof Error ? rotate.error.message : "Não foi possível rotacionar a chave."}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Pacote padrão do Mercado Livre (spec 012, seção 3.4; ADR-027) — um único conjunto de medidas
+ * usado em toda publicação, editável aqui e gravado no banco (substitui a variável de ambiente
+ * `MERCADO_LIVRE_PACKAGE_DEFAULTS` do desenho anterior, T046). Sem isso configurado, a primeira
+ * publicação no Mercado Livre falha com mensagem clara pedindo para preencher esta tela.
+ */
+function PackageSettingsCard() {
+  const { data: settings, isLoading, isError } = useMercadoLivrePackageSettings();
+  const update = useUpdateMercadoLivrePackageSettings();
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isDirty },
+  } = useForm<MercadoLivrePackageSettingsFormValues>({
+    resolver: zodResolver(MercadoLivrePackageSettingsFormSchema),
+    values: settings
+      ? {
+          altura_cm: settings.altura_cm,
+          largura_cm: settings.largura_cm,
+          comprimento_cm: settings.comprimento_cm,
+          peso_g: settings.peso_g,
+        }
+      : undefined,
+  });
+
+  async function onSubmit(values: MercadoLivrePackageSettingsFormValues) {
+    const updated = await update.mutateAsync(values);
+    reset({ altura_cm: updated.altura_cm, largura_cm: updated.largura_cm, comprimento_cm: updated.comprimento_cm, peso_g: updated.peso_g });
+  }
+
+  return (
+    <section className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+      <h2 className="font-display text-base font-semibold text-wine-900">Pacote padrão do Mercado Livre</h2>
+      <p className="text-sm text-gray-600">
+        Dimensões e peso da embalagem usados em toda publicação no Mercado Livre (Mercado Envios 2 exige isso em
+        todo anúncio). O peso da peça, quando informado no cadastro, tem prioridade sobre o peso aqui — este é só a
+        reserva.
+      </p>
+
+      {isLoading && <p className="text-sm text-gray-500">Carregando...</p>}
+      {isError && <p className="text-sm text-red-600">Não foi possível carregar o pacote padrão.</p>}
+      {!isLoading && !isError && !settings && (
+        <p className="text-sm text-amber-700">
+          Ainda não configurado — publicações no Mercado Livre vão falhar até preencher e salvar.
+        </p>
+      )}
+
+      <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => void handleSubmit(onSubmit)(e)} noValidate>
+        <div>
+          <label className={labelClass}>
+            Altura (cm)
+            <input type="text" inputMode="numeric" className={`${inputClass} mt-1 block w-24`} {...register("altura_cm")} />
+          </label>
+          {errors.altura_cm && <p className={errorClass}>{errors.altura_cm.message}</p>}
+        </div>
+        <div>
+          <label className={labelClass}>
+            Largura (cm)
+            <input type="text" inputMode="numeric" className={`${inputClass} mt-1 block w-24`} {...register("largura_cm")} />
+          </label>
+          {errors.largura_cm && <p className={errorClass}>{errors.largura_cm.message}</p>}
+        </div>
+        <div>
+          <label className={labelClass}>
+            Comprimento (cm)
+            <input type="text" inputMode="numeric" className={`${inputClass} mt-1 block w-28`} {...register("comprimento_cm")} />
+          </label>
+          {errors.comprimento_cm && <p className={errorClass}>{errors.comprimento_cm.message}</p>}
+        </div>
+        <div>
+          <label className={labelClass}>
+            Peso (g)
+            <input type="text" inputMode="numeric" className={`${inputClass} mt-1 block w-24`} {...register("peso_g")} />
+          </label>
+          {errors.peso_g && <p className={errorClass}>{errors.peso_g.message}</p>}
+        </div>
+        <button
+          type="submit"
+          className="rounded-md bg-wine-800 px-4 py-2 text-sm font-medium text-gold-100 hover:bg-wine-900 disabled:opacity-50"
+          disabled={update.isPending || !isDirty}
+        >
+          {update.isPending ? "Salvando..." : "Salvar"}
+        </button>
+        {settings && (
+          <p className="w-full text-xs text-gray-500">
+            Última atualização: {settings.updatedAt.toLocaleString("pt-BR")}.
+          </p>
+        )}
+      </form>
+
+      {update.isSuccess && !isDirty && <p className="text-sm text-green-700">Pacote padrão salvo.</p>}
+      {update.isError && (
+        <p className="text-sm text-red-600">
+          {update.error instanceof Error ? update.error.message : "Não foi possível salvar o pacote padrão."}
         </p>
       )}
     </section>
@@ -537,6 +642,8 @@ export function MarketplaceAccountsPage() {
       </p>
 
       <EncryptionKeyCard />
+
+      <PackageSettingsCard />
 
       <CreateMarketplaceAccountForm />
 

@@ -27,9 +27,17 @@ export interface ExchangeCodeInput {
   codeVerifier: string;
 }
 
+export interface RefreshTokenInput {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+}
+
 export interface MercadoLivreCurrentUser {
   id: number | string;
   nickname: string | undefined;
+  /** Ex.: `user_product_seller` — decide o modelo de publicação (spec 012, seção 3.3). */
+  tags: string[];
 }
 
 export interface MercadoLivreOAuthClient {
@@ -38,12 +46,30 @@ export interface MercadoLivreOAuthClient {
   requestApplicationToken(input: { clientId: string; clientSecret: string }): Promise<string>;
   /** `GET /users/me` — o teste de integração: só responde 200 se o token for aceito pelo Mercado Livre. */
   fetchCurrentUser(accessToken: string): Promise<MercadoLivreCurrentUser>;
+  /**
+   * Renova o token de uma conta já conectada (spec 012, seção 2.3). `invalid_grant` (refresh_token
+   * gasto ou expirado) lança `MercadoLivreInvalidGrantError`; erro de rede/5xx lança
+   * `MercadoLivreOAuthError` comum — a distinção decide se a conta vira `expired`.
+   */
+  refreshToken(input: RefreshTokenInput): Promise<MercadoLivreTokenResponse>;
 }
 
 export class MercadoLivreOAuthError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "MercadoLivreOAuthError";
+  }
+}
+
+/**
+ * `invalid_grant` na renovação (spec 012, seção 2.3): o `refresh_token` é de uso único — se ele já
+ * foi gasto ou expirou (6 meses sem uso), a conta precisa ser reconectada. Distingue de erro
+ * transitório (rede, 5xx), que **não** deve marcar a conta como expirada.
+ */
+export class MercadoLivreInvalidGrantError extends MercadoLivreOAuthError {
+  constructor(message: string) {
+    super(message);
+    this.name = "MercadoLivreInvalidGrantError";
   }
 }
 
@@ -136,7 +162,11 @@ export const mercadoLivreOAuthClient: MercadoLivreOAuthClient = {
     if (typeof body.id !== "number" && typeof body.id !== "string") {
       throw new MercadoLivreOAuthError("Resposta inesperada do Mercado Livre em GET /users/me.");
     }
-    return { id: body.id, nickname: typeof body.nickname === "string" ? body.nickname : undefined };
+    return {
+      id: body.id,
+      nickname: typeof body.nickname === "string" ? body.nickname : undefined,
+      tags: Array.isArray(body.tags) ? body.tags.filter((t): t is string => typeof t === "string") : [],
+    };
   },
 
   async exchangeCode(input) {
@@ -171,6 +201,41 @@ export const mercadoLivreOAuthClient: MercadoLivreOAuthClient = {
     const { access_token, refresh_token, expires_in, user_id } = body;
     if (typeof access_token !== "string" || typeof refresh_token !== "string" || typeof expires_in !== "number") {
       throw new MercadoLivreOAuthError("Resposta inesperada do Mercado Livre ao trocar o código por tokens.");
+    }
+
+    return {
+      accessToken: access_token,
+      refreshToken: refresh_token,
+      expiresIn: expires_in,
+      userId: typeof user_id === "number" || typeof user_id === "string" ? user_id : undefined,
+    };
+  },
+
+  async refreshToken(input) {
+    const { response, body } = await callMercadoLivre(() =>
+      fetch(TOKEN_URL, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "refresh_token",
+          client_id: input.clientId,
+          client_secret: input.clientSecret,
+          refresh_token: input.refreshToken,
+        }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      }),
+    );
+
+    if (!response.ok || !body) {
+      const code = typeof body?.error === "string" ? body.error : undefined;
+      const message = (code && ERROR_MESSAGES[code]) || `O Mercado Livre recusou a renovação${code ? ` (${code})` : ""}.`;
+      if (code === "invalid_grant") throw new MercadoLivreInvalidGrantError(message);
+      throw new MercadoLivreOAuthError(message);
+    }
+
+    const { access_token, refresh_token, expires_in, user_id } = body;
+    if (typeof access_token !== "string" || typeof refresh_token !== "string" || typeof expires_in !== "number") {
+      throw new MercadoLivreOAuthError("Resposta inesperada do Mercado Livre ao renovar o token.");
     }
 
     return {

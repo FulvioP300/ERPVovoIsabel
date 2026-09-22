@@ -95,6 +95,8 @@ export const ProductFormSchema = z
     gancho: z.string().optional(),
     comprimento: z.string().optional(),
     largura_barra: z.string().optional(),
+    coxa: z.string().optional(),
+    entrepasso: z.string().optional(),
 
     // Peso (sempre em kg — spec, seção 19)
     peso: z.string().optional(),
@@ -237,6 +239,8 @@ export function toProductPayload(values: ProductFormValues, galeria: Imagem[] = 
       gancho: parseOptionalNumber(values.gancho),
       comprimento: parseOptionalNumber(values.comprimento),
       largura_barra: parseOptionalNumber(values.largura_barra),
+      coxa: parseOptionalNumber(values.coxa),
+      entrepasso: parseOptionalNumber(values.entrepasso),
     },
     peso: {
       valor: parseOptionalNumber(values.peso),
@@ -308,6 +312,8 @@ export function productToFormValues(product: z.infer<typeof ProductSchema>): Pro
     gancho: product.medidas.gancho?.toString() ?? "",
     comprimento: product.medidas.comprimento?.toString() ?? "",
     largura_barra: product.medidas.largura_barra?.toString() ?? "",
+    coxa: product.medidas.coxa?.toString() ?? "",
+    entrepasso: product.medidas.entrepasso?.toString() ?? "",
     peso: product.peso.valor?.toString() ?? "",
     estado: product.condicao.estado,
     nota: product.condicao.nota?.toString() ?? "",
@@ -362,6 +368,8 @@ export const DEFAULT_PRODUCT_FORM_VALUES: ProductFormValues = {
   gancho: "",
   comprimento: "",
   largura_barra: "",
+  coxa: "",
+  entrepasso: "",
   peso: "",
   estado: "novo",
   nota: "",

@@ -48,6 +48,8 @@ export function aiSuggestionToFormValues(suggestion: AiSuggestedProduct): Produc
     gancho: numberOrEmpty(suggestion.medidas.gancho),
     comprimento: numberOrEmpty(suggestion.medidas.comprimento),
     largura_barra: numberOrEmpty(suggestion.medidas.largura_barra),
+    coxa: numberOrEmpty(suggestion.medidas.coxa),
+    entrepasso: numberOrEmpty(suggestion.medidas.entrepasso),
     estado: suggestion.condicao.estado ?? "novo",
     nota: numberOrEmpty(suggestion.condicao.nota),
     possui_etiqueta: suggestion.condicao.possui_etiqueta ?? false,

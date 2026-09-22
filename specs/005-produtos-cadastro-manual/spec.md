@@ -54,7 +54,8 @@ Collection `products`:
   "medidas": {
     "unidade": "cm",
     "cintura": null, "quadril": null, "gancho": null,
-    "comprimento": null, "largura_barra": null
+    "comprimento": null, "largura_barra": null,
+    "coxa": null, "entrepasso": null
   },
   "condicao": {
     "estado": "novo",
@@ -96,7 +97,16 @@ Collection `products`:
 ```
 
 `marketplaces` e integrações associadas existem no schema para compatibilidade futura, mas
-não têm funcionalidade ativa no MVP (fora de escopo, ver seção 8).
+não têm funcionalidade ativa no MVP (fora de escopo, ver seção 8) — o formato real, em produção,
+é a lista de publicações da spec [011](../011-integracao-marketplaces/spec.md#42-modelo-de-dados--productsmarketplaces),
+não o objeto fixo do exemplo acima.
+
+`medidas.coxa` e `medidas.entrepasso` (largura da coxa e comprimento da costura interna, mesma
+unidade dos demais campos de `medidas`) foram acrescentados para calças, shorts e saias publicarem
+no Mercado Livre, que exige a tabela de medidas da peça nesses domínios (spec
+[012](../012-conector-mercado-livre/spec.md#35-moda-gênero-tamanho-e-tabela-de-medidas), seção
+3.5; ADR-024). Todos os campos de `medidas` continuam opcionais para a loja física — só a
+publicação no Mercado Livre exige os que o domínio pedir.
 
 ## 3. Status do produto
 

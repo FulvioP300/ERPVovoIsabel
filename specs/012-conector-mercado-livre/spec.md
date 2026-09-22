@@ -208,10 +208,10 @@ usuário de teste no lugar da loja, ou uma conta pessoal).
 | `caracteristicas.marca_nome` | `attributes[BRAND]` | Só enviado se `BRAND` existir na lista de atributos da categoria (seção 4). |
 | `caracteristicas.cor_principal` | `attributes[MAIN_COLOR]` (ou `COLOR`, conforme a categoria) | Idem — melhor esforço, nunca inventa um atributo que a categoria não tem. |
 | `sku` | `attributes[SELLER_SKU]` | A documentação de publicação manda o SKU no atributo `SELLER_SKU` (**não** em `seller_custom_field`). Identifica a peça do ERP no anúncio e permite reconhecê-lo se a resposta do `POST /items` se perder (seção 3.1); é pesquisável com `?seller_sku=`. |
-| `peso` e pacote padrão configurável | `attributes[SELLER_PACKAGE_WEIGHT / _HEIGHT / _LENGTH / _WIDTH]` | Seção 3.4 — peso do produto (kg → g); dimensões do pacote padrão (categoria > departamento > padrão). |
+| `peso` e pacote padrão | `attributes[SELLER_PACKAGE_WEIGHT / _HEIGHT / _LENGTH / _WIDTH]` | Seção 3.4 — peso do produto (kg → g); dimensões do pacote padrão único, editado numa tela de admin (ADR-027). |
 | *(nenhum campo nosso)* | `attributes[GTIN]` / `attributes[EMPTY_GTIN_REASON]` | Peça de brechó não tem GTIN válido — ver seção 5. |
 | *(nenhum campo nosso)* | `sale_terms[WARRANTY_TYPE/WARRANTY_TIME]` | Ver seção 6. |
-| departamento da categoria (003) e `tamanho_etiqueta` | `attributes[GENDER]`, `attributes[SIZE]`, `attributes[SIZE_GRID_ID]`, `attributes[SIZE_GRID_ROW_ID]` | Moda — seção 3.5, só em domínios com tabela de medidas. |
+| departamento da categoria (003), `tamanho_etiqueta` e `medidas` | `attributes[GENDER]`, `attributes[SIZE]`, `attributes[SIZE_GRID_ID]`, `attributes[SIZE_GRID_ROW_ID]` | Moda — seção 3.5, só em domínios com tabela de medidas. Para roupa, o conector cria/estende a tabela com `medidas` da peça (ADR-024). |
 | *(configuração da categoria)* | `tags: ["immediate_payment"]` | Só quando `settings.immediate_payment = "required"` na categoria. |
 | — | `buying_mode="buy_it_now"` | Fixo — único modo suportado atualmente pelo Mercado Livre. |
 | — | `listing_type_id` | Valor único configurável do ERP — ver seção 3.2. |
@@ -230,15 +230,22 @@ O que decide a operação é a entrada de `products.marketplaces[]` (011, seçã
 | com `id_anuncio` e `status = publicado` | **Atualizar** ("Republicar") | `PUT /items/$ITEM_ID` → `PUT /items/$ITEM_ID/description?api_version=2` |
 | com `id_anuncio` e `status = encerrado` | **Criar de novo** | como a primeira linha: item novo, com id novo; o `id_anuncio` anterior fica só na auditoria |
 
-- **Atualizar** reenvia `price`, `pictures` (sempre — nunca omitir), `attributes` e a descrição,
-  com os mesmos critérios e validações das seções 3 a 6 (inclusive a faixa de preço);
-  `available_quantity` segue `1`. Antes, `GET /items/$ITEM_ID` informa `status`, `sold_quantity` e a
-  categoria do anúncio. **Regras de edição (documentação "Sincronização e modificação de
-  publicações", 24/03/2026):** com o item ativo podem mudar `available_quantity`, `price`, vídeo,
-  `pictures`, descrição e envio; **com vendas** (`sold_quantity > 0`) não mudam o título,
-  `buying_mode` nem meios de pagamento. No modelo *User Products* (seção 3.3) o nome vai em
-  `family_name`, que só é editável enquanto o item não tem vendas (`sold_quantity = 0`). O conector
-  aplica essa regra **antes** de enviar, em vez de mandar e reagir ao erro.
+- **Atualizar** reenvia `price`, `pictures` (sempre — nunca omitir) e `attributes` (nunca
+  `family_name` — ver ⚠ abaixo) e a descrição, com os mesmos critérios e validações das seções 3 a
+  6 (inclusive a faixa de preço); `available_quantity` segue `1`. Antes, `GET /items/$ITEM_ID`
+  informa `status`, `sold_quantity` e a categoria do anúncio. **Regras de edição (documentação
+  "Sincronização e modificação de publicações", 24/03/2026):** com o item ativo podem mudar
+  `available_quantity`, `price`, vídeo, `pictures`, descrição e envio; **com vendas**
+  (`sold_quantity > 0`) não mudam o título, `buying_mode` nem meios de pagamento.
+
+  ⚠ **`family_name` nunca é reenviado no `PUT /items/$ITEM_ID`** — confirmado ao vivo (T043/T044,
+  22/09/2026): o Mercado Livre recusa com `"The field family name is invalid"` mesmo reenviando o
+  valor idêntico ou um texto simples sem acento, no modelo *User Products*, independente de
+  `sold_quantity`. Contradiz a suposição original desta spec ("editável enquanto sold_quantity =
+  0") — editável talvez seja, mas não por este payload; a forma real de mudar o nome de um item já
+  criado continua sem confirmação (possivelmente um endpoint próprio, não testado). `title` (modelo
+  antigo) segue a regra original (reenviado só com `sold_quantity = 0`), não confirmada ao vivo — a
+  conta de produção já está no modelo *User Products*.
 - **Descrição na atualização:** `PUT .../description?api_version=2`. Se o item ainda não tem
   descrição (falha parcial anterior), o `PUT` falha e o conector usa `POST`; se ambos falharem, a
   pendência descreve o motivo.
@@ -277,22 +284,38 @@ O que decide a operação é a entrada de `products.marketplaces[]` (011, seçã
 
 ### 3.2 Tipo de anúncio (`listing_type_id`)
 
-Valor **único para todo o ERP**, lido da variável de ambiente `MERCADO_LIVRE_LISTING_TYPE_ID`
-(não é por conta nem por anúncio nesta versão). Padrão: `gold_special` (Clássico). Tipos do site
-MLB (`GET /sites/MLB/listing_types`): `gold_pro` (Premium), `gold_premium` (Diamante),
-`gold_special` (Clássico), `gold` (Ouro), `silver` (Prata), `bronze` (Bronze) e `free` (Grátis).
-Fatos da documentação ("Tipos de publicação"): `gold_special` e `gold_pro` têm duração ilimitada e
-pausam com estoque 0; exigem ao menos uma foto; dá para alternar entre os dois sem custo; `free` não
-permite *downgrade* e nem sempre está disponível ao vendedor (`GET
-/users/{id}/available_listing_type/free?category_id=` explica o motivo, por exemplo mais de 5
-transações no último ano); `GET /users/{id}/available_listing_types?category_id=` lista o que a
-conta pode usar. O custo de cada tipo sai de `GET /sites/MLB/listing_prices?category_id=&price=&
-listing_type_id=` (`sale_fee_amount`, `listing_fee_amount`; exige token).
+**Escolha do operador, na mesma tela de revisão da categoria (seção 4; ADR-026)** — não uma
+variável de ambiente nem uma decisão de negócio fixada uma vez para todo o ERP. Uma caixa de
+seleção, ordenada do mais barato para o mais caro, com `free` (Grátis) pré-selecionado:
 
-É uma decisão de negócio — custo (comissão por venda) × exposição — **a confirmar com a dona do
-brechó antes do primeiro anúncio real**. Nos testes, o Mercado Livre pede nunca usar `gold` nem
-`gold_premium`. Se o Mercado Livre recusar o tipo para a categoria, a publicação falha com `status =
-erro` e mensagem clara (011, seção 4.6).
+| Valor | Rótulo | Ordem (barato → caro) |
+|---|---|---|
+| `free` | Grátis | 1 — padrão |
+| `bronze` | Bronze | 2 |
+| `silver` | Prata | 3 |
+| `gold` | Ouro | 4 |
+| `gold_special` | Clássico | 5 |
+| `gold_premium` | Diamante | 6 |
+| `gold_pro` | Premium | 7 |
+
+⚠ **Ordem não confirmada por preço real** (ADR-026) — a documentação salva não lista o custo por
+categoria (`GET /sites/MLB/listing_prices`, que exige token, não verificado ainda). A ordem acima é
+a leitura mais razoável dos nomes; confirma-se na Fase 8 (T043/T044) com a conta real antes do
+primeiro anúncio de verdade (T049). Se divergir, é só reordenar a lista — não muda o resto do
+desenho.
+
+Lista estática — **sem** consultar `GET /users/{id}/available_listing_types` nem
+`GET /sites/MLB/listing_prices` na revisão (ADR-026: mais simples, sem chamada de rede extra). Se
+o tipo escolhido não for aceito pela categoria ou pela conta (ex.: `free` bloqueado por volume de
+vendas — mais de 5 transações no último ano, `GET
+/users/{id}/available_listing_type/free?category_id=` explicaria o motivo, mas o conector não
+consulta isso), a publicação falha com `status = erro` e mensagem clara (011, seção 4.6) — o
+operador troca de tipo no mesmo painel, sem perder a categoria já escolhida.
+
+Fatos da documentação ("Tipos de publicação"): `gold_special` e `gold_pro` têm duração ilimitada e
+pausam com estoque 0; exigem ao menos uma foto; dá para alternar entre os dois sem custo. **Nos
+testes, o Mercado Livre pede nunca usar `gold` nem `gold_premium`** — orientação ao operador que
+roda a Fase 8 (T043), não um bloqueio de código (em produção são opções válidas).
 
 ### 3.3 Modelo *User Products* (`family_name`)
 
@@ -304,8 +327,10 @@ vendedores em 2025, e depois da ativação **não** é mais possível publicar n
 - Envia-se **`family_name`** (nome genérico da família; usamos `identificacao.nome`), **não** `title`
   — o Mercado Livre monta o `title` a partir da família, do domínio e dos atributos. Não se envia o
   array `variations` (cada variação seria um item; a peça é única).
-- `family_name` ≤ `max_title_length` do domínio; só pode ser alterado enquanto nenhuma condição de
-  venda tem vendas. Alterações em título, `family_name`, atributos, fotos, condição e quantidade se
+- `family_name` ≤ `max_title_length` do domínio; a documentação diz que só pode ser alterado
+  enquanto nenhuma condição de venda tem vendas, mas o conector **nunca** reenvia `family_name` num
+  `PUT /items/$ITEM_ID` — o Mercado Livre recusa mesmo sem vendas (ver ⚠ na seção 3.1). Alterações
+  em título, `family_name`, atributos, fotos, condição e quantidade se
   replicam de forma assíncrona para todos os itens do mesmo *User Product* — irrelevante aqui (um
   item por peça).
 - O conector lê a tag de `GET /users/me` (o mesmo chamado pelo teste de integração da seção 2.4) e
@@ -327,39 +352,27 @@ e `SELLER_PACKAGE_WEIGHT` (ex.: `"214 g"`). Faltando algum: erro
 `cause_id` 5402. Vendedores em ME1 usam `shipping.dimensions` (fora de escopo — a adoção do ME2 é
 obrigatória).
 
-**Decisão (T046): pacote padrão configurável.** O ERP tem `peso` (kg, decimal), mas não as dimensões do
-pacote, e **não** ganha esses campos nesta versão (evolução: campos no cadastro do produto, que muda a
-spec 005). As dimensões vêm de uma configuração, resolvida por prioridade:
+**Decisão (T046/T010, ADR-027): pacote padrão único, editado numa tela de admin.** O ERP tem
+`peso` (kg, decimal), mas não as dimensões do pacote, e **não** ganha esses campos nesta versão
+(evolução: campos no cadastro do produto, que muda a spec 005). As dimensões vêm de um **único
+pacote padrão**, sem exceção por categoria nem por departamento (ADR-027 — mais simples que a
+proposta original de T046; uma exceção por categoria vira extensão futura só se o uso real
+mostrar necessidade, princípio V):
 
-1. por **categoria** do ERP (`classificacao.categoria_codigo`, ex.: `BERM`);
-2. por **departamento** (`classificacao.departamento`);
-3. **padrão** global.
-
-A configuração fica na variável de ambiente `MERCADO_LIVRE_PACKAGE_DEFAULTS`, um JSON validado por Zod:
-
-```json
-{
-  "padrao": { "altura_cm": 5, "largura_cm": 25, "comprimento_cm": 30, "peso_g": 300 },
-  "por_departamento": { "Masculino": { "altura_cm": 5, "largura_cm": 25, "comprimento_cm": 30 } },
-  "por_categoria": { "CASA": { "altura_cm": 8, "largura_cm": 30, "comprimento_cm": 40, "peso_g": 900 } }
-}
-```
-
-Os valores acima são **só de exemplo** — os reais dependem das embalagens do brechó (tarefa T051). Cada
-entrada tem `altura_cm`, `largura_cm` e `comprimento_cm` (inteiros maiores que zero) e, opcionalmente,
-`peso_g`; `padrao` é obrigatório.
-
+- Tela **"Contas de marketplace → Pacote padrão do Mercado Livre"** (só admin, spec 011, seção
+  2.2) — quatro campos: altura, largura, comprimento (cm) e peso (g), todos inteiros positivos e
+  **obrigatórios**. `GET`/`PUT /api/marketplace-accounts/mercado-livre-package-settings`.
+- **Guardado no banco** (documento único, `mercado_livre_package_settings`), **não** numa variável
+  de ambiente — o admin edita e salva sem reiniciar o backend nem mexer no `.env`.
 - **Peso:** vale o `peso` do produto (kg → g, arredondado para cima) quando preenchido; senão o
-  `peso_g` da entrada resolvida; se nenhum dos dois existir, a publicação falha antes do `POST` com
-  "Informe o peso da peça ou configure `peso_g` no pacote padrão".
-- **Sem configuração** (variável ausente) **ou inválida** (JSON quebrado, campo fora do formato): a
-  publicação falha antes do `POST`, com mensagem clara apontando o problema. O resto do sistema segue
-  funcionando — a variável só é lida (e validada) quando o conector precisa dela.
+  peso do pacote padrão — que agora é sempre obrigatório no formulário, então essa reserva nunca
+  falta.
+- **Sem pacote configurado ainda:** a publicação falha antes do `POST`, com mensagem clara
+  apontando para a tela de configuração.
 - **Formato enviado:** `"{n} cm"` e `"{n} g"`, inteiros.
-- **Limitação assumida:** o mesmo pacote serve para peças de tamanhos parecidos na mesma categoria ou
-  departamento; uma peça volumosa (casaco, edredom) pede uma entrada própria em `por_categoria`. Quem
-  edita a configuração é quem administra o ambiente (mudança de variável de ambiente e reinício); uma
-  tela de administração para isso fica como evolução (seção 8).
+- **Limitação assumida:** o mesmo pacote serve para toda peça, de qualquer categoria ou
+  departamento — uma peça muito diferente do padrão (casaco, edredom) usa o mesmo pacote por
+  enquanto. Auditado (`MERCADO_LIVRE_PACKAGE_SETTINGS_UPDATE`, spec 008) a cada alteração.
 
 ### 3.5 Moda: gênero, tamanho e tabela de medidas
 
@@ -367,8 +380,8 @@ Fonte: documentação "Tabelas de medidas" ("Primeiros passos", "Gerenciar tabel
 "Validação da tabela de medidas"). No Brasil existem três tipos de tabela: `BRAND` (da marca),
 `STANDARD` (padrão do Mercado Livre) e `SPECIFIC` (do vendedor).
 
-Em alguns domínios de moda a tabela de medidas é obrigatória. Depois do preditor (seção 4), que
-devolve o `domain_id` (ex.: `MLB-SHIRTS`), o conector segue:
+Em alguns domínios de moda a tabela de medidas é obrigatória. Depois da categoria confirmada na
+revisão (seção 4; ADR-025), que resolve o `domain_id` (ex.: `MLB-SHIRTS`), o conector segue:
 
 1. **O domínio usa tabela?** `GET /catalog/charts/MLB/configurations/active_domains` →
    `{ domains: [ { domain_id } ] }` (`404 config_not_found` = nenhum domínio ativo). Domínio fora da
@@ -379,16 +392,46 @@ devolve o `domain_id` (ex.: `MLB-SHIRTS`), o conector segue:
 2. **Quais atributos definem a tabela?** `GET /domains/{domain_id}/technical_specs` — atributos com
    `value_type` `grid_id`/`grid_row_id` (`SIZE_GRID_ID`, `SIZE_GRID_ROW_ID`) e os com a tag
    `grid_template_required` (em geral `BRAND` e `GENDER`).
-3. **Procurar a tabela:** `POST /catalog/charts/search?offset=1&limit=100` com `{ domain_id (sem o
+**Resultado do T050 (21/09/2026, conta real conectada, só leituras).** `active_domains` lista 59
+domínios no MLB, e quase todos os de roupa que interessam ao brechó (camisas, camisetas, vestidos, blusas,
+calças, shorts, saias, jaquetas e casacos) exigem tabela — mas **só calçados têm tabela pronta**:
+`POST /catalog/charts/domains/search` lista tabelas `STANDARD` apenas para `SNEAKERS`,
+`BOOTS_AND_BOOTIES`, `FOOTBALL_SHOES` e `LOAFERS_AND_OXFORDS`, e tabelas `BRAND` apenas para 9 domínios de
+calçado; para roupas, a busca `STANDARD` devolve 0 tabelas. A política "só `BRAND`/`STANDARD`" basta
+para **calçados**, mas **não publica roupas**: é preciso uma tabela `SPECIFIC`, do próprio vendedor.
+
+**Decisão (T053, ADR-024): o ERP cria/estende as tabelas `SPECIFIC` de roupa por API**, alimentadas
+pelas medidas reais de cada peça (`medidas` — spec 005) — cada peça é única e tem SKU próprio
+(constituição, princípio X), então a medida real da peça já é o que a tabela precisa, sem inventar
+uma segunda fonte "genérica" só para o marketplace. Fluxo completo, unindo calçado e roupa:
+
+3. **Achar a tabela** — `POST /catalog/charts/search?offset=1&limit=100` com `{ domain_id (sem o
    prefixo do site, ex.: "SHIRTS"), site_id: "MLB", seller_id, attributes: [{ id: "GENDER", values:
    [{ name }] }, { id: "BRAND", values: [{ name }] }] }` → `{ paging, charts: [{ id, type,
-   main_attribute_id, … }] }`. Ordem de preferência: **`BRAND`** (se a marca da peça tiver tabela),
-   depois **`STANDARD`**, depois **`SPECIFIC`** do vendedor (para roupas é a única que existe — ver o resultado do T050 abaixo). Domínio sem tabela ativa responde
-   `400 domain_not_active`; busca sem resultado, `charts: []`.
-4. **Escolher a linha:** `GET /catalog/charts/{chart_id}` → `rows: [{ id: "569686:1", attributes: [{
-   id: "SIZE", values: [{ name: "17" }] }, …] }]`. A linha certa é a cujo `SIZE` é **igual** ao
-   tamanho da peça (`tamanho_etiqueta`; se não bater, `tamanho_equivalente`). O `SIZE` do item e o da
-   linha precisam ser idênticos, e o `GENDER` do item e o da tabela também.
+   main_attribute_id, … }] }`.
+   - **Calçado:** ordem de preferência **`BRAND`** (se a marca da peça tiver tabela), depois
+     **`STANDARD`**. Domínio sem tabela ativa responde `400 domain_not_active`.
+   - **Roupa:** busca com `type: "SPECIFIC"` e `seller_id` da própria conta. Sem resultado
+     (`charts: []`), o conector **cria** a tabela (passo 3a); com resultado, reaproveita a
+     existente e segue para o passo 4.
+3a. **Criar a tabela `SPECIFIC` (só roupa, só na primeira peça de um domínio+gênero)** —
+   `GET /domains/{domain_id}/technical_specs?section=grids` para obter os atributos
+   `CLOTHING_MEASURE` daquele domínio, depois `POST /catalog/charts` com `measure_type:
+   "CLOTHING_MEASURE"`, `domain_id`, `site_id: "MLB"`, `attributes: [{ id: "GENDER", values: […] }]`,
+   `main_attribute: { attributes: [{ site_id: "MLB", id: "SIZE" }] }` e uma primeira `row` com a
+   peça atual (`SIZE` + os atributos `GARMENT_*`, tabela de mapeamento abaixo). O nome
+   (`names.MLB`) é gerado pelo conector (≤ 60 caracteres, só letras/números/espaços — ex. "Tabela
+   Vovó Isabel — Calças Feminino"), nunca digitado pelo operador.
+4. **Escolher ou adicionar a linha:**
+   - `GET /catalog/charts/{chart_id}` → `rows: [{ id: "569686:1", attributes: [...] }]`. Para
+     **calçado**, a linha certa é a cujo `SIZE` é **igual** ao tamanho da peça
+     (`tamanho_etiqueta`; se não bater, `tamanho_equivalente`).
+   - Para **roupa**, a linha certa é a cuja combinação `SIZE` + todos os atributos `GARMENT_*`
+     é **idêntica** à da peça atual (peças de tamanho igual podem ter medidas reais diferentes —
+     princípio X). Achando, reaproveita; não achando, **adiciona** uma linha nova
+     (`POST /catalog/charts/{chart_id}/rows`) — nunca edita uma linha existente (pode já estar
+     associada a outro anúncio) e nunca recria a tabela.
+   - Em ambos os casos, o `GENDER` do item e o da tabela precisam ser idênticos.
 5. **Enviar no item:** `attributes[GENDER]`, `attributes[SIZE]`, `attributes[SIZE_GRID_ID]`
    (`value_name` = id da tabela) e `attributes[SIZE_GRID_ROW_ID]` (`value_name` = `id` da linha, no
    formato `"{chart_id}:{n}"`).
@@ -397,34 +440,39 @@ O `GENDER` sai do departamento da categoria do ERP (Masculino, Feminino, Infanti
 valores de `GET /categories/$CATEGORY_ID/attributes`; o Mercado Livre pode pedir também `AGE_GROUP`
 por *warning* de validação (seção 3.6). O `GENDER` é validado ainda contra o título.
 
-**Resultado do T050 (21/09/2026, conta real conectada, só leituras).** `active_domains` lista 59
-domínios no MLB, e quase todos os de roupa que interessam ao brechó (camisas, camisetas, vestidos, blusas,
-calças, shorts, saias, jaquetas e casacos) exigem tabela — mas **só calçados têm tabela pronta**:
-`POST /catalog/charts/domains/search` lista tabelas `STANDARD` apenas para `SNEAKERS`,
-`BOOTS_AND_BOOTIES`, `FOOTBALL_SHOES` e `LOAFERS_AND_OXFORDS`, e tabelas `BRAND` apenas para 9 domínios de
-calçado; para roupas, a busca `STANDARD` devolve 0 tabelas. Logo, a política "só `BRAND`/`STANDARD`"
-**não publica roupas**: é preciso uma tabela `SPECIFIC`, do próprio vendedor. Há duas formas:
+**Medidas exigidas por roupa (`MedidasSchema`, spec 005) → atributo `GARMENT_*`.** Confirmado só
+para domínios de parte de baixo (calças, shorts, saias — documentação "Gerenciar tabela de
+medidas", exemplo `PANTS_TEST`):
 
-1. **Achar** as tabelas `SPECIFIC` que a dona do brechó criar no painel do Mercado Livre (uma por domínio e
-   gênero, com uma linha por tamanho vendido) e escolher a linha pelo `SIZE` — o conector só lê
-   (`POST /catalog/charts/search` com `type: SPECIFIC`, `seller_id`).
-2. **Criar** por API (`POST /catalog/charts`): nos domínios `TOPS` e `BOTTOMS` é possível
-   `measure_type: CLOTHING_MEASURE`, mas cada linha pede medidas da peça (comprimento, cintura, quadril,
-   coxa…) — mais escopo, e dados que o ERP só tem em parte (`medidas`).
+| Campo do ERP | Atributo `GARMENT_*` |
+|---|---|
+| `medidas.comprimento` | `GARMENT_LENGTH_FROM` |
+| `medidas.cintura` | `GARMENT_WAIST_WIDTH_FROM` |
+| `medidas.quadril` | `GARMENT_HIP_WIDTH_FROM` |
+| `medidas.coxa` (novo, ADR-024) | `GARMENT_THIGH_WIDTH_FROM` |
+| `medidas.entrepasso` (novo, ADR-024) | `GARMENT_INSEAM_LENGTH_FROM` |
+| `medidas.gancho` | `GARMENT_FRONT_RISE_FROM` |
 
-⚠ **Decisão em aberto (T053)**. Para calçados, a tabela `STANDARD`/`BRAND` basta.
+⚠ **Domínios de parte de cima** (camisas, blusas, jaquetas, vestidos) **não têm os atributos
+`GARMENT_*` confirmados** — a documentação salva só cobre o exemplo de calça. A implementação
+consulta `technical_specs` do domínio antes de montar a linha; atributos que apareçam ali e que o
+ERP não capture ainda (ex.: busto, ombro, manga) geram uma extensão nova de `MedidasSchema`, nunca
+um valor adivinhado.
 
 Consequências já certas:
 - **`SIZE` é obrigatório** e precisa ser igual ao da linha. No ERP de desenvolvimento, 7 de 9 produtos
   não têm `tamanho_etiqueta`; publicar moda exige o tamanho, senão a publicação falha antes do `POST`
   ("Informe o tamanho da peça").
-- **Vocabulário de tamanhos:** as linhas `STANDARD` de calçado usam `"34,0 BR"`; o ERP guarda `"32"` —
-  é preciso normalizar (número → `"N,0 BR"`). Numa tabela `SPECIFIC`, o vocabulário é o que a dona do
-  brechó escolher (P/M/G, 38/40…); o ERP e a tabela devem usar os mesmos rótulos.
+- **Roupa também exige as medidas** que o domínio pedir (tabela acima, ou o que `technical_specs`
+  confirmar para partes de cima) preenchidas em `medidas` — faltando alguma, a publicação falha
+  antes do `POST` ("Informe <medida> para publicar esta peça no Mercado Livre").
+- **Vocabulário de tamanhos (calçado):** as linhas `STANDARD` usam `"34,0 BR"`; o ERP guarda `"32"` —
+  é preciso normalizar (número → `"N,0 BR"`). Em roupa, o `SIZE` da tabela `SPECIFIC` é o próprio
+  `tamanho_etiqueta` do ERP (o conector é quem cria a tabela, então já nasce no vocabulário certo).
 
-**Sem tabela ou sem linha correspondente:** a publicação falha **antes** do `POST`, com `status =
-erro` e mensagem clara ("Não há tabela de medidas para <domínio>/<gênero>/<marca> com o tamanho
-<X>").
+**Sem tabela (calçado) ou sem medida mínima (roupa):** a publicação falha **antes** do `POST`, com
+`status = erro` e mensagem clara ("Não há tabela de medidas para <domínio>/<gênero>/<marca> com o
+tamanho <X>", ou "Informe <medida> para publicar esta peça no Mercado Livre").
 
 Erros de validação da tabela (`type` `error` bloqueia): `missing.fashion_grid.grid_id.values`,
 `missing.fashion_grid.grid_row_id.values`, `missing.fashion_grid.size.values` (falta `SIZE`),
@@ -449,29 +497,69 @@ message, error, status, cause: [] }`. Nunca vai token nem `client_secret` para a
 
 ## 4. Categorização
 
-Antes de publicar, o conector chama o **preditor de categorias** ("Categorização de produtos"):
+**Revisão humana obrigatória, em toda publicação (ADR-025).** Diferente do resto do fluxo (spec
+011, seção 4.3), categorizar não é uma decisão só do conector — é uma etapa própria, entre
+"Publicar" e a criação de fato do anúncio, sempre com confirmação do operador. Motivo: o T050
+mostrou o preditor errando o domínio de peças comuns, e o domínio decide qual tabela de medidas o
+anúncio exige (seção 3.5) — desde a ADR-024, uma categoria errada também cria/alimenta uma tabela
+`SPECIFIC` no domínio errado no Mercado Livre, um estado externo que não tem como corrigir depois.
+
+```text
+Operador clica em "Publicar no Mercado Livre" (ou "Republicar")
+        ↓
+Sistema chama o preditor de categorias com o nome do produto
+        ↓
+Tela de revisão: categoria sugerida (pré-selecionada) + lista curada de
+categorias de Roupas, Calçados e Bolsas para escolher outra
+        ↓
+Operador confirma a sugestão ou escolhe outra categoria
+        ↓
+Sistema publica de fato, usando o `category_id` confirmado
+```
+
+**Preditor** ("Categorização de produtos"), chamado só para gerar a sugestão pré-selecionada —
+nunca decide sozinho:
 
 ```
 GET https://api.mercadolibre.com/sites/MLB/domain_discovery/search?limit=1&q={nome do produto}
 → [{ domain_id, domain_name, category_id, category_name, attributes: [{ id, value_id, value_name }] }]
 ```
 
-`q` é o nome do produto, todo no idioma do site; `limit` vai de 1 a 8 (padrão 4). Usa o **primeiro
-resultado** (maior probabilidade) automaticamente — **sem** um passo extra de confirmação manual do
-`category_id` pelo operador nesta primeira versão (ver seção 8, "fora do escopo"): a categorização
-das nossas categorias internas (003) não corresponde 1:1 à árvore de categorias do Mercado Livre,
-então uma tela de confirmação/correção é uma funcionalidade real, mas fica para uma iteração
-futura, quando houver uso real que demonstre que o preditor erra com frequência suficiente para
-justificar a complexidade extra (constituição, princípio V). O preditor também devolve atributos já
-reconhecidos (ex.: `BRAND`), que o conector pode aproveitar quando o ERP não tem o dado.
+`q` é o nome do produto, todo no idioma do site; `limit` vai de 1 a 8 (padrão 4). O primeiro
+resultado (maior probabilidade) vira a sugestão pré-selecionada na tela de revisão — nunca é usado
+direto sem confirmação. Se a chamada ao preditor falhar (rede, Mercado Livre fora do ar), a tela de
+revisão aparece igual, só sem pré-seleção — o operador escolhe manualmente da lista curada; a
+publicação não trava por isso. O preditor também devolve atributos já reconhecidos (ex.: `BRAND`),
+que o conector pode aproveitar quando o ERP não tem o dado.
 
-⚠ **Precisão do preditor (T050).** Com consultas de peças comuns o preditor devolveu domínios inesperados —
-"camisa masculina" → `MLB-RUGBY_JERSEYS` e "jaqueta masculina" → `MLB-FOOTBALL_JACKETS` — e o domínio
-decide a tabela de medidas (seção 3.5). Como o brechó tem um conjunto pequeno e fixo de categorias (003), a
-proposta é um **mapeamento configurável categoria do ERP → categoria/domínio do Mercado Livre**, com o
-preditor só como reserva (decisão T054).
+⚠ **Precisão do preditor (T050).** Com consultas de peças comuns o preditor devolveu domínios
+inesperados — "camisa masculina" → `MLB-RUGBY_JERSEYS` e "jaqueta masculina" →
+`MLB-FOOTBALL_JACKETS` — a evidência que motivou a revisão obrigatória acima (ADR-025), em vez de
+publicar direto com o resultado do preditor.
 
-Com o `category_id` resolvido, o conector consulta dois recursos:
+**Lista curada** (para o `<select>` da tela de revisão): as categorias-folha da sub-árvore
+"Calçados, Roupas e Bolsas" (`MLB1430`) do site MLB — não a árvore inteira do Mercado Livre
+(milhares de categorias, inviável como lista suspensa, e fora do que o brechó vende). Levantada
+uma vez (T057) por `GET /categories/{id}` recursivo — público, sem token — e congelada em
+`backend/src/plugins/marketplaces/mercado-livre-category-catalog.json`, versionado no
+repositório (não é uma variável de ambiente: é dado de taxonomia do Mercado Livre, não uma
+preferência operacional da dona do brechó — diferente do pacote padrão, seção 3.4); atualizada
+rodando `npm run fetch:mercado-livre-categories` de novo se o Mercado Livre mudar essa taxonomia.
+**Feito** (22/09/2026): 207 categorias-folha.
+
+`API: POST /api/products/:id/marketplace-category-suggestion` — ver spec 011, seção 4.5. O
+`category_id` que o operador confirma na tela de revisão vai, junto do resto do formulário, no
+corpo de `POST /api/products/:id/marketplace-listings` (`categoryId`, spec 011 seção 4.5) — o
+conector **não** chama mais o preditor por dentro de `publish()`; recebe o `category_id` já
+resolvido.
+
+Alternativa descartada: mapeamento configurável categoria do ERP (003) → categoria do Mercado
+Livre, com o preditor só como reserva e sem revisão humana — rejeitada porque, com a revisão já
+obrigatória a cada publicação, esse mapeamento não reduziria risco que a revisão já não cobrisse,
+só adicionaria uma configuração (12 categorias) para manter em sincronia com a taxonomia do
+Mercado Livre (ADR-025).
+
+Com o `category_id` confirmado, o conector consulta dois recursos:
 
 - `GET /categories/$CATEGORY_ID` → `settings`: `max_title_length`, `minimum_price`, `maximum_price`
   (pode ser `null`), `item_conditions`, `max_pictures_per_item`, `max_description_length`,
@@ -577,18 +665,15 @@ só avisa (011, seção 4.7); a decisão é do operador
 Detectar que o Mercado Livre vendeu/encerrou o item por conta própria (faz parte da
 sincronização de status, abaixo)
 
-Criar tabelas de medidas `SPECIFIC` (`POST /catalog/charts`) — a v1 só usa tabelas `BRAND` e
-`STANDARD` já existentes (seção 3.5)
+Tela de administração das tabelas `SPECIFIC` (editar/mesclar linhas manualmente) — a v1 só cria e
+adiciona linha por API, sem interface própria (seção 3.5)
 
-Dimensões do pacote por produto no cadastro e tela de administração do pacote padrão — a v1 usa a
-configuração em variável de ambiente (seção 3.4)
+Dimensões do pacote por produto no cadastro (o pacote padrão único, editável numa tela de admin,
+segue dentro do escopo desde a ADR-027 — seção 3.4); exceção de pacote por categoria/departamento
 
 Suporte a variações (múltiplos tamanhos/cores por anúncio) — já fora de escopo
 em 011; Mercado Livre usa isso via "User Products"/UPtin, não aplicável a
 peça única
-
-Tela de confirmação/correção manual da categoria sugerida pelo preditor
-(seção 4) — reavaliar só se o preditor errar com frequência real
 
 Sincronização de estoque/preço/status de pedidos feitos no Mercado Livre de
 volta para o ERP (já fora de escopo em 011)
@@ -640,7 +725,8 @@ a um catalog_product_id
 - Toda renovação de token é gravada mesmo que a operação de negócio falhe depois, e duas
   operações simultâneas na mesma conta gastam o `refresh_token` uma única vez (seção 2.3).
 - Um `invalid_grant` na renovação marca a conta `expired`; um erro de rede não altera o status.
-- O `listing_type_id` enviado vem de `MERCADO_LIVRE_LISTING_TYPE_ID` (padrão `gold_special`).
+- O `listing_type_id` enviado é o que o operador escolheu na tela de revisão, do menor custo para
+  o maior, com `free` pré-selecionado (seção 3.2; ADR-026) — nunca uma variável de ambiente fixa.
 - Encerrar um anúncio `publicado` envia `PUT /items/$ITEM_ID` com `status = closed` e grava
   `status = encerrado` e `encerrado_em`; repetir a operação sobre um item já encerrado é
   sucesso; um `409` de versão é repetido antes de falhar; conta inativa ou não conectada é

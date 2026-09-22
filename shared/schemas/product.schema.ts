@@ -81,6 +81,11 @@ export const MedidasSchema = z.object({
   gancho: nullableNumber().default(null),
   comprimento: nullableNumber().default(null),
   largura_barra: nullableNumber().default(null),
+  // Mercado Livre exige a tabela de medidas da peça em calças/shorts/saias (spec 012, seção 3.5;
+  // ADR-024) — coxa e entrepasso completam o mapeamento para os atributos GARMENT_* do Mercado
+  // Livre (os demais campos já correspondem 1:1). Documento antigo sem os dois: default null.
+  coxa: nullableNumber().default(null),
+  entrepasso: nullableNumber().default(null),
 });
 
 /** Sempre em kg (spec, seção 19) — unidade fixa, ao contrário de `medidas` (cm/in), então um

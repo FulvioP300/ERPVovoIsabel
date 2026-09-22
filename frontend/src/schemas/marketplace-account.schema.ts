@@ -1,14 +1,60 @@
 import { z } from "zod";
 import { MarketplaceEnum } from "../../../shared/dist/schemas/marketplace.schema.js";
+import { MercadoLivrePackageSettingsRecordSchema } from "../../../shared/dist/schemas/mercado-livre-package-settings.schema.js";
 
 export { MarketplaceEnum };
 export type Marketplace = z.infer<typeof MarketplaceEnum>;
+
+/** Pacote padrão do Mercado Livre (spec 012, seção 3.4; ADR-027) — devolvido pela API, já gravado. */
+export { MercadoLivrePackageSettingsRecordSchema };
+export type MercadoLivrePackageSettingsRecord = z.infer<typeof MercadoLivrePackageSettingsRecordSchema>;
+
+/**
+ * Formulário de edição — campos de texto (padrão do projeto, ver `product.schema.ts`), coeridos
+ * para número inteiro positivo na validação; o `zodResolver` já devolve o valor numérico ao
+ * `onSubmit`, sem parse manual.
+ */
+export const MercadoLivrePackageSettingsFormSchema = z.object({
+  altura_cm: z.coerce
+    .number({ invalid_type_error: "Informe um número." })
+    .int("Use um número inteiro, em centímetros.")
+    .positive("Deve ser maior que zero."),
+  largura_cm: z.coerce
+    .number({ invalid_type_error: "Informe um número." })
+    .int("Use um número inteiro, em centímetros.")
+    .positive("Deve ser maior que zero."),
+  comprimento_cm: z.coerce
+    .number({ invalid_type_error: "Informe um número." })
+    .int("Use um número inteiro, em centímetros.")
+    .positive("Deve ser maior que zero."),
+  peso_g: z.coerce
+    .number({ invalid_type_error: "Informe um número." })
+    .int("Use um número inteiro, em gramas.")
+    .positive("Deve ser maior que zero."),
+});
+export type MercadoLivrePackageSettingsFormValues = z.infer<typeof MercadoLivrePackageSettingsFormSchema>;
 
 export const MARKETPLACE_LABELS: Record<Marketplace, string> = {
   mercado_livre: "Mercado Livre",
   shopee: "Shopee",
   ebay: "eBay",
 };
+
+/**
+ * Tipos de anúncio do Mercado Livre (spec 012, seção 3.2; ADR-026) — lista estática, ordenada do
+ * mais barato para o mais caro, `free` como padrão. Escolhida pelo operador na tela de revisão
+ * (junto da categoria, T059) — nunca uma variável de ambiente fixa. ⚠ Ordem não confirmada por
+ * preço real (ADR-026) — a confirmar na Fase 8 (T043/T044) com a conta real.
+ */
+export const MERCADO_LIVRE_LISTING_TYPES: { id: string; label: string }[] = [
+  { id: "free", label: "Grátis" },
+  { id: "bronze", label: "Bronze" },
+  { id: "silver", label: "Prata" },
+  { id: "gold", label: "Ouro" },
+  { id: "gold_special", label: "Clássico" },
+  { id: "gold_premium", label: "Diamante" },
+  { id: "gold_pro", label: "Premium" },
+];
 
 export const ConnectionStatusEnum = z.enum(["connected", "disconnected", "error", "expired"]);
 export type ConnectionStatus = z.infer<typeof ConnectionStatusEnum>;

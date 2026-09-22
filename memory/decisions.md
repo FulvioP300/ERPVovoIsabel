@@ -1265,3 +1265,310 @@ pacote padrão basta); tela de administração do pacote padrão já na v1.
   haver normalização de tamanhos ou tabelas `SPECIFIC` (tarefa T050 mede isso com dados reais).
 - O Mercado Livre fecha sozinho peças usadas de moda ao vender; o ERP só sabe se o operador encerrar ou
   marcar como vendida (sincronização de status segue fora de escopo).
+
+
+## ADR-024 — Tabela de medidas de roupas do Mercado Livre: o ERP cria tabelas `SPECIFIC` via API, alimentadas pelas medidas reais de cada peça
+
+**Status:** Aceita
+**Data:** 2026-09-22
+**Specs afetadas:** [012-conector-mercado-livre](../specs/012-conector-mercado-livre/spec.md)
+(seção 3.5), [005-produtos-cadastro-manual](../specs/005-produtos-cadastro-manual/spec.md)
+(`medidas`)
+
+### Contexto
+
+O T050 (medição contra a conta real, 21/09/2026) mostrou que **nenhum domínio de roupa** do
+Mercado Livre tem tabela de medidas `STANDARD`/`BRAND` pronta — só calçados têm. Publicar roupas
+exige uma tabela `SPECIFIC`, do próprio vendedor (spec 012, seção 3.5, T053). Havia duas opções:
+(1) o conector só lê tabelas que a dona do brechó crie no painel do Mercado Livre; (2) o ERP cria
+as tabelas por API, com as medidas reais de cada peça.
+
+O brechó já cadastra `medidas` (`cintura`, `quadril`, `gancho`, `comprimento`, `largura_barra` —
+`shared/schemas/product.schema.ts`, `MedidasSchema`) desde a spec 005, preenchidas manualmente ou
+pela IA de cadastro (006). E a constituição, princípio X, já estabelece que **cada peça física é
+única, com SKU próprio** — mesmo duas peças "tamanho 38" podem ter medidas reais diferentes. Isso
+combina diretamente com a opção 2: a medida real da peça, que o ERP já captura no cadastro, é
+exatamente o que uma tabela `SPECIFIC` por peça precisa — sem inventar uma segunda fonte de
+verdade "genérica" só para o marketplace.
+
+### Decisão
+
+**Opção 2**, com o cadastro do produto (`medidas`) como fonte única:
+
+1. **`MedidasSchema` é estendido** para cobrir os atributos que o Mercado Livre exige em tabelas
+   `CLOTHING_MEASURE` de calças/shorts/saias (domínio confirmado — documentação "Gerenciar tabela
+   de medidas", exemplo `PANTS_TEST`):
+   - `cintura` → `GARMENT_WAIST_WIDTH_FROM` (mantido)
+   - `quadril` → `GARMENT_HIP_WIDTH_FROM` (mantido)
+   - `gancho` → `GARMENT_FRONT_RISE_FROM` (mantido, mesmo sentido: gancho frontal)
+   - `comprimento` → `GARMENT_LENGTH_FROM` (mantido)
+   - **`coxa`** (novo) → `GARMENT_THIGH_WIDTH_FROM`
+   - **`entrepasso`** (novo) → `GARMENT_INSEAM_LENGTH_FROM` (comprimento da costura interna —
+     diferente de `gancho`, que é a medida frontal)
+   - `largura_barra` é mantido (usado pelo ERP/loja física), mesmo sem atributo `GARMENT_*`
+     correspondente confirmado; não é enviado ao Mercado Livre até haver um atributo que o receba.
+2. ⚠ **Domínios de parte de cima** (camisas, blusas, jaquetas, vestidos, saias sem cintura/quadril
+   aplicável) **não têm os atributos `GARMENT_*` confirmados** — a documentação salva só cobre o
+   exemplo de calça. A implementação (T022/T023) consulta `GET /domains/{domain}/technical_specs?
+   section=grids` por domínio para obter a lista oficial antes de montar a linha da tabela; campos
+   novos que aparecerem lá (ex.: busto, ombro, manga) **não são adivinhados aqui** — viram uma nova
+   extensão de `MedidasSchema` quando confirmados.
+3. **Uma tabela por domínio + gênero** (não uma por peça): o conector cria a tabela na primeira
+   peça daquele domínio/gênero (`POST /catalog/charts`, `measure_type: CLOTHING_MEASURE`) e, para
+   peças seguintes, **adiciona uma linha** (`POST /catalog/charts/{id}/rows`) — nunca recria a
+   tabela. Uma combinação de tamanho + medidas idêntica a uma linha existente reaproveita a linha
+   (evita linhas duplicadas); uma combinação nova sempre adiciona linha, nunca edita uma existente
+   (uma linha pode já estar associada a outro anúncio).
+4. **Sem as medidas mínimas da peça** (as que o domínio exigir), a publicação falha **antes** do
+   `POST /items`, com mensagem clara pedindo para completar o cadastro — mesmo padrão de preço fora
+   da faixa (spec 012, seção 6).
+
+Alternativas descartadas: manter só tabelas `BRAND`/`STANDARD` (T050 mostrou que não existem para
+roupas); pedir ao operador que digite as medidas de novo, separadas do cadastro, só para a tabela
+(duplicaria dado e contrariaria "sem abstrações prematuras" — cada peça já tem uma medida real
+única, capturada uma vez).
+
+### Consequências
+
+- `shared/schemas/product.schema.ts` (`MedidasSchema`), `shared/schemas/ai-intake.schema.ts`
+  (`AiMedidasSchema`) e `frontend/src/features/products/ProductForm.tsx` ganham os campos `coxa` e
+  `entrepasso` — mesmo padrão dos já existentes (`nullableNumber().default(null)`; documento antigo
+  sem os campos continua válido). Spec 005 atualizada com os dois campos e o `MedidasSchema`
+  completo.
+- Categorias de calça/short/saia do brechó (CALC, BERM, SAIA) passam a precisar dessas duas medidas
+  preenchidas para publicar no Mercado Livre — reforça a orientação de completar `medidas` no
+  cadastro (já hoje opcional; segue opcional para a loja física, só a publicação exige).
+- Domínios de parte de cima (CAMI, POLO, JAQU, BLUS, VEST) ficam **sem solução até a implementação
+  consultar `technical_specs`** e, se precisarem de medidas que o ERP não captura hoje
+  (ex.: busto, ombro, manga), uma nova extensão de `MedidasSchema` será decidida então — não
+  antecipada por adivinhação.
+- O conector passa a criar/estender estado no Mercado Livre (tabelas `SPECIFIC`) além de
+  anúncios — uma responsabilidade nova, mas ainda dentro da porta existente (spec 011, seção 4.1;
+  não é um recurso novo de infraestrutura, princípio V).
+
+### Pendência aberta pelo T043 (22/09/2026) — origem real dos atributos `GARMENT_*` ainda não confirmada
+
+Testando ao vivo a criação de uma tabela `SPECIFIC` para `MLB-SHORTS` (categoria "Bermudas e
+Shorts"), o Mercado Livre recusou a linha com `required_row_attribute_not_found` para
+`GARMENT_HIP_WIDTH_FROM` — **mesmo depois de corrigir o parser de `technical_specs`** (a estrutura
+real tem dois níveis de `components` aninhados, `groups[].components[].components[].attributes[]`,
+diferente do único nível assumido antes). Com o parser corrigido, a resposta de
+`GET /domains/MLB-SHORTS/technical_specs` (com e sem `section=grids`) **não contém nenhum atributo
+`GARMENT_*`** — só `BRAND`, `GENDER`, `AGE_GROUP`, `MANUFACTURER_SIZE`. `GET
+/categories/MLB188064/attributes` (a categoria em si) também não tem `GARMENT_*`. Ou seja: a
+premissa desta ADR — "consultar `technical_specs` do domínio para saber quais `GARMENT_*` a linha
+da tabela `SPECIFIC` precisa" — está **confirmadamente errada** para o domínio testado; o Mercado
+Livre exige o atributo em algum lugar que ainda não foi encontrado.
+
+**Não resolvido** — `resolveSizeChartAttributes`/`resolveClothingChart`
+(`mercado-livre-publish.ts`) continuam usando `getDomainSizeChartAttributes` como fonte, então
+categorias de roupa com tabela de medidas (domínio em `active_domains`, fora de calçado) **não
+publicam ainda** — falha com o erro do Mercado Livre. Calçado (`SAPT`, tabela `BRAND`/`STANDARD`)
+e moda sem tabela de medidas (domínio fora de `active_domains`) não são afetados. Próximo passo:
+investigar outra fonte (talvez um chart `STANDARD` existente de um domínio parecido, ou suporte do
+Mercado Livre) antes de tentar de novo — não vale iterar por tentativa e erro contra a API real.
+
+## ADR-025 — Categorização no Mercado Livre: revisão humana obrigatória a cada publicação, sem mapeamento configurável
+
+**Status:** Aceita
+**Data:** 2026-09-22
+**Specs afetadas:** [012-conector-mercado-livre](../specs/012-conector-mercado-livre/spec.md)
+(seção 4), [011-integracao-marketplaces](../specs/011-integracao-marketplaces/spec.md)
+(seções 4.1, 4.3, 4.5)
+
+### Contexto
+
+O T050 (medição contra a conta real, 21/09/2026) mostrou o preditor de categorias do Mercado
+Livre (`GET /sites/MLB/domain_discovery/search`) errando o domínio de peças comuns —
+"camisa masculina" → `MLB-RUGBY_JERSEYS`, "jaqueta masculina" → `MLB-FOOTBALL_JACKETS`. A
+versão original da spec 012, seção 4, usava o primeiro resultado do preditor automaticamente,
+sem confirmação humana, deixando essa decisão para "uma iteração futura, quando houver uso real
+que demonstre que o preditor erra com frequência suficiente" — o que o T050 já demonstrou. Duas
+categorias de risco motivaram fechar essa decisão agora, antes de T023/T025: (1) a peça publica
+sem erro num domínio errado, prejudicando a visibilidade para quem procura o produto certo; (2)
+desde a ADR-024, uma categorização errada também cria/alimenta uma tabela `SPECIFIC` de medidas
+no domínio errado no Mercado Livre — estado externo que não tem como "mover" depois.
+
+Duas propostas foram avaliadas: (a) mapeamento configurável categoria do ERP → categoria do
+Mercado Livre (12 categorias fixas do brechó — 003), com o preditor só como reserva, sem
+revisão humana; (b) preditor sempre sugere, mas **toda** publicação passa por confirmação humana
+antes do `POST /items`, com uma lista de categorias para escolher/corrigir.
+
+### Decisão
+
+**Opção (b), sem manter (a) em paralelo:**
+
+1. **Revisão obrigatória em toda publicação** — criar, republicar e recriar sobre `encerrado`
+   (spec 012, seção 3.1) todas passam pela tela de revisão; não há atalho "sem revisão" para
+   categorias já conhecidas. Justificativa: com a revisão sempre presente, o risco de categoria
+   errada já fica coberto por um humano a cada vez — um mapeamento configurável adicionaria
+   complexidade (JSON de 12 categorias para a dona do brechó manter em sincronia com a taxonomia
+   do Mercado Livre) sem reduzir risco que a revisão já não cobrisse (princípio V).
+2. **Fluxo em duas etapas**, novo em relação à spec 011, seção 4.3 original: ao clicar
+   "Publicar"/"Republicar", o sistema chama o preditor (`GET /sites/MLB/domain_discovery/search`)
+   com o nome do produto e mostra uma tela de revisão — categoria sugerida pré-selecionada, mais
+   um `<select>` com uma **lista curada e pré-carregada** de categorias-folha da sub-árvore
+   "Calçados, Roupas e Bolsas" do site MLB (não a árvore inteira — inviável como `<select>`, e
+   fora do escopo do brechó). O operador confirma ou troca; só então o sistema chama
+   `POST /items` com o `categoryId` escolhido.
+   - Falha do preditor (erro de rede, Mercado Livre fora do ar) não bloqueia a revisão: a tela
+     mostra a lista curada sem pré-seleção, e o operador escolhe manualmente.
+3. **A porta comum ganha um campo novo**: `PublishInput.categoryId` (spec 011, seção 4.1) — a
+   categoria já escolhida pelo operador, decidida **antes** de chamar o conector. O conector do
+   Mercado Livre deixa de chamar o preditor internamente durante `publish()` — essa chamada migra
+   para o endpoint novo de sugestão, fora da porta. Campo pensado como específico do Mercado
+   Livre por ora (conectores futuros que não precisem de revisão o ignoram); não é uma
+   abstração genérica de "hints por marketplace" (princípio V — resolver o que existe hoje, não o
+   que pode ser útil depois).
+4. **A lista curada é congelada em código**, não em variável de ambiente: é dado de taxonomia do
+   Mercado Livre, não uma preferência operacional da dona do brechó (diferente de
+   `MERCADO_LIVRE_PACKAGE_DEFAULTS`, T052). Levantada uma vez (T057) — sem precisar de conta
+   conectada: `GET /categories/{id}` é público, sem token, e devolve `children_categories`; só a
+   listagem plana `GET /sites/MLB/categories` exige contexto de navegador (bloqueada por política
+   antibot fora dele) — e versionada no repositório; atualizada manualmente se a taxonomia do
+   Mercado Livre mudar.
+
+Alternativa descartada: manter o mapeamento configurável como sugestão pré-selecionada quando
+existir, caindo no preditor quando não existir (item (a) mais uma variante híbrida) — rejeitada
+porque, com a revisão já obrigatória sempre, o ganho (acertar mais vezes de primeira) não paga o
+custo de manter 12 categorias sincronizadas manualmente.
+
+### Consequências
+
+- Spec 011: seção 4.1 (porta) ganha `categoryId` no `publish`; seção 4.3 (fluxo) passa a
+  descrever as duas etapas (sugestão + confirmação, depois publicar); seção 4.5 (API) ganha o
+  endpoint novo de sugestão e o campo `categoryId` no corpo de `POST /marketplace-listings`.
+- Spec 012, seção 4 (Categorização) reescrita: o preditor não decide mais sozinho; o conector
+  recebe `categoryId` já resolvido, e só valida (`listing_allowed`, `status = enabled`) antes de
+  seguir com atributos/tabela de medidas.
+- T054 fica decidida; T023/T025 (mapeador e criação) deixam de fazer a chamada ao preditor
+  internamente. Duas tarefas novas: T057 (levantar e congelar a lista curada de categorias-folha
+  de Roupas/Calçados/Bolsas, contra a conta real) e T058/T059 (endpoint de sugestão + tela de
+  revisão no frontend) — ver `tasks.md`.
+- Toda publicação (inclusive retentativas e republicações) ganha um passo a mais na tela — aceito
+  como o custo direto da decisão de revisão sempre presente, já discutido no item 1.
+
+## ADR-026 — Tipo de anúncio do Mercado Livre: escolha do operador a cada publicação, não uma variável de ambiente
+
+**Status:** Aceita
+**Data:** 2026-09-22
+**Specs afetadas:** [012-conector-mercado-livre](../specs/012-conector-mercado-livre/spec.md)
+(seção 3.2), [011-integracao-marketplaces](../specs/011-integracao-marketplaces/spec.md)
+(seção 4.1)
+
+### Contexto
+
+T010 (spec 012, seção 3.2) era uma decisão de negócio pendente: qual `listing_type_id` usar —
+custo (comissão por venda) × exposição do anúncio — fixado uma vez em
+`MERCADO_LIVRE_LISTING_TYPE_ID` (variável de ambiente, padrão `gold_special`) para **todo** o ERP.
+O usuário decidiu não fixar isso antecipadamente: em vez de uma decisão única de negócio, quem
+escolhe é o operador, **a cada publicação**, por uma caixa de seleção — sempre priorizando do
+menor custo (Grátis) para o maior.
+
+Isso segue o mesmo padrão já estabelecido pela ADR-025 (revisão de categoria): em vez de fixar uma
+resposta de antemão, o humano decide no momento, com uma lista ordenada e um valor padrão sensato
+pré-selecionado — e, como a tela de revisão de categoria (T059) já existe e já é obrigatória em
+toda publicação, o tipo de anúncio entra **no mesmo painel**, não numa tela própria.
+
+### Decisão
+
+1. **Sem `MERCADO_LIVRE_LISTING_TYPE_ID`** — a variável de ambiente é removida da spec; não há
+   mais um valor único fixado por ambiente. T028 (configuração e registro) perde essa parte.
+2. **Lista estática, ordenada por faixa conhecida**, sem consulta em tempo real a
+   `GET /users/{id}/available_listing_types` nem a `GET /sites/MLB/listing_prices` — mais simples,
+   sem chamada de rede extra na revisão, consistente com o padrão de "tentativa e erro" já usado na
+   revisão de categoria: se o tipo escolhido não for aceito pela categoria ou pela conta (ex.:
+   `free` bloqueado por volume de vendas), a publicação falha com mensagem clara (spec 011, seção
+   4.6) e o operador troca de tipo no mesmo painel, sem perder a categoria já escolhida. Ordem
+   (mais barato → mais caro), com `free` pré-selecionado:
+
+   | Valor | Rótulo | Ordem |
+   |---|---|---|
+   | `free` | Grátis | 1 (padrão, mais barato) |
+   | `bronze` | Bronze | 2 |
+   | `silver` | Prata | 3 |
+   | `gold` | Ouro | 4 |
+   | `gold_special` | Clássico | 5 |
+   | `gold_premium` | Diamante | 6 |
+   | `gold_pro` | Premium | 7 (mais caro) |
+
+   ⚠ **Ordem não confirmada por preço real.** A documentação salva não lista o custo de cada tipo
+   por categoria (isso só sai de `GET /sites/MLB/listing_prices`, que exige token — não verificável
+   sem uma chamada autenticada real). A ordem acima é a leitura mais razoável dos nomes/rótulos
+   (metáfora de metais + "Grátis" mais barato, `gold_pro`/`Premium` mais caro, parelho com
+   `gold_special`/`Clássico` como os dois "duração ilimitada" da seção 3.2) — **a confirmar na Fase
+   8 (T043/T044)**, com a conta real, antes do primeiro anúncio de verdade (T049). Se a ordem real
+   divergir, é só reordenar a lista estática — não muda nenhuma outra peça do desenho.
+3. **`gold`/`gold_premium` nunca usados durante os testes** (Fase 8, pedido do próprio Mercado
+   Livre) — fica como orientação ao operador humano que roda o teste (T043), não como bloqueio de
+   código: a lista os inclui, porque em produção são opções válidas.
+4. **Sem efeito ainda**: assim como `categoryId` (ADR-025), o campo viaja pela porta comum e pelo
+   serviço, mas só tem uso real quando T023/T025/T026 (o mapeador e o `publish()` de fato) forem
+   implementadas.
+
+### Consequências
+
+- Spec 012, seção 3.2 reescrita: sem variável de ambiente, com a tabela acima e o aviso de ordem
+  não confirmada.
+- Spec 011, seção 4.1 (porta): `PublishInput` ganha `listingTypeId?: string | null`, ao lado de
+  `categoryId` — mesmo espírito ("cada conector decide se usa").
+- T010 fica decidida (sem mais bloquear T043 por falta de decisão — falta só a confirmação da
+  ordem real, que é harmless deixar para a Fase 8).
+- T028 perde a parte de `MERCADO_LIVRE_LISTING_TYPE_ID`.
+- A tela de revisão (T059) ganha um segundo campo (tipo de anúncio) no mesmo painel da categoria —
+  não uma tela nova.
+
+## ADR-027 — Pacote padrão do Mercado Livre: tela de admin gravando no banco, sem exceção por categoria/departamento
+
+**Status:** Aceita
+**Data:** 2026-09-22
+**Specs afetadas:** [012-conector-mercado-livre](../specs/012-conector-mercado-livre/spec.md)
+(seção 3.4)
+
+### Contexto
+
+T046/ADR-023 (decisão "b") tinha resolvido o pacote padrão (altura/largura/comprimento/peso, que
+o Mercado Envios 2 exige em toda publicação) como uma variável de ambiente
+(`MERCADO_LIVRE_PACKAGE_DEFAULTS`, JSON com `padrao`, `por_departamento` e `por_categoria`),
+implementada na T052. A T051 (valores reais) ficou pendente porque preencher/editar um JSON em
+variável de ambiente exige mexer no `.env` e reiniciar o backend — inviável para a dona do brechó
+manter sozinha. O usuário pediu campos de formulário para essa configuração.
+
+### Decisão
+
+1. **Banco de dados, editado por uma tela** — não mais variável de ambiente. Documento único
+   (`_id: "default"`) na coleção `mercado_livre_package_settings`, editado em "Contas de
+   marketplace → Pacote padrão do Mercado Livre" (só admin, mesmo padrão de RBAC das outras
+   configurações de marketplace — spec 011, seção 2.2). `GET`/`PUT` em
+   `/api/marketplace-accounts/mercado-livre-package-settings`.
+2. **Só o pacote "padrão"** — sem exceção por categoria nem por departamento. Simplifica bastante
+   o desenho da T052 (nada de prioridade categoria > departamento > padrão): um valor só, usado em
+   toda publicação. Se o brechó sentir falta de um pacote diferente por tipo de peça (ex.: calçado
+   numa caixa maior), essa exceção volta como extensão futura, decidida quando o caso real
+   aparecer (princípio V) — não antecipada aqui.
+3. **`peso_g` passa a ser sempre obrigatório** no formulário (era opcional no JSON antigo, reserva
+   só para quando o produto não tivesse peso). Elimina uma categoria inteira de falha ("peso
+   inexistente e sem configuração") que existia no desenho anterior — preencher o formulário já
+   garante a reserva. O peso do produto, quando existir, continua tendo prioridade (kg → g,
+   arredondado para cima).
+4. **`resolvePackage` muda de assíncrona pura de env var para assíncrona sobre o banco**
+   (`resolvePackage(db, product)`, lê `mercadoLivrePackageSettingsRepository`) — sem consumidor
+   real ainda (T023/T025 não implementadas), então a mudança de assinatura não quebra nada em
+   produção, só os testes (reescritos).
+5. **Auditoria**: `MERCADO_LIVRE_PACKAGE_SETTINGS_UPDATE` novo em `AuditActionEnum` (backend e
+   frontend — mesmo padrão da `PRODUCT_UNPUBLISH`, T012), gravado a cada `PUT`.
+
+### Consequências
+
+- `mercado-livre-package.config.ts` perde `PackageDimensions`/`por_departamento`/`por_categoria`/
+  leitura de env var — bem mais simples.
+- Novo `mercado-livre-package-settings.repository.ts` (documento único), `...service.ts` (get/update
+  + auditoria) e rotas em `marketplace-account.routes.ts`.
+- Novo schema compartilhado `shared/schemas/mercado-livre-package-settings.schema.ts`
+  (`MercadoLivrePackageSettingsSchema`, todos os 4 campos inteiros positivos obrigatórios).
+- Frontend: `PackageSettingsCard` em `MarketplaceAccountsPage.tsx` (mesmo padrão do
+  `EncryptionKeyCard`) — formulário simples, sem lista dinâmica de exceções.
+- `.env.example` perde a documentação de `MERCADO_LIVRE_PACKAGE_DEFAULTS` (a variável deixa de
+  existir).
+- T046/T052 ficam parcialmente supersedidas por esta ADR (T052 é refeita com o novo desenho); T051
+  (valores reais) passa a ser "a dona do brechó preenche a tela", não mais "edita o `.env`".

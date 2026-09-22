@@ -286,9 +286,9 @@ A porta comum (`MarketplaceConnectorPort`, nome definitivo cabe ao plan.md) exp�
 duas operações:
 
 ```text
-publish(product, account) → { id_anuncio, url_anuncio }   cria o anúncio, ou o atualiza se a
-                                                           entrada já tem id_anuncio (seção 4.5)
-close(listing, account)   → { encerrado }                  encerra o anúncio (seção 4.7)
+publish(product, account, categoryId?, listingTypeId?) → { id_anuncio, url_anuncio }   cria o
+                                    anúncio, ou o atualiza se a entrada já tem id_anuncio (4.5)
+close(listing, account)                              → { encerrado }   encerra o anúncio (4.7)
 ```
 
 Ambas recebem a credencial já decifrada e devolvem, junto do resultado **e também do erro**, uma
@@ -298,6 +298,18 @@ adaptador. A porta não concede nenhuma capacidade de function/tool calling ou a
 de criar, atualizar e encerrar um anúncio — mesmo espírito de superfície mínima já aplicado ao
 adapter de IA ([006-produtos-cadastro-ia](../006-produtos-cadastro-ia/spec.md), seção 8.2,
 defesa E).
+
+`categoryId` é a categoria do marketplace **já escolhida antes de chamar a porta** — nenhum
+adaptador decide sozinho em qual categoria publicar (ADR-025). Quem resolve esse valor (predição
+automática, revisão humana, ou os dois) é decisão de cada conector/spec própria; a porta só
+carrega o resultado. Hoje só o Mercado Livre usa o campo (spec 012, seção 4: preditor sugere,
+operador confirma numa tela de revisão antes de publicar); um conector futuro que não precise de
+categorização explícita o ignora.
+
+`listingTypeId` segue o mesmo espírito (ADR-026): o tipo/plano de anúncio (custo × exposição) já
+escolhido pelo operador antes de chamar a porta — nunca uma variável de ambiente fixa nem uma
+decisão automática do adaptador. Hoje só o Mercado Livre usa o campo (spec 012, seção 3.2: caixa
+de seleção na mesma tela de revisão da categoria, do menor custo para o maior).
 
 ### 4.2 Modelo de dados — `products.marketplaces`
 
@@ -348,6 +360,9 @@ Clica em "Publicar no Mercado Livre"
         ↓
 Sistema valida se o produto tem dados mínimos completos (seção 4.6)
         ↓
+[passo específico do conector, se ele precisar — ex.: revisão de categoria do
+Mercado Livre, spec 012 seção 4 (ADR-025); um conector sem esse passo pula direto]
+        ↓
 Sistema monta o anúncio a partir dos dados do produto (seção 4.4)
         ↓
 Conector autentica com o marketplace usando a credencial da conta escolhida (seção 3)
@@ -364,6 +379,10 @@ Publicar a mesma peça numa segunda conta do mesmo marketplace repete esse fluxo
 escolhendo a outra conta — as duas publicações ficam registradas lado a lado, cada uma com seu
 próprio id/URL/status de anúncio.
 
+O passo entre colchetes é opcional na porta comum e existe hoje só para o Mercado Livre — a
+revisão de categoria (spec 012, seção 4; ADR-025) roda **sempre**, em toda publicação, incluindo
+retentativas e republicações, não só na primeira vez.
+
 ### 4.4 Dados enviados ao marketplace
 
 A fonte é sempre o modelo de produto já existente (005) — nenhum campo novo é digitado
@@ -372,7 +391,8 @@ especificamente para a publicação:
 ```text
 Nome
 Descrição
-Categoria (mapeada para a taxonomia do marketplace, quando aplicável)
+Categoria (mapeada para a taxonomia do marketplace, quando aplicável — o Mercado Livre exige
+confirmação do operador antes de publicar, spec 012 seção 4, ADR-025)
 Preço de venda
 Condição (novo/seminovo/usado, mapeada para as opções do marketplace)
 Características relevantes (marca, tamanho, cor, material)
@@ -386,13 +406,26 @@ POST   /api/products/:id/marketplace-listings
 POST   /api/products/:id/marketplace-listings/close      (seção 4.7)
 ```
 
-Corpo: `{ "marketplace": "mercado_livre", "accountId": "..." }`. Restrito a
+Corpo: `{ "marketplace": "mercado_livre", "accountId": "...", "categoryId": "...", "listingTypeId": "..." }`.
+`categoryId` e `listingTypeId` são opcionais na porta comum (seção 4.1) — obrigatórios na prática
+para o Mercado Livre, que os exige vindo da tela de revisão (spec 012, seções 3.2 e 4; ADR-025,
+ADR-026); um conector futuro sem esse passo simplesmente os ignora. Restrito a
 `role ∈ {admin, operator}` (mesma permissão de "publicar produtos" — 002-usuarios). Cria uma
-nova publicação, ou **retenta** uma publicação existente com `status = erro` para a mesma
-combinação (marketplace, conta) — nunca cria um segundo item para a mesma combinação (seção
-4.2). Sobre uma entrada que já tem `id_anuncio` (`publicado`), a mesma chamada **atualiza** o
-anúncio ("Republicar"); sobre uma `encerrado`, cria um anúncio novo — a regra de quando cada
-operação vale é do conector (spec 012, seção 3.1).
+nova publicação, ou **retenta** uma publicação
+existente com `status = erro` para a mesma combinação (marketplace, conta) — nunca cria um
+segundo item para a mesma combinação (seção 4.2). Sobre uma entrada que já tem `id_anuncio`
+(`publicado`), a mesma chamada **atualiza** o anúncio ("Republicar"); sobre uma `encerrado`,
+cria um anúncio novo — a regra de quando cada operação vale é do conector (spec 012, seção 3.1).
+
+Endpoint adicional, específico do passo de revisão do Mercado Livre (spec 012, seção 4):
+
+```
+POST   /api/products/:id/marketplace-category-suggestion
+```
+
+Corpo: `{ "marketplace": "mercado_livre", "accountId": "..." }`. Devolve a sugestão do preditor
+do marketplace (quando disponível) e a lista curada de categorias para o `<select>` de revisão
+— nunca cria nem altera nada, só consulta. Mesma permissão da publicação.
 
 ### 4.6 Regras de negócio
 

@@ -4,6 +4,7 @@ import type {
   EditMarketplaceAccountFormValues,
   Marketplace,
   MarketplaceAccount,
+  MercadoLivrePackageSettingsFormValues,
 } from "../schemas/marketplace-account.schema";
 import { marketplaceAccountService } from "../services/marketplace-account.service";
 
@@ -30,6 +31,23 @@ export function useRotateEncryptionKey() {
   return useMutation({
     mutationFn: () => marketplaceAccountService.rotateEncryptionKey(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: MARKETPLACE_ACCOUNTS_QUERY_KEY }),
+  });
+}
+
+export const MERCADO_LIVRE_PACKAGE_SETTINGS_QUERY_KEY = ["marketplace-accounts", "mercado-livre-package-settings"] as const;
+
+export function useMercadoLivrePackageSettings() {
+  return useQuery({
+    queryKey: MERCADO_LIVRE_PACKAGE_SETTINGS_QUERY_KEY,
+    queryFn: () => marketplaceAccountService.getMercadoLivrePackageSettings(),
+  });
+}
+
+export function useUpdateMercadoLivrePackageSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (values: MercadoLivrePackageSettingsFormValues) => marketplaceAccountService.updateMercadoLivrePackageSettings(values),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: MERCADO_LIVRE_PACKAGE_SETTINGS_QUERY_KEY }),
   });
 }
 

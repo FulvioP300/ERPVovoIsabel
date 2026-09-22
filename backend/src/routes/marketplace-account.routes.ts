@@ -32,6 +32,11 @@ import {
   updateMarketplaceAccountProfile,
   updateMarketplaceAccountStatus,
 } from "../services/marketplace-account.service.js";
+import {
+  getMercadoLivrePackageSettings,
+  updateMercadoLivrePackageSettings,
+} from "../services/mercado-livre-package-settings.service.js";
+import { MercadoLivrePackageSettingsSchema } from "../../../shared/dist/schemas/mercado-livre-package-settings.schema.js";
 
 export default async function marketplaceAccountRoutes(fastify: FastifyInstance) {
   // Diferente do padrão geral de RBAC (categorias, por exemplo, liberam GET a qualquer
@@ -69,6 +74,23 @@ export default async function marketplaceAccountRoutes(fastify: FastifyInstance)
       }
     },
   );
+
+  // Pacote padrão do Mercado Livre (spec 012, seção 3.4; ADR-027) — editado pelo admin, gravado no
+  // banco (não mais variável de ambiente). `null` = ainda não configurado.
+  fastify.get("/mercado-livre-package-settings", adminGuard, async () => {
+    const settings = await getMercadoLivrePackageSettings();
+    return { success: true, data: settings };
+  });
+
+  fastify.put("/mercado-livre-package-settings", adminGuard, async (request, reply) => {
+    const parseResult = MercadoLivrePackageSettingsSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      return reply.code(400).send({ success: false, error: "Dimensões e peso devem ser números inteiros positivos." });
+    }
+
+    const settings = await updateMercadoLivrePackageSettings(parseResult.data, request.user!.id);
+    return { success: true, data: settings };
+  });
 
   // OAuth 2.0 do Mercado Livre (spec 012, seção 2.2): o admin informa Client ID/Secret na conta e
   // conecta por redirecionamento — os tokens nunca são digitados.

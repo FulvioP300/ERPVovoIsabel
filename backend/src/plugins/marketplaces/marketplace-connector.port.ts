@@ -32,6 +32,19 @@ export interface PublishInput extends ConnectorContext {
    * (e não o `status`) que decide entre criar e atualizar (spec 012, seção 3.1).
    */
   listing: MarketplaceListing | null;
+  /**
+   * Categoria já escolhida antes de chamar a porta (spec 011, seção 4.1; ADR-025) — nenhum
+   * adaptador decide sozinho em qual categoria publicar. Hoje só o Mercado Livre usa o campo
+   * (revisão obrigatória do operador, spec 012, seção 4); um conector futuro sem esse passo o
+   * ignora.
+   */
+  categoryId?: string | null;
+  /**
+   * Tipo/plano de anúncio já escolhido pelo operador (spec 011, seção 4.1; ADR-026) — mesmo
+   * espírito de `categoryId`: nenhum adaptador decide sozinho, nunca uma variável de ambiente
+   * fixa. Hoje só o Mercado Livre usa o campo (caixa de seleção na revisão, spec 012, seção 3.2).
+   */
+  listingTypeId?: string | null;
 }
 
 export interface CloseInput extends ConnectorContext {

@@ -66,6 +66,8 @@ const AiMedidasSchema = z
     gancho: nullableNumber(),
     comprimento: nullableNumber(),
     largura_barra: nullableNumber(),
+    coxa: nullableNumber(),
+    entrepasso: nullableNumber(),
   })
   .strict();
 
