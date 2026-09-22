@@ -35,7 +35,16 @@ function validSuggestion(overrides: Record<string, unknown> = {}) {
       elasticidade: null,
       fechamento: [],
     },
-    medidas: { unidade: "cm", cintura: null, quadril: null, gancho: null, comprimento: null, largura_barra: null },
+    medidas: {
+      unidade: "cm",
+      cintura: null,
+      quadril: null,
+      gancho: null,
+      comprimento: null,
+      largura_barra: null,
+      coxa: null,
+      entrepasso: null,
+    },
     condicao: {
       estado: "novo",
       nota: null,
