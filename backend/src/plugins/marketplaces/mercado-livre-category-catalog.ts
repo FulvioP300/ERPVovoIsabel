@@ -11,6 +11,12 @@ import path from "node:path";
  * do módulo que `mercado-livre-package.config.ts`: facilita testar com arquivos diferentes.
  */
 
+// `tsc` só compila .ts — não copia este .json para dist/ sozinho. O script `postbuild` do
+// package.json copia para o mesmo caminho relativo em dist/plugins/marketplaces/ depois de todo
+// `npm run build` (local, CI e a imagem Docker de produção passam por ele igual). Sem isso, o
+// arquivo existe em src/ mas falta em dist/ em produção — foi exatamente esse o sintoma real no
+// primeiro teste de publicação (22/09/2026): "Catálogo não encontrado em
+// /app/backend/dist/plugins/marketplaces/...", mesmo com o arquivo commitado no repositório.
 const CATALOG_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "mercado-livre-category-catalog.json");
 
 export interface CuratedCategory {
