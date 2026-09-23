@@ -353,6 +353,17 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
       testar de novo com uma hipótese fundamentada. Bloqueia: publicar roupa com tabela de medidas
       (domínios em `active_domains`, fora de calçado) — calçado (`SAPT`) e moda sem tabela não são
       afetados. Depende de T025 (feita, com a lacuna documentada).
+      **Confirmado também em domínio de parte de cima (23/09/2026, uso real):** publicar um casaco
+      (`MLB-JACKETS_AND_COATS` ou equivalente) esbarrou em `"Required attribute GARMENT_CHEST_WIDTH_FROM
+      was not found in row SIZE 48 - MEDIO"` — mesma causa raiz do T060 (technical_specs não lista o
+      atributo, então o pré-checo do ERP não bloqueia antes da chamada real, e o erro cru do Mercado
+      Livre vaza pro operador em vez da mensagem própria do ERP). Pior que o caso de calças/shorts:
+      `busto` (`GARMENT_CHEST_WIDTH_FROM`) nem existe em `MedidasSchema` ainda, e a spec (seção 3.5) já
+      previa que partes de cima podem pedir mais medidas não confirmadas (ombro, manga) — cada uma só
+      aparece numa tentativa real depois de resolver a anterior. **Decisão do usuário (23/09/2026):** não
+      investir agora — casacos/jaquetas (domínios de "parte de cima") ficam fora do Mercado Livre por
+      enquanto, sem mudança de código. Retomar junto com o resto do T060 quando houver uma hipótese
+      fundamentada para a origem real dos `GARMENT_*`.
 - [x] T026 Conector — **atualizar**: `GET /items/{id}` (status, `sold_quantity`, categoria) → categoria e
       atributos → `PUT /items/{id}` → descrição por `PUT ...?api_version=2` (queda para `POST` se o item
       ainda não tem descrição); `family_name`/título só se `sold_quantity = 0`; `pictures` sempre incluído;
@@ -705,11 +716,12 @@ atualização (contradizia a spec original). A tela de revisão também ganhou u
 do preditor pode cair fora da lista curada, e o painel pré-selecionava um valor inexistente no `<select>`
 sem avisar o operador.
 
-**Só duas pendências na spec 012 agora:** **T060** (achar de onde vêm os atributos `GARMENT_*` exigidos
-pela tabela `SPECIFIC` — `technical_specs` não tem, confirmado ao vivo; bloqueia só roupa com tabela de
-medidas) e **T051** (a dona do brechó preenche a tela do pacote padrão com valores reais — os do teste
-foram um placeholder pequeno, 5×20×15 cm/2 g). T049 (primeira publicação real de uso, não teste) já está
-tecnicamente desbloqueada para categorias sem tabela de medidas.
+**Duas pendências na spec 012 na época** (ver adendo 23/09 abaixo para o que mudou): **T060** (achar de
+onde vêm os atributos `GARMENT_*` exigidos pela tabela `SPECIFIC` — `technical_specs` não tem, confirmado
+ao vivo; bloqueia só roupa com tabela de medidas) e **T051** (a dona do brechó preenche a tela do pacote
+padrão com valores reais — os do teste foram um placeholder pequeno, 5×20×15 cm/2 g). T049 (primeira
+publicação real de uso, não teste) já estava tecnicamente desbloqueada para categorias sem tabela de
+medidas.
 
 23/09/2026: **primeira publicação real de uso** (não teste) esbarrou em mais achados, corrigidos com
 regressão em cada um — nenhum bloqueia mais nada:
@@ -732,3 +744,16 @@ regressão em cada um — nenhum bloqueia mais nada:
    cadastro (spec 005, seção 2) — ver [glossário](../../memory/glossary.md#gênero-peça). `genderAttribute`
    agora tenta `genero` primeiro (mapeamento fechado e determinístico), com fallback pro heurístico de
    departamento (comportamento antigo preservado para produtos sem `genero` preenchido).
+5. **Calçado sem tabela `BRAND`/`STANDARD`**: confirmado ao vivo que "Scarpins e Plataformas"
+   (`MLB-HEELS_AND_WEDGES`) não tem nenhuma das duas — comportamento correto e já documentado (seção 3.5:
+   "calçado" nunca cria tabela própria, só roupa). Das categorias curadas, só 3 calçados têm tabela
+   `STANDARD` confirmada: Botas (`BOOTS_AND_BOOTIES`), Tênis (`SNEAKERS`) e Sapatos Sociais e Mocassims
+   (`LOAFERS_AND_OXFORDS`) — nenhuma descreve bem um scarpim/salto. **Decisão do usuário**: sem mudança de
+   código; escolher categoria com tabela quando o encaixe permitir, senão a peça fica sem publicar no
+   Mercado Livre.
+6. **T060 confirmado também em domínio de parte de cima** — publicar um casaco esbarrou em
+   `"Required attribute GARMENT_CHEST_WIDTH_FROM was not found in row SIZE 48 - MEDIO"`, erro cru do
+   Mercado Livre vazando pro operador (mesma causa raiz do T060: `technical_specs` não lista o atributo,
+   então o pré-checo do ERP não bloqueia antes da chamada real). Pior que calças/shorts: `busto` nem
+   existe em `MedidasSchema`, e a spec já previa que partes de cima podem pedir mais medidas ainda não
+   confirmadas (ombro, manga). **Decisão do usuário**: não investir agora — ver nota no T060 acima.
