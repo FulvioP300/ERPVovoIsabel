@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { AiFieldConfidenceSchema, CondicaoEstadoEnum, MedidasUnidadeEnum } from "./product.schema.js";
+import { AiFieldConfidenceSchema, CondicaoEstadoEnum, GeneroEnum, MedidasUnidadeEnum } from "./product.schema.js";
 
 /**
  * Contrato de saída da IA (specs/006-produtos-cadastro-ia/spec.md, seções 5 e 8) — fonte
@@ -46,6 +46,11 @@ const AiCaracteristicasSchema = z
   .object({
     tamanho_etiqueta: nullableString(),
     tamanho_equivalente: nullableString(),
+    // Gênero da peça (spec 005; T060/decisão do usuário, 23/09/2026) — mesmo enum fechado do
+    // cadastro manual, `null` quando a IA não consegue determinar (nunca inventa um dos 5
+    // valores). Distinto de `classificacao.departamento`, que não existe aqui (é derivado da
+    // categoria no backend, nunca aceito de fonte externa — ver comentário do arquivo).
+    genero: GeneroEnum.nullable(),
     cor_principal: nullableString(),
     cores_secundarias: stringArray(),
     estampa: nullableString(),
@@ -68,11 +73,9 @@ const AiMedidasSchema = z
     largura_barra: nullableNumber(),
     coxa: nullableNumber(),
     entrepasso: nullableNumber(),
-    // `.default(null)`, diferente dos irmãos acima — campo novo (T060, 23/09/2026); o prompt da IA
-    // (ai-intake.service.ts) ainda não foi atualizado para sempre emitir esta chave, e sem o
-    // default uma resposta sem `busto` quebraria a validação (mesmo bug já visto com
-    // coxa/entrepasso).
-    busto: nullableNumber().default(null),
+    // Busto (spec 005; T060, 23/09/2026) — mesmo padrão dos irmãos acima: chave obrigatória
+    // (o prompt em ai-intake.service.ts sempre a inclui), valor `null` quando não determinável.
+    busto: nullableNumber(),
   })
   .strict();
 

@@ -217,6 +217,33 @@ Produto de teste removido (soft-delete) após a validação.
       **Rodado com sucesso neste ambiente de ferramentas (sandbox)**: suíte completa (7 specs)
       — `7 passed`, mesmo workaround de DNS SRV já documentado em `e2e/AGENTS.md`.
 
+## Nota (24/09/2026) — `genero` e `busto` não estavam contemplados pela IA
+
+Ao adicionar `caracteristicas.genero` (spec 005/012, ADR sobre gênero da peça) e
+`medidas.busto` (T060, spec 012) ao modelo de produto, ambos foram propagados para
+`AiSuggestedProductSchema` (a IA passou a aceitá-los na resposta), mas **não** para o texto do
+prompt (`RESPONSE_SCHEMA_TEMPLATE`, `ai-intake.service.ts`) nem para o mapeamento pra tela de
+revisão (`aiSuggestionToFormValues`, frontend) — o contrato "espelha o schema campo a campo"
+(seção 8.3 do spec.md) não tem teste de contrato automatizado, então divergiu sem gerar erro
+em lugar nenhum. Verificado a pedido do usuário (23/09/2026) e corrigido no dia seguinte:
+
+- `shared/schemas/ai-intake.schema.ts`: `AiCaracteristicasSchema` ganhou `genero`
+  (`GeneroEnum.nullable()`); `AiMedidasSchema.busto` perdeu o `.default(null)` que tinha
+  (agora é chave obrigatória, igual aos irmãos — o prompt passa a sempre incluí-la).
+- `backend/src/services/ai-intake.service.ts`: `RESPONSE_SCHEMA_TEMPLATE` ganhou `"genero"`
+  (em `caracteristicas`, enum fechado igual ao do cadastro manual) e `"busto"` (em `medidas`).
+  Teste de regressão novo inspeciona o texto do prompt de verdade enviado ao provedor
+  (`provider.analyze.mock.calls`), não só o schema de validação — para não repetir esta
+  divergência silenciosamente.
+- `frontend/src/schemas/ai-intake.schema.ts`: `aiSuggestionToFormValues` ganhou os dois
+  mapeamentos pra `ProductFormValues` (`genero`, `busto`).
+- `coxa`/`entrepasso` (T056) já estavam corretos nos três lugares — não precisaram de fix,
+  serviram de exemplo do padrão a seguir.
+
+Fixtures de teste atualizados em `shared/schemas/ai-intake.schema.test.ts`,
+`backend/src/services/ai-intake.service.test.ts` e `backend/tests/integration/ai-intake.spec.ts`
+(mesma classe de fixture desatualizada já corrigida uma vez nesta sessão para coxa/entrepasso).
+
 ## Dependências entre tarefas
 
 ```

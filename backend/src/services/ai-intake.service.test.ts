@@ -47,6 +47,7 @@ function baseSuggestion(overrides: Record<string, unknown> = {}) {
     caracteristicas: {
       tamanho_etiqueta: null,
       tamanho_equivalente: null,
+      genero: null,
       cor_principal: null,
       cores_secundarias: [],
       estampa: null,
@@ -57,7 +58,17 @@ function baseSuggestion(overrides: Record<string, unknown> = {}) {
       elasticidade: null,
       fechamento: [],
     },
-    medidas: { unidade: "cm", cintura: null, quadril: null, gancho: null, comprimento: null, largura_barra: null, coxa: null, entrepasso: null },
+    medidas: {
+      unidade: "cm",
+      cintura: null,
+      quadril: null,
+      gancho: null,
+      comprimento: null,
+      largura_barra: null,
+      coxa: null,
+      entrepasso: null,
+      busto: null,
+    },
     condicao: {
       estado: "novo",
       nota: null,
@@ -99,6 +110,16 @@ describe("ai-intake.service.analyzeProduct", () => {
     setAiProviderForTesting(fakeProvider(baseSuggestion()));
     const result = await analyzeProduct({ prompt: "bermuda azul", images: [fakeImage()] });
     expect(result.marca.nome).toBeNull();
+  });
+
+  it("o schema pedido no prompt inclui genero e busto (T060 — regressão: já divergiu do schema real uma vez)", async () => {
+    const provider = fakeProvider(baseSuggestion());
+    setAiProviderForTesting(provider);
+    await analyzeProduct({ prompt: "bermuda azul", images: [fakeImage()] });
+
+    const [sentPrompt] = (provider.analyze as ReturnType<typeof vi.fn>).mock.calls[0] as [string, unknown];
+    expect(sentPrompt).toContain('"genero"');
+    expect(sentPrompt).toContain('"busto"');
   });
 
   it("rejeita payload com campo obrigatório ausente (Zod)", async () => {

@@ -25,6 +25,7 @@ function validSuggestion(overrides: Record<string, unknown> = {}) {
     caracteristicas: {
       tamanho_etiqueta: "32",
       tamanho_equivalente: null,
+      genero: null,
       cor_principal: "Azul",
       cores_secundarias: [],
       estampa: null,
@@ -44,6 +45,7 @@ function validSuggestion(overrides: Record<string, unknown> = {}) {
       largura_barra: null,
       coxa: null,
       entrepasso: null,
+      busto: null,
     },
     condicao: {
       estado: "novo",
