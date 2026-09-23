@@ -93,7 +93,8 @@ az containerapp secret set \
     jwt-access-secret="<segredo forte, só de produção>" \
     jwt-refresh-secret="<segredo forte, só de produção>" \
     azure-storage-connection-string="<connection string da Storage Account>" \
-    ai-api-key="<chave do provedor de IA>"
+    ai-api-key="<chave do provedor de IA>" \
+    marketplace-credential-master-key="<node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\">"
 
 az containerapp update \
   --name ca-vovoisabel-prod \
@@ -104,6 +105,7 @@ az containerapp update \
     "JWT_REFRESH_SECRET=secretref:jwt-refresh-secret" \
     "AZURE_STORAGE_CONNECTION_STRING=secretref:azure-storage-connection-string" \
     "AI_API_KEY=secretref:ai-api-key" \
+    "MARKETPLACE_CREDENTIAL_MASTER_KEY=secretref:marketplace-credential-master-key" \
     "NODE_ENV=production" \
     "PORT=8080" \
     "AZURE_STORAGE_CONTAINER_NAME=product-images-prod" \
@@ -113,9 +115,18 @@ az containerapp update \
 ```
 
 > `--set-env-vars` aceita tanto `NOME=valor` quanto `NOME=secretref:<nome-do-secret>` na mesma
-> lista — é assim que os 5 valores sensíveis viram env var sem nunca aparecer em texto puro na
+> lista — é assim que os 6 valores sensíveis viram env var sem nunca aparecer em texto puro na
 > configuração do Container App. Sintaxe pode variar levemente por versão do az cli — confira
 > `az containerapp update --help` se o comando acima não bater com a versão instalada.
+
+> `marketplace-credential-master-key` foi adicionada depois do provisionamento inicial (spec
+> 011, seção 3.1; ADR-021) — se você provisionou o Container App antes dessa spec, confira com
+> `az containerapp show --name ca-vovoisabel-prod --resource-group rg-vovoisabel --query
+> "properties.template.containers[0].env[].name" -o tsv` se ela já está configurada. Sem ela,
+> toda tentativa de criar/editar conta de marketplace falha com 500 (a chave-mestra é exigida
+> antes de cifrar a credencial) — foi exatamente esse o sintoma no primeiro teste real em
+> produção desta feature. Gere uma chave própria de produção (nunca reaproveite a de dev/teste)
+> e guarde uma cópia fora do Azure, como as instruções em `backend/.env.example` descrevem.
 
 ## 3. Configurar o deploy contínuo (OIDC do GitHub Actions)
 
