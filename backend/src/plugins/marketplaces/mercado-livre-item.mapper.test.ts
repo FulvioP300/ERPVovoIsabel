@@ -72,6 +72,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
     caracteristicas: {
       tamanho_etiqueta: "42",
       tamanho_equivalente: null,
+      genero: null,
       cor_principal: null,
       cores_secundarias: [],
       estampa: null,
@@ -181,28 +182,58 @@ describe("skuAttribute / packageAttributes / gtinAttribute / sizeChartAttributes
   });
 });
 
-describe("genderAttribute (spec 012, seção 3.5)", () => {
+describe("genderAttribute (spec 012, seção 3.5; caracteristicas.genero — spec 005, 23/09/2026)", () => {
   const genderAttr = attr({ id: "GENDER", values: [{ id: "g1", name: "Masculino" }, { id: "g2", name: "Feminino" }] });
 
-  it("casa por nome, sem diferenciar maiúscula/espaço", () => {
-    expect(genderAttribute(" masculino ", genderAttr)).toEqual({ id: "GENDER", value_id: "g1", value_name: "Masculino" });
+  it("sem genero: casa pelo departamento, sem diferenciar maiúscula/espaço", () => {
+    expect(genderAttribute(null, " masculino ", genderAttr)).toEqual({ id: "GENDER", value_id: "g1", value_name: "Masculino" });
   });
 
-  it("sem correspondência: null (nunca inventa)", () => {
-    expect(genderAttribute("Unissex", genderAttr)).toBeNull();
+  it("sem genero e departamento sem correspondência: null (nunca inventa)", () => {
+    expect(genderAttribute(null, "Unissex", genderAttr)).toBeNull();
   });
 
   it("categoria sem GENDER: null", () => {
-    expect(genderAttribute("Masculino", undefined)).toBeNull();
+    expect(genderAttribute(null, "Masculino", undefined)).toBeNull();
   });
 
   it("'Unissexo' (003) casa com 'Sem gênero' via sinônimo conhecido (confirmado ao vivo, T043)", () => {
     const attrWithSemGenero = attr({ id: "GENDER", values: [{ id: "g1", name: "Masculino" }, { id: "g5", name: "Sem gênero" }] });
-    expect(genderAttribute("Unissexo", attrWithSemGenero)).toEqual({ id: "GENDER", value_id: "g5", value_name: "Sem gênero" });
+    expect(genderAttribute(null, "Unissexo", attrWithSemGenero)).toEqual({ id: "GENDER", value_id: "g5", value_name: "Sem gênero" });
   });
 
   it("'Unissexo' sem 'Sem gênero' na categoria: null (nunca inventa)", () => {
-    expect(genderAttribute("Unissexo", genderAttr)).toBeNull();
+    expect(genderAttribute(null, "Unissexo", genderAttr)).toBeNull();
+  });
+
+  it("genero explícito tem prioridade sobre o departamento", () => {
+    // Departamento "Unissexo" não bateria (categoria só tem Masculino/Feminino) — genero resolve.
+    expect(genderAttribute("feminino", "Unissexo", genderAttr)).toEqual({ id: "GENDER", value_id: "g2", value_name: "Feminino" });
+  });
+
+  it("categoria só-feminina (ex.: Scarpins e Plataformas): genero='feminino' casa, departamento genérico não precisa", () => {
+    const soFeminino = attr({ id: "GENDER", values: [{ id: "g2", name: "Feminino" }, { id: "g4", name: "Meninas" }] });
+    expect(genderAttribute("feminino", "Unissexo", soFeminino)).toEqual({ id: "GENDER", value_id: "g2", value_name: "Feminino" });
+  });
+
+  it("genero='menino'/'menina' casam com 'Meninos'/'Meninas'", () => {
+    const infantil = attr({ id: "GENDER", values: [{ id: "g3", name: "Meninos" }, { id: "g4", name: "Meninas" }] });
+    expect(genderAttribute("menino", "Unissexo", infantil)).toEqual({ id: "GENDER", value_id: "g3", value_name: "Meninos" });
+    expect(genderAttribute("menina", "Unissexo", infantil)).toEqual({ id: "GENDER", value_id: "g4", value_name: "Meninas" });
+  });
+
+  it("genero='unissex' casa com 'Sem gênero'", () => {
+    const attrWithSemGenero = attr({ id: "GENDER", values: [{ id: "g1", name: "Masculino" }, { id: "g5", name: "Sem gênero" }] });
+    expect(genderAttribute("unissex", "Masculino", attrWithSemGenero)).toEqual({ id: "GENDER", value_id: "g5", value_name: "Sem gênero" });
+  });
+
+  it("genero explícito sem correspondência na categoria: cai para o departamento (nunca falha silenciosamente)", () => {
+    // Categoria só tem Masculino/Feminino: genero="menino" não bate, mas o departamento bate.
+    expect(genderAttribute("menino", "masculino", genderAttr)).toEqual({ id: "GENDER", value_id: "g1", value_name: "Masculino" });
+  });
+
+  it("genero e departamento sem correspondência nenhuma: null (nunca inventa)", () => {
+    expect(genderAttribute("menino", "Unissexo", genderAttr)).toBeNull();
   });
 });
 

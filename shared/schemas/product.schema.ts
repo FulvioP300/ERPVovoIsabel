@@ -60,9 +60,22 @@ export const MarcaSchema = z.object({
   original: z.boolean().nullable().default(null),
 });
 
+/**
+ * Gênero da peça (distinto de `classificacao.departamento`, que é o agrupamento amplo da
+ * *categoria* — spec 003; glossário — e nem sempre coincide com o gênero real de uma peça
+ * específica, ex.: departamento "Unissexo" de Sapatos cobre tanto um scarpin feminino quanto um
+ * mocassim unissex). Decisão do usuário (23/09/2026): campo explícito no cadastro, em vez de
+ * escolha só no momento de publicar — motivado pelo Mercado Livre exigir `GENDER` em categorias
+ * cujos valores não incluem "Sem gênero" (ex.: "Scarpins e Plataformas" só aceita
+ * Feminino/Meninas). `null` = não informado; nunca inventado pela IA (constituição, princípio I).
+ */
+export const GeneroEnum = z.enum(["masculino", "feminino", "menino", "menina", "unissex"]);
+export type Genero = z.infer<typeof GeneroEnum>;
+
 export const CaracteristicasSchema = z.object({
   tamanho_etiqueta: nullableString().default(null),
   tamanho_equivalente: nullableString().default(null),
+  genero: GeneroEnum.nullable().default(null),
   cor_principal: nullableString().default(null),
   cores_secundarias: stringArray(),
   estampa: nullableString().default(null),

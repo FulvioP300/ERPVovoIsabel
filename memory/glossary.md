@@ -42,7 +42,18 @@ Agrupamento amplo por público (ex.: Masculino, Feminino, Unissexo). Campo `depa
 do produto. Versão anterior deste glossário descrevia `departamento` como campo do produto
 (`classificacao.departamento`) — corrigido para bater com o modelo de dados real de 003;
 quando 005-produtos for implementada, o departamento exibido/filtrado no produto deriva da
-categoria selecionada, em vez de ser digitado separadamente.
+categoria selecionada, em vez de ser digitado separadamente. Não confundir com **Gênero**
+(abaixo): departamento é do agrupamento amplo da *categoria inteira*, gênero é da *peça*.
+
+**Gênero (peça)**
+Campo opcional `caracteristicas.genero` do **produto** (não da categoria) — um dos 5 valores
+fechados `masculino`/`feminino`/`menino`/`menina`/`unissex`, `null` quando não informado (nunca
+inventado pela IA, constituição, princípio I). Existe porque o departamento, sendo por
+categoria inteira (ex.: toda a categoria "Sapatos" é "Unissexo"), não é preciso o bastante para
+publicar em marketplaces cujas categorias específicas exigem gênero da peça e não aceitam um
+valor "sem gênero" — ex.: a categoria "Scarpins e Plataformas" do Mercado Livre só aceita
+Feminino/Meninas ([012](../specs/012-conector-mercado-livre/spec.md), seção 3.5). Decisão do
+usuário, 23/09/2026 — ver [005](../specs/005-produtos-cadastro-manual/spec.md), seção 2.
 
 **Subcategoria**
 Refinamento textual livre dentro de uma categoria (ex.: "Bermuda Jeans" dentro de

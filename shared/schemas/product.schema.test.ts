@@ -70,6 +70,26 @@ describe("ProductSchema", () => {
     expect(parsed.peso).toEqual({ valor: null, unidade: "kg" });
   });
 
+  it("genero é null por padrão (produto persistido antes do campo existir, ou nunca informado)", () => {
+    const parsed = ProductSchema.parse(baseProduct());
+    expect(parsed.caracteristicas.genero).toBeNull();
+  });
+
+  it("aceita um dos 5 valores fechados de genero", () => {
+    const product = baseProduct();
+    product.caracteristicas = { genero: "feminino" };
+
+    const parsed = ProductSchema.parse(product);
+    expect(parsed.caracteristicas.genero).toBe("feminino");
+  });
+
+  it("rejeita um valor de genero fora do enum fechado (nunca inventa um sinônimo)", () => {
+    const product = baseProduct();
+    product.caracteristicas = { genero: "Unissexo" };
+
+    expect(ProductSchema.safeParse(product).success).toBe(false);
+  });
+
   it("rejeita possui_defeitos=true com defeitos=[] (regra condicional da spec)", () => {
     const product = baseProduct();
     product.condicao = { estado: "usado", possui_defeitos: true, defeitos: [] };

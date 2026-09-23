@@ -141,6 +141,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
     caracteristicas: {
       tamanho_etiqueta: "42",
       tamanho_equivalente: null,
+      genero: null,
       cor_principal: null,
       cores_secundarias: [],
       estampa: null,
@@ -503,13 +504,30 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
     expect(apiMocks.createItem).not.toHaveBeenCalled();
   });
 
-  it("departamento sem correspondência em GENDER: erro claro", async () => {
+  it("sem genero e departamento sem correspondência em GENDER: erro claro", async () => {
     apiMocks.getCategory.mockResolvedValue({ ...CATEGORY_SETTINGS, catalogDomain: "MLB-SHORTS" });
     apiMocks.getActiveSizeChartDomains.mockResolvedValue(["MLB-SHORTS"]);
 
     await expect(
       publishItem(ACCESS_TOKEN, makeInput({ product: makeProduct({ classificacao: { ...makeProduct().classificacao, departamento: "Unissex" } }) })),
-    ).rejects.toThrow(/não reconhece o departamento/);
+    ).rejects.toThrow(/exige o gênero da peça/);
+  });
+
+  it("genero explícito sem correspondência na categoria (ex.: peça infantil numa categoria só adulta): erro claro", async () => {
+    apiMocks.getCategory.mockResolvedValue({ ...CATEGORY_SETTINGS, catalogDomain: "MLB-SHORTS" });
+    apiMocks.getActiveSizeChartDomains.mockResolvedValue(["MLB-SHORTS"]);
+
+    await expect(
+      publishItem(
+        ACCESS_TOKEN,
+        makeInput({
+          product: makeProduct({
+            classificacao: { ...makeProduct().classificacao, departamento: "Unissex" },
+            caracteristicas: { ...makeProduct().caracteristicas, genero: "menino" },
+          }),
+        }),
+      ),
+    ).rejects.toThrow(/não aceita o gênero "menino"/);
   });
 
   describe("calçado (categoria SAPT)", () => {

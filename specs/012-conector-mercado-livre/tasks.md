@@ -710,3 +710,25 @@ pela tabela `SPECIFIC` — `technical_specs` não tem, confirmado ao vivo; bloqu
 medidas) e **T051** (a dona do brechó preenche a tela do pacote padrão com valores reais — os do teste
 foram um placeholder pequeno, 5×20×15 cm/2 g). T049 (primeira publicação real de uso, não teste) já está
 tecnicamente desbloqueada para categorias sem tabela de medidas.
+
+23/09/2026: **primeira publicação real de uso** (não teste) esbarrou em mais achados, corrigidos com
+regressão em cada um — nenhum bloqueia mais nada:
+1. `productRepository` (backend) nunca revalidava o documento do Mongo contra `ProductSchema` — só um
+   cast de TypeScript. Um produto anterior à spec 011 (`marketplaces` no formato antigo, objeto fixo por
+   marketplace) quebrava `publishListing` com `product.marketplaces.find is not a function`, e mesmo
+   corrigida a leitura, a gravação (`$push`) também quebrava (`must be an array but is of type object`).
+   Dois fixes: `toProduct()` sempre reparseia; `upsertMarketplaceListing` virou um pipeline update
+   (`$isArray`/`$concatArrays`) para o caso de criar a primeira entrada.
+2. `mercado-livre-category-catalog.json` (T057) está commitado em `src/`, mas o `tsc` não copia `.json`
+   para `dist/` — funcionava em dev (`tsx` roda direto de `src/`) e nos testes, mas faltava na imagem
+   Docker de produção. Corrigido com um `postbuild` em `backend/package.json`.
+3. `MARKETPLACE_CREDENTIAL_MASTER_KEY` (ADR-021, spec 011) nunca foi configurada no Container App de
+   produção — lacuna do `infra/aca/README.md`, escrito antes dessa variável existir. Configurada e
+   documentada.
+4. **Gênero da peça**: a categoria real "Scarpins e Plataformas" exige `GENDER` e só aceita
+   Feminino/Meninas — sem opção "Sem gênero". O departamento "Unissexo" (categoria inteira, spec 003) não
+   é preciso o bastante para essas categorias. **Decisão do usuário**: em vez de escolher na tela de
+   revisão (mesmo padrão de categoria/tipo de anúncio), um campo `caracteristicas.genero` explícito no
+   cadastro (spec 005, seção 2) — ver [glossário](../../memory/glossary.md#gênero-peça). `genderAttribute`
+   agora tenta `genero` primeiro (mapeamento fechado e determinístico), com fallback pro heurístico de
+   departamento (comportamento antigo preservado para produtos sem `genero` preenchido).
