@@ -152,7 +152,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
       elasticidade: null,
       fechamento: [],
     },
-    medidas: { unidade: "cm", cintura: 80, quadril: 100, gancho: 25, comprimento: 45, largura_barra: null, coxa: 60, entrepasso: 70 },
+    medidas: { unidade: "cm", cintura: 80, quadril: 100, gancho: 25, comprimento: 45, largura_barra: null, coxa: 60, entrepasso: 70, busto: null },
     peso: { valor: 0.3, unidade: "kg" },
     condicao: { estado: "usado", nota: null, possui_etiqueta: false, possui_defeitos: false, defeitos: [], observacoes: null },
     preco: { preco_original_estimado: null, custo_aquisicao: null, preco_venda: 89.9, preco_promocional: null, moeda: "BRL" },
@@ -612,18 +612,38 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
       );
     });
 
-    it("medida exigida em branco: erro claro pedindo para completar o cadastro", async () => {
+    it("medida exigida em branco: erro claro pedindo para completar o cadastro, pelo nome do campo (não o id do Mercado Livre)", async () => {
       await expect(
         publishItem(ACCESS_TOKEN, makeInput({ product: pantsProduct({ medidas: { ...makeProduct().medidas, cintura: null } }) })),
-      ).rejects.toThrow(/Informe as medidas da peça/);
+      ).rejects.toThrow(/Informe as medidas da peça \(cintura\)/);
       expect(apiMocks.createItem).not.toHaveBeenCalled();
     });
 
-    it("atributo não confirmado pela ADR-024 (parte de cima): erro claro, nunca adivinha", async () => {
-      apiMocks.getDomainSizeChartAttributes.mockResolvedValue([{ id: "GARMENT_BUST_WIDTH_FROM", name: "Busto", valueType: "number_unit", tags: [] }]);
+    it("busto (parte de cima, T060) exigido e preenchido: envia normalmente", async () => {
+      apiMocks.getDomainSizeChartAttributes.mockResolvedValue([{ id: "GARMENT_CHEST_WIDTH_FROM", name: "Busto", valueType: "number_unit", tags: [] }]);
+      apiMocks.searchSizeCharts.mockResolvedValue([{ id: "chart-top", type: "SPECIFIC", mainAttributeId: "SIZE" }]);
+      apiMocks.getSizeChart.mockResolvedValue({
+        id: "chart-top",
+        type: "SPECIFIC",
+        rows: [{ id: "chart-top:1", attributes: [{ id: "SIZE", values: ["42"] }, { id: "GARMENT_CHEST_WIDTH_FROM", values: ["92 cm"] }] }],
+      });
+
+      await publishItem(ACCESS_TOKEN, makeInput({ product: pantsProduct({ medidas: { ...makeProduct().medidas, busto: 92 } }) }));
+
+      expect(apiMocks.createItem).toHaveBeenCalled();
+    });
+
+    it("busto exigido e em branco: erro claro pedindo para completar o cadastro", async () => {
+      apiMocks.getDomainSizeChartAttributes.mockResolvedValue([{ id: "GARMENT_CHEST_WIDTH_FROM", name: "Busto", valueType: "number_unit", tags: [] }]);
+
+      await expect(publishItem(ACCESS_TOKEN, makeInput({ product: pantsProduct() }))).rejects.toThrow(/Informe as medidas da peça \(busto\)/);
+    });
+
+    it("atributo ainda não confirmado (ombro, manga): erro claro com o nome real do Mercado Livre, nunca adivinha", async () => {
+      apiMocks.getDomainSizeChartAttributes.mockResolvedValue([{ id: "GARMENT_SHOULDER_WIDTH_FROM", name: "Ombro", valueType: "number_unit", tags: [] }]);
 
       await expect(publishItem(ACCESS_TOKEN, makeInput({ product: pantsProduct() }))).rejects.toThrow(
-        /ainda não captura.*GARMENT_BUST_WIDTH_FROM/,
+        /ainda não captura: Ombro \(GARMENT_SHOULDER_WIDTH_FROM\)/,
       );
     });
 

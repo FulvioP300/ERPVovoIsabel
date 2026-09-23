@@ -326,6 +326,12 @@ export function ProductForm({ mode, defaultValues, defaultImages = [], onSubmit,
           </div>
           <div>
             <label className={labelClass}>
+              Busto
+              <input className={inputClass} type="number" step="0.1" {...register("busto")} />
+            </label>
+          </div>
+          <div>
+            <label className={labelClass}>
               Peso (kg)
               <input className={inputClass} type="number" step="0.001" min="0" {...register("peso")} />
             </label>

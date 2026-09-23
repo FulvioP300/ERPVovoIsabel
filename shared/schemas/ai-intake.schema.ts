@@ -68,6 +68,11 @@ const AiMedidasSchema = z
     largura_barra: nullableNumber(),
     coxa: nullableNumber(),
     entrepasso: nullableNumber(),
+    // `.default(null)`, diferente dos irmãos acima — campo novo (T060, 23/09/2026); o prompt da IA
+    // (ai-intake.service.ts) ainda não foi atualizado para sempre emitir esta chave, e sem o
+    // default uma resposta sem `busto` quebraria a validação (mesmo bug já visto com
+    // coxa/entrepasso).
+    busto: nullableNumber().default(null),
   })
   .strict();
 

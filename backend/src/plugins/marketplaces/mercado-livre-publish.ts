@@ -16,6 +16,7 @@ import {
   buildUpdatePayload,
   colorAttributes,
   garmentMeasureAttributes,
+  garmentMeasureFieldName,
   genderAttribute,
   gtinAttribute,
   immediateTag,
@@ -326,10 +327,19 @@ async function resolveSizeChartAttributes(
     const blank = missingAttributeIds.filter(isKnownGarmentMeasureAttribute);
     const unconfirmed = missingAttributeIds.filter((id) => !isKnownGarmentMeasureAttribute(id));
     if (blank.length > 0) {
-      throw new MarketplaceConnectorError(`Informe as medidas da peça (${blank.join(", ")}) para publicar esta categoria no Mercado Livre.`);
+      // Nome do campo de `medidas` (spec 005), não o id do Mercado Livre — é isso que o operador
+      // reconhece no cadastro.
+      const fields = blank.map((id) => garmentMeasureFieldName(id) ?? id);
+      throw new MarketplaceConnectorError(`Informe as medidas da peça (${fields.join(", ")}) para publicar esta categoria no Mercado Livre.`);
     }
+    // Nome real devolvido pelo Mercado Livre (technical_specs), não só o id — ajuda a mapear a
+    // extensão de `MedidasSchema` sem precisar consultar a API de novo.
+    const unconfirmedLabels = unconfirmed.map((id) => {
+      const spec = requiredSpecs.find((s) => s.id === id);
+      return spec && spec.name !== id ? `${spec.name} (${id})` : id;
+    });
     throw new MarketplaceConnectorError(
-      `Esta categoria do Mercado Livre exige medidas que o cadastro ainda não captura (${unconfirmed.join(", ")}) — fale com o time técnico antes de publicar.`,
+      `Esta categoria do Mercado Livre exige medidas que o cadastro ainda não captura: ${unconfirmedLabels.join(", ")} — fale com o time técnico antes de publicar.`,
     );
   }
 
