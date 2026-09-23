@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
+    "postbuild": "node -e \"const fs=require('fs');fs.mkdirSync('dist/plugins/marketplaces',{recursive:true});fs.copyFileSync('src/plugins/marketplaces/mercado-livre-category-catalog.json','dist/plugins/marketplaces/mercado-livre-category-catalog.json')\"",
     "start": "node dist/server.js",
     "lint": "eslint .",
     "test": "vitest run",
