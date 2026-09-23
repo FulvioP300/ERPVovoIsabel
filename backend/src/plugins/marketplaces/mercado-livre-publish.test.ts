@@ -600,6 +600,18 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
       ]);
     });
 
+    it("consulta a ficha técnica do domínio com o GENDER já resolvido no corpo (T060 — sem isso a resposta não traz GARMENT_*)", async () => {
+      // Só interessa a chamada em si — o resto do fluxo (achar/criar tabela) não está mockado
+      // aqui e pode falhar depois, sem invalidar o que este teste verifica.
+      await publishItem(ACCESS_TOKEN, makeInput({ product: pantsProduct() })).catch(() => {});
+
+      expect(apiMocks.getDomainSizeChartAttributes).toHaveBeenCalledWith(
+        ACCESS_TOKEN,
+        "MLB-SHORTS",
+        expect.objectContaining({ valueId: expect.any(String), valueName: expect.any(String) }),
+      );
+    });
+
     it("medida exigida em branco: erro claro pedindo para completar o cadastro", async () => {
       await expect(
         publishItem(ACCESS_TOKEN, makeInput({ product: pantsProduct({ medidas: { ...makeProduct().medidas, cintura: null } }) })),

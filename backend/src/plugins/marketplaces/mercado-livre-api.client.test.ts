@@ -432,7 +432,7 @@ describe("tabela de medidas (spec 012, seção 3.5; ADR-024)", () => {
       },
     });
 
-    const attributes = await getDomainSizeChartAttributes(TOKEN, "MLB-SHORTS");
+    const attributes = await getDomainSizeChartAttributes(TOKEN, "MLB-SHORTS", { valueId: "339665", valueName: "Feminino" });
 
     expect(attributes).toEqual([
       { id: "GENDER", name: "Gênero", valueType: "string", tags: ["grid_template_required", "required"] },
@@ -442,14 +442,28 @@ describe("tabela de medidas (spec 012, seção 3.5; ADR-024)", () => {
 
   it("getDomainSizeChartAttributes: sem components internos (ou seção vazia) devolve lista vazia, não erro", async () => {
     stubFetch(200, { input: { groups: [{ components: [{ component: "GRID" }] }] } });
-    await expect(getDomainSizeChartAttributes(TOKEN, "MLB-SHORTS")).resolves.toEqual([]);
+    await expect(
+      getDomainSizeChartAttributes(TOKEN, "MLB-SHORTS", { valueId: "339665", valueName: "Feminino" }),
+    ).resolves.toEqual([]);
   });
 
-  it("getDomainSizeChartAttributes: filtra section=grids na query", async () => {
+  it("getDomainSizeChartAttributes: POST (não GET) com section=grids na query e o GENDER resolvido no corpo (T060 — sem isso a ficha técnica não traz GARMENT_*)", async () => {
     const fetchMock = stubFetch(200, { input: { groups: [] } });
-    await getDomainSizeChartAttributes(TOKEN, "MLB-SHORTS");
-    const [url] = fetchMock.mock.calls[0] as [string];
+    await getDomainSizeChartAttributes(TOKEN, "MLB-SHORTS", { valueId: "339665", valueName: "Feminino" });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.method).toBe("POST");
     expect(new URL(url).searchParams.get("section")).toBe("grids");
+    expect(JSON.parse(init.body as string)).toEqual({
+      attributes: [
+        {
+          id: "GENDER",
+          name: "Gênero",
+          value_id: "339665",
+          value_name: "Feminino",
+          values: [{ id: "339665", name: "Feminino" }],
+        },
+      ],
+    });
   });
 
   it("searchSizeCharts: POST com domain/site/seller/type/attributes e offset+limit na query", async () => {

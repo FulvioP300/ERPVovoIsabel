@@ -426,19 +426,43 @@ export interface TechnicalSpecAttribute {
 }
 
 /**
- * `GET /domains/{id}/technical_specs?section=grids` — atributos do "grid template" do domínio
- * (ex.: `BRAND`, `GENDER`, `AGE_GROUP` — os filtros/atributos da tabela). Estrutura real (T043,
- * 22/09/2026, confirmada ao vivo): `input.groups[].components[].components[].attributes[]` — dois
- * níveis de `components` aninhados (o de fora é a seção, ex. "GRID"; o de dentro é cada campo).
- * **Não contém `GARMENT_*`** para os domínios testados (ex. `MLB-SHORTS`) — ver ADR-024, nota do
- * T043: a origem real dos atributos `GARMENT_*` exigidos pela validação de linha da tabela
- * `SPECIFIC` continua sem confirmação; ver a pendência registrada nas tasks.
+ * `POST /domains/{id}/technical_specs?section=grids` — atributos do "grid template" do domínio
+ * **para um gênero específico** (ex.: `BRAND`, `GENDER`, `AGE_GROUP`, `GARMENT_*` — os
+ * filtros/medidas da tabela). Estrutura real (T043, 22/09/2026, confirmada ao vivo):
+ * `input.groups[].components[].components[].attributes[]` — dois níveis de `components`
+ * aninhados (o de fora é a seção, ex. "GRID"; o de dentro é cada campo).
+ *
+ * **T060 (23/09/2026, resolvida via documentação oficial):** a causa real de `GARMENT_*` nunca
+ * aparecer era chamar isto como `GET` sem corpo — os atributos `GARMENT_*` têm
+ * `hierarchy: "CHILD_DEPENDENT"` (dependem do `GENDER` escolhido: um casaco masculino e um
+ * feminino pedem medidas diferentes) e só aparecem numa consulta **`POST`** informando o
+ * `GENDER` já resolvido no corpo — doc oficial ("Check the product specification sheet of the
+ * size chart", developers.mercadolibre.com.ar/en_us/first-steps-mkt). Sem o `GENDER` no corpo, a
+ * resposta é a ficha genérica do domínio, sem as medidas específicas daquele gênero.
  */
-export async function getDomainSizeChartAttributes(accessToken: string, domainId: string): Promise<TechnicalSpecAttribute[]> {
+export async function getDomainSizeChartAttributes(
+  accessToken: string,
+  domainId: string,
+  genderAttribute: { valueId: string; valueName: string },
+): Promise<TechnicalSpecAttribute[]> {
   const { body } = await request<{ input?: { groups?: { components?: Record<string, unknown>[] }[] } }>(
     `/domains/${domainId}/technical_specs`,
     accessToken,
-    { query: { section: "grids" } },
+    {
+      method: "POST",
+      query: { section: "grids" },
+      body: {
+        attributes: [
+          {
+            id: "GENDER",
+            name: "Gênero",
+            value_id: genderAttribute.valueId,
+            value_name: genderAttribute.valueName,
+            values: [{ id: genderAttribute.valueId, name: genderAttribute.valueName }],
+          },
+        ],
+      },
+    },
   );
   const groups = body.input?.groups ?? [];
   const attributes: TechnicalSpecAttribute[] = [];

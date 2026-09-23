@@ -296,7 +296,7 @@ async function resolveSizeChartAttributes(
 
   const genderDef = categoryAttributes.find((a) => a.id === "GENDER");
   const gender = genderAttribute(product.caracteristicas.genero, product.classificacao.departamento, genderDef);
-  if (!gender?.value_name) {
+  if (!gender?.value_id || !gender.value_name) {
     throw new MarketplaceConnectorError(
       product.caracteristicas.genero
         ? `O Mercado Livre não aceita o gênero "${product.caracteristicas.genero}" para esta categoria — ajuste o gênero da peça ou a categoria antes de publicar.`
@@ -316,7 +316,9 @@ async function resolveSizeChartAttributes(
     return [gender, ...chartAttributes];
   }
 
-  const requiredSpecs = await api.getDomainSizeChartAttributes(accessToken, domain);
+  // T060: a ficha técnica de medidas é por gênero (CHILD_DEPENDENT) — sem o GENDER já resolvido no
+  // corpo do POST, a resposta nunca traz os atributos GARMENT_*.
+  const requiredSpecs = await api.getDomainSizeChartAttributes(accessToken, domain, { valueId: gender.value_id, valueName: gender.value_name });
   const garmentAttributeIds = requiredSpecs.filter((spec) => spec.id.startsWith("GARMENT_")).map((spec) => spec.id);
   const { attributes: garmentAttributes, missingAttributeIds } = garmentMeasureAttributes(garmentAttributeIds, product.medidas);
 
