@@ -381,8 +381,18 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
       confirmando `POST` + `section=grids` na query + `GENDER` no corpo, e que a orquestração chama a
       função com o gênero resolvido. **Ainda não confirmado contra a API real** (sem token de acesso
       válido da conta conectada neste ambiente de execução) — a próxima publicação real de uma peça com
-      tabela de medidas (calça/short primeiro; casaco só depois de mapear `busto`) confirma se a ficha
-      técnica agora traz os atributos `GARMENT_*` esperados.
+      tabela de medidas confirma se a ficha técnica agora traz os atributos `GARMENT_*` esperados.
+      **Mudança de decisão do usuário (23/09/2026, mesmo dia):** "vamos investir agora no tratamento de
+      medidas pois muitas peças estão ficando de fora" — revoga a decisão anterior de não mexer em
+      partes de cima. `busto` (`GARMENT_CHEST_WIDTH_FROM`, o único confirmado ao vivo) virou campo de
+      `MedidasSchema` (spec 005) — mesmo padrão de `coxa`/`entrepasso` (T056): `.default(null)` em
+      `product.schema.ts` e em `AiMedidasSchema`, campo novo em `ProductForm.tsx`. `GARMENT_MEASURE_BY_ATTRIBUTE`
+      (mapper) ganhou a entrada. Ombro e manga (spec 012, seção 3.5) continuam sem entrada — nenhum
+      erro real ainda confirmou o id exato — mas a mensagem de "atributo não confirmado" agora inclui o
+      **nome real** devolvido pelo Mercado Livre (`technical_specs`), não só o id: da próxima vez que
+      aparecer um desses, dá pra mapear direto pela mensagem, sem precisar investigar a API de novo. A
+      mensagem de "medida em branco" também passou a mostrar o nome do campo do ERP (ex. "cintura"), não
+      o id do Mercado Livre (ex. `GARMENT_WAIST_WIDTH_FROM`) — o operador não reconhecia o id.
 - [x] T026 Conector — **atualizar**: `GET /items/{id}` (status, `sold_quantity`, categoria) → categoria e
       atributos → `PUT /items/{id}` → descrição por `PUT ...?api_version=2` (queda para `POST` se o item
       ainda não tem descrição); `family_name`/título só se `sold_quantity = 0`; `pictures` sempre incluído;

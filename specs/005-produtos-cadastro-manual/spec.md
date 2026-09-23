@@ -56,7 +56,7 @@ Collection `products`:
     "unidade": "cm",
     "cintura": null, "quadril": null, "gancho": null,
     "comprimento": null, "largura_barra": null,
-    "coxa": null, "entrepasso": null
+    "coxa": null, "entrepasso": null, "busto": null
   },
   "peso": { "valor": null, "unidade": "kg" },
   "condicao": {

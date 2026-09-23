@@ -440,9 +440,9 @@ O `GENDER` sai do departamento da categoria do ERP (Masculino, Feminino, Infanti
 valores de `GET /categories/$CATEGORY_ID/attributes`; o Mercado Livre pode pedir também `AGE_GROUP`
 por *warning* de validação (seção 3.6). O `GENDER` é validado ainda contra o título.
 
-**Medidas exigidas por roupa (`MedidasSchema`, spec 005) → atributo `GARMENT_*`.** Confirmado só
-para domínios de parte de baixo (calças, shorts, saias — documentação "Gerenciar tabela de
-medidas", exemplo `PANTS_TEST`):
+**Medidas exigidas por roupa (`MedidasSchema`, spec 005) → atributo `GARMENT_*`.** Confirmado para
+domínios de parte de baixo (calças, shorts, saias — documentação "Gerenciar tabela de medidas",
+exemplo `PANTS_TEST`) e, desde o T060 (23/09/2026), o primeiro atributo de parte de cima:
 
 | Campo do ERP | Atributo `GARMENT_*` |
 |---|---|
@@ -452,12 +452,18 @@ medidas", exemplo `PANTS_TEST`):
 | `medidas.coxa` (novo, ADR-024) | `GARMENT_THIGH_WIDTH_FROM` |
 | `medidas.entrepasso` (novo, ADR-024) | `GARMENT_INSEAM_LENGTH_FROM` |
 | `medidas.gancho` | `GARMENT_FRONT_RISE_FROM` |
+| `medidas.busto` (novo, T060) | `GARMENT_CHEST_WIDTH_FROM` |
 
-⚠ **Domínios de parte de cima** (camisas, blusas, jaquetas, vestidos) **não têm os atributos
-`GARMENT_*` confirmados** — a documentação salva só cobre o exemplo de calça. A implementação
-consulta `technical_specs` do domínio antes de montar a linha; atributos que apareçam ali e que o
-ERP não capture ainda (ex.: busto, ombro, manga) geram uma extensão nova de `MedidasSchema`, nunca
-um valor adivinhado.
+⚠ **Domínios de parte de cima** (camisas, blusas, jaquetas, vestidos) **podem exigir mais medidas
+que `busto`** — a documentação salva não cobre um exemplo completo de blusa/jaqueta, só o de calça
+mais o achado real do T060 (casaco → `GARMENT_CHEST_WIDTH_FROM`). A causa de `technical_specs`
+não revelar os atributos de uma peça (T060, 23/09/2026) era consultar sem o `GENDER` no corpo —
+corrigido (`getDomainSizeChartAttributes` virou `POST` com `GENDER` resolvido), então a consulta em
+si agora deve trazer o conjunto real e completo por domínio. A implementação consulta
+`technical_specs` do domínio antes de montar a linha; atributos que apareçam ali e que o ERP não
+capture ainda (ex.: ombro, manga) geram uma extensão nova de `MedidasSchema`, nunca um valor
+adivinhado — a mensagem de erro já inclui o nome real que o Mercado Livre devolveu para facilitar
+a extensão.
 
 Consequências já certas:
 - **`SIZE` é obrigatório** e precisa ser igual ao da linha. No ERP de desenvolvimento, 7 de 9 produtos

@@ -99,6 +99,12 @@ export const MedidasSchema = z.object({
   // Livre (os demais campos já correspondem 1:1). Documento antigo sem os dois: default null.
   coxa: nullableNumber().default(null),
   entrepasso: nullableNumber().default(null),
+  // Partes de cima (camisas, blusas, jaquetas, casacos, vestidos) — busto é o primeiro atributo
+  // GARMENT_* confirmado (T060, 23/09/2026, erro real do Mercado Livre num casaco:
+  // GARMENT_CHEST_WIDTH_FROM). A spec 012 (seção 3.5) já previa que partes de cima podem exigir
+  // mais medidas (ombro, manga) — essas ainda não têm atributo GARMENT_* confirmado, então não
+  // viram campo aqui até serem vistas contra a API real (nunca inventar o mapeamento).
+  busto: nullableNumber().default(null),
 });
 
 /** Sempre em kg (spec, seção 19) — unidade fixa, ao contrário de `medidas` (cm/in), então um

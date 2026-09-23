@@ -14,6 +14,7 @@ import {
   buildUpdatePayload,
   colorAttributes,
   garmentMeasureAttributes,
+  garmentMeasureFieldName,
   genderAttribute,
   gtinAttribute,
   immediateTag,
@@ -83,7 +84,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
       elasticidade: null,
       fechamento: [],
     },
-    medidas: { unidade: "cm", cintura: 80, quadril: 100, gancho: 25, comprimento: 45, largura_barra: null, coxa: 60, entrepasso: 70 },
+    medidas: { unidade: "cm", cintura: 80, quadril: 100, gancho: 25, comprimento: 45, largura_barra: null, coxa: 60, entrepasso: 70, busto: null },
     peso: { valor: 0.3, unidade: "kg" },
     condicao: { estado: "usado", nota: null, possui_etiqueta: false, possui_defeitos: false, defeitos: [], observacoes: null },
     preco: { preco_original_estimado: null, custo_aquisicao: null, preco_venda: 89.9, preco_promocional: null, moeda: "BRL" },
@@ -275,8 +276,23 @@ describe("isKnownGarmentMeasureAttribute (spec 012, seção 3.5; ADR-024)", () =
     expect(isKnownGarmentMeasureAttribute("GARMENT_INSEAM_LENGTH_FROM")).toBe(true);
   });
 
-  it("não confirmados (parte de cima): false — nunca adivinhado", () => {
-    expect(isKnownGarmentMeasureAttribute("GARMENT_BUST_WIDTH_FROM")).toBe(false);
+  it("busto (parte de cima) confirmado ao vivo no T060 (23/09/2026): true", () => {
+    expect(isKnownGarmentMeasureAttribute("GARMENT_CHEST_WIDTH_FROM")).toBe(true);
+  });
+
+  it("outras medidas de parte de cima (ombro, manga) ainda não confirmadas: false — nunca adivinhado", () => {
+    expect(isKnownGarmentMeasureAttribute("GARMENT_SHOULDER_WIDTH_FROM")).toBe(false);
+  });
+});
+
+describe("garmentMeasureFieldName (spec 012, seção 3.5)", () => {
+  it("devolve o campo de medidas (spec 005) para um GARMENT_* já mapeado", () => {
+    expect(garmentMeasureFieldName("GARMENT_WAIST_WIDTH_FROM")).toBe("cintura");
+    expect(garmentMeasureFieldName("GARMENT_CHEST_WIDTH_FROM")).toBe("busto");
+  });
+
+  it("undefined para um GARMENT_* ainda não mapeado — nunca inventa", () => {
+    expect(garmentMeasureFieldName("GARMENT_SHOULDER_WIDTH_FROM")).toBeUndefined();
   });
 });
 
@@ -297,6 +313,12 @@ describe("garmentMeasureAttributes (spec 012, seção 3.5; ADR-024)", () => {
     ]);
   });
 
+  it("mapeia busto (parte de cima, T060 — GARMENT_CHEST_WIDTH_FROM)", () => {
+    const result = garmentMeasureAttributes(["GARMENT_CHEST_WIDTH_FROM"], { ...medidas, busto: 92 });
+    expect(result.missingAttributeIds).toEqual([]);
+    expect(result.attributes).toEqual([{ id: "GARMENT_CHEST_WIDTH_FROM", value_name: "92 cm" }]);
+  });
+
   it("medida ausente (null) vira missingAttributeIds, não um valor inventado", () => {
     const result = garmentMeasureAttributes(["GARMENT_WAIST_WIDTH_FROM"], { ...medidas, cintura: null });
     expect(result.attributes).toEqual([]);
@@ -304,9 +326,9 @@ describe("garmentMeasureAttributes (spec 012, seção 3.5; ADR-024)", () => {
   });
 
   it("atributo não confirmado (parte de cima) vira missingAttributeIds — nunca adivinhado", () => {
-    const result = garmentMeasureAttributes(["GARMENT_BUST_WIDTH_FROM"], medidas);
+    const result = garmentMeasureAttributes(["GARMENT_SHOULDER_WIDTH_FROM"], medidas);
     expect(result.attributes).toEqual([]);
-    expect(result.missingAttributeIds).toEqual(["GARMENT_BUST_WIDTH_FROM"]);
+    expect(result.missingAttributeIds).toEqual(["GARMENT_SHOULDER_WIDTH_FROM"]);
   });
 });
 

@@ -188,7 +188,12 @@ export function sizeChartAttributes(size: string, chartId: string, rowId: string
 // ---------------------------------------------------------------------------------------------
 // Medidas de roupa → GARMENT_* (spec 012, seção 3.5; ADR-024)
 
-/** Confirmado só para partes de baixo (calças/shorts/saias) — ver ADR-024. */
+/**
+ * Partes de baixo (calças/shorts/saias) confirmadas desde o T053/ADR-024. `GARMENT_CHEST_WIDTH_FROM`
+ * (busto, partes de cima) confirmado ao vivo no T060 (23/09/2026, erro real do Mercado Livre num
+ * casaco) — outras medidas de parte de cima (ombro, manga) que a spec 012 (seção 3.5) já previa
+ * continuam sem mapeamento: `missingAttributeIds` as devolve como "não confirmadas", nunca inventa.
+ */
 const GARMENT_MEASURE_BY_ATTRIBUTE: Record<string, keyof Product["medidas"]> = {
   GARMENT_LENGTH_FROM: "comprimento",
   GARMENT_WAIST_WIDTH_FROM: "cintura",
@@ -196,6 +201,7 @@ const GARMENT_MEASURE_BY_ATTRIBUTE: Record<string, keyof Product["medidas"]> = {
   GARMENT_THIGH_WIDTH_FROM: "coxa",
   GARMENT_INSEAM_LENGTH_FROM: "entrepasso",
   GARMENT_FRONT_RISE_FROM: "gancho",
+  GARMENT_CHEST_WIDTH_FROM: "busto",
 };
 
 export interface GarmentMeasureResult {
@@ -239,6 +245,12 @@ export function garmentMeasureAttributes(requiredAttributeIds: string[], medidas
  */
 export function isKnownGarmentMeasureAttribute(attributeId: string): boolean {
   return attributeId in GARMENT_MEASURE_BY_ATTRIBUTE;
+}
+
+/** Campo de `medidas` (spec 005) correspondente a um `GARMENT_*` já mapeado — para mensagens de
+ * erro que apontem o nome que o operador reconhece no cadastro, não o id do Mercado Livre. */
+export function garmentMeasureFieldName(attributeId: string): string | undefined {
+  return GARMENT_MEASURE_BY_ATTRIBUTE[attributeId];
 }
 
 // ---------------------------------------------------------------------------------------------

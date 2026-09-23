@@ -82,7 +82,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
       elasticidade: null,
       fechamento: [],
     },
-    medidas: { unidade: "cm", cintura: null, quadril: null, gancho: null, comprimento: null, largura_barra: null, coxa: null, entrepasso: null },
+    medidas: { unidade: "cm", cintura: null, quadril: null, gancho: null, comprimento: null, largura_barra: null, coxa: null, entrepasso: null, busto: null },
     peso: { valor: null, unidade: "kg" },
     condicao: { estado: "novo", nota: null, possui_etiqueta: false, possui_defeitos: false, defeitos: [], observacoes: null },
     preco: { preco_original_estimado: null, custo_aquisicao: null, preco_venda: 129.9, preco_promocional: null, moeda: "BRL" },

@@ -109,6 +109,7 @@ export const ProductFormSchema = z
     largura_barra: z.string().optional(),
     coxa: z.string().optional(),
     entrepasso: z.string().optional(),
+    busto: z.string().optional(),
 
     // Peso (sempre em kg — spec, seção 19)
     peso: z.string().optional(),
@@ -254,6 +255,7 @@ export function toProductPayload(values: ProductFormValues, galeria: Imagem[] = 
       largura_barra: parseOptionalNumber(values.largura_barra),
       coxa: parseOptionalNumber(values.coxa),
       entrepasso: parseOptionalNumber(values.entrepasso),
+      busto: parseOptionalNumber(values.busto),
     },
     peso: {
       valor: parseOptionalNumber(values.peso),
@@ -328,6 +330,7 @@ export function productToFormValues(product: z.infer<typeof ProductSchema>): Pro
     largura_barra: product.medidas.largura_barra?.toString() ?? "",
     coxa: product.medidas.coxa?.toString() ?? "",
     entrepasso: product.medidas.entrepasso?.toString() ?? "",
+    busto: product.medidas.busto?.toString() ?? "",
     peso: product.peso.valor?.toString() ?? "",
     estado: product.condicao.estado,
     nota: product.condicao.nota?.toString() ?? "",
@@ -385,6 +388,7 @@ export const DEFAULT_PRODUCT_FORM_VALUES: ProductFormValues = {
   largura_barra: "",
   coxa: "",
   entrepasso: "",
+  busto: "",
   peso: "",
   estado: "novo",
   nota: "",
