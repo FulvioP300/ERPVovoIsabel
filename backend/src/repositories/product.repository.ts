@@ -1,5 +1,5 @@
 import { ObjectId, type Collection, type Db, type Filter } from "mongodb";
-import type { Product } from "../schemas/product.schema.js";
+import { ProductSchema, type Product } from "../schemas/product.schema.js";
 import type { MarketplaceListing } from "../../../shared/dist/schemas/marketplace.schema.js";
 
 export type ProductDocument = Omit<Product, "id"> & { _id: ObjectId };
@@ -13,9 +13,18 @@ function collection(db: Db): Collection<ProductDocument> {
   return db.collection<ProductDocument>("products");
 }
 
+/**
+ * Sempre revalida contra `ProductSchema` — não é só o cast de tipo do `ProductDocument` sugere.
+ * Documentos gravados antes de um campo existir (`peso`) ou num formato antigo (`marketplaces`
+ * como objeto fixo, pré-011) só viram o shape canônico (defaults aplicados, `marketplaces`
+ * virando `[]`) aqui. Sem isso, quem usa o repositório diretamente (services, não só rotas)
+ * herda o formato cru do Mongo — foi exatamente isso que quebrou `publishListing` em produção
+ * (22/09/2026): `product.marketplaces.find is not a function` num produto anterior à spec 011,
+ * porque o service chama `.find()` antes de qualquer rota ter a chance de reparsear a resposta.
+ */
 function toProduct(doc: ProductDocument): Product {
   const { _id, ...rest } = doc;
-  return { id: _id.toHexString(), ...rest };
+  return ProductSchema.parse({ id: _id.toHexString(), ...rest });
 }
 
 /**
@@ -103,7 +112,20 @@ export const productRepository = {
     );
 
     if (updateResult.matchedCount === 0) {
-      await collection(db).updateOne({ _id: new ObjectId(productId) }, { $push: { marketplaces: listing } });
+      // Pipeline update (não um `$push` simples): documentos no formato antigo (pré-011,
+      // `marketplaces` como objeto fixo) fazem o Mongo recusar `$push` com "must be an array but
+      // is of type object" — achado real em produção (22/09/2026). `$isArray` trata qualquer valor
+      // que não seja array (objeto antigo, ausente, null) como lista vazia antes de adicionar, o
+      // mesmo saneamento que `MarketplacesSchema` (shared) já faz na leitura.
+      await collection(db).updateOne({ _id: new ObjectId(productId) }, [
+        {
+          $set: {
+            marketplaces: {
+              $concatArrays: [{ $cond: [{ $isArray: "$marketplaces" }, "$marketplaces", []] }, [listing]],
+            },
+          },
+        },
+      ]);
     }
   },
 

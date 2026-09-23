@@ -1,12 +1,15 @@
 import { randomBytes } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import type { Db } from "mongodb";
+import { ObjectId } from "mongodb";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { hashPassword } from "../../src/services/password.service.js";
 import { setMarketplaceConnectorForTesting } from "../../src/services/marketplace-listing.service.js";
 
 let mongoServer: MongoMemoryServer;
 let app: FastifyInstance;
+let db: Db;
 let disconnectMongo: typeof import("../../src/database/mongo.client.js").disconnectMongo;
 
 const ADMIN = { email: "admin@vovoisabel.com.br", password: "senha-admin-123" };
@@ -46,7 +49,7 @@ beforeAll(async () => {
 
   const mongoClientModule = await import("../../src/database/mongo.client.js");
   disconnectMongo = mongoClientModule.disconnectMongo;
-  const db = await mongoClientModule.connectMongo();
+  db = await mongoClientModule.connectMongo();
 
   await db.collection("users").insertMany([
     {
@@ -181,6 +184,29 @@ describe("POST /api/products/:id/marketplace-listings", () => {
     const listing = response.json().data.marketplaces[0];
     expect(listing).toMatchObject({ marketplace: "mercado_livre", status: "publicado", conta_id: accountId });
     expect(listing.id_anuncio).toMatch(/^MLB-/);
+  });
+
+  it("publica normalmente um produto no formato pré-011 (marketplaces como objeto fixo, não array)", async () => {
+    // Documento anterior à spec 011 (005/007): `marketplaces` era um objeto fixo por nome, não a
+    // lista atual. `productRepository` revalida via ProductSchema.parse ao ler (o preprocess de
+    // MarketplacesSchema vira `[]`) — sem isso, `publishListing` quebra com "product.marketplaces
+    // .find is not a function" antes mesmo de chegar na rota, achado real em produção (22/09/2026).
+    const productId = await createProduct(adminCookie);
+    await db
+      .collection("products")
+      .updateOne({ _id: new ObjectId(productId) }, { $set: { marketplaces: { mercado_livre: { publicado: false } } } });
+    const accountId = await createAccount(adminCookie);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/products/${productId}/marketplace-listings`,
+      cookies: { accessToken: adminCookie },
+      payload: { marketplace: "mercado_livre", accountId },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const listing = response.json().data.marketplaces[0];
+    expect(listing).toMatchObject({ marketplace: "mercado_livre", status: "publicado", conta_id: accountId });
   });
 
   it("publicar a mesma peça numa segunda conta do mesmo marketplace cria uma segunda entrada independente", async () => {
