@@ -342,7 +342,7 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
       e confiável que tentar inferir pela taxonomia de domínios do Mercado Livre. Todos os cenários da lista
       acima cobertos, mais GTIN required/conditional_required e erro claro sem `EMPTY_GTIN_REASON`
       disponível — 42 testes em `mercado-livre-publish.test.ts`.
-- [ ] T060 [P] **Achar a origem real dos atributos `GARMENT_*` exigidos pela tabela `SPECIFIC`** (spec 012,
+- [x] T060 [P] **Achar a origem real dos atributos `GARMENT_*` exigidos pela tabela `SPECIFIC`** (spec 012,
       seção 3.5; ADR-024, pendência do T043) — `GET /domains/{domain}/technical_specs` (com e sem
       `section=grids`) **não lista `GARMENT_*`** para `MLB-SHORTS` (confirmado ao vivo, parser corrigido);
       `GET /categories/{id}/attributes` também não. Mesmo assim, `POST /catalog/charts` recusa a linha sem
@@ -362,8 +362,27 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
       previa que partes de cima podem pedir mais medidas não confirmadas (ombro, manga) — cada uma só
       aparece numa tentativa real depois de resolver a anterior. **Decisão do usuário (23/09/2026):** não
       investir agora — casacos/jaquetas (domínios de "parte de cima") ficam fora do Mercado Livre por
-      enquanto, sem mudança de código. Retomar junto com o resto do T060 quando houver uma hipótese
-      fundamentada para a origem real dos `GARMENT_*`.
+      enquanto, sem mudança de código nessa hora.
+      **Causa raiz achada (23/09/2026, mesmo dia, documentação oficial do Mercado Livre — não tentativa e
+      erro contra a API real):** `GET /domains/{domain}/technical_specs?section=grids` (sem corpo) sempre
+      devolveu a ficha técnica **genérica** do domínio. Os atributos `GARMENT_*` têm
+      `"hierarchy": "CHILD_DEPENDENT"` — dependem do `GENDER` escolhido (um casaco masculino e um feminino
+      pedem medidas diferentes) — e só aparecem numa consulta **`POST`** (não `GET`) informando o `GENDER`
+      já resolvido no corpo. Documentado em "Check the product specification sheet of the size chart"
+      (developers.mercadolibre.com.ar/en_us/first-steps-mkt) — exemplo real: `POST
+      /domains/MLA-SNEAKERS/technical_specs?section=grids` com `{"attributes": [{"id": "GENDER",
+      "value_id": "339665", "value_name": "Mujer", ...}]}` no corpo. Bate com o formato de erro
+      documentado `chart_tech_specs_not_found`: `"Chart technical specification not found for
+      SITE:{SITE}-DOMAIN:{DOMAIN}-GENDER:{VALUE_NAME}"` — a ficha é indexada por site+domínio+**gênero**,
+      nunca só por domínio.
+      **Corrigido:** `getDomainSizeChartAttributes` (`mercado-livre-api.client.ts`) virou `POST` com o
+      `GENDER` (já resolvido antes, mesmo ponto do fluxo que decide calçado × roupa) no corpo;
+      `mercado-livre-publish.ts` passa `gender.value_id`/`gender.value_name`. Teste de regressão
+      confirmando `POST` + `section=grids` na query + `GENDER` no corpo, e que a orquestração chama a
+      função com o gênero resolvido. **Ainda não confirmado contra a API real** (sem token de acesso
+      válido da conta conectada neste ambiente de execução) — a próxima publicação real de uma peça com
+      tabela de medidas (calça/short primeiro; casaco só depois de mapear `busto`) confirma se a ficha
+      técnica agora traz os atributos `GARMENT_*` esperados.
 - [x] T026 Conector — **atualizar**: `GET /items/{id}` (status, `sold_quantity`, categoria) → categoria e
       atributos → `PUT /items/{id}` → descrição por `PUT ...?api_version=2` (queda para `POST` se o item
       ainda não tem descrição); `family_name`/título só se `sold_quantity = 0`; `pictures` sempre incluído;
@@ -757,3 +776,13 @@ regressão em cada um — nenhum bloqueia mais nada:
    então o pré-checo do ERP não bloqueia antes da chamada real). Pior que calças/shorts: `busto` nem
    existe em `MedidasSchema`, e a spec já previa que partes de cima podem pedir mais medidas ainda não
    confirmadas (ombro, manga). **Decisão do usuário**: não investir agora — ver nota no T060 acima.
+
+23/09/2026 (mais tarde, mesmo dia): **T060 resolvida** — causa raiz achada via documentação oficial do
+Mercado Livre (não tentativa e erro contra a API real, ver nota completa no T060 acima). Resumo: a ficha
+técnica de medidas (`technical_specs`) é indexada por **gênero**, não só por domínio — os atributos
+`GARMENT_*` são `CHILD_DEPENDENT` do `GENDER` e só aparecem numa consulta `POST` (não `GET`) com o
+`GENDER` já resolvido no corpo. `getDomainSizeChartAttributes` corrigida; teste de regressão cobrindo o
+`POST`+corpo. **Ainda não confirmado contra a API real** — próxima publicação de calça/short confirma.
+Se confirmado, resolve o bloqueio de roupa com tabela de medidas por completo (exceto partes de cima, que
+ainda dependem de mapear `busto`/possivelmente ombro/manga em `MedidasSchema` — decisão de não investir
+nisso por ora continua de pé).
