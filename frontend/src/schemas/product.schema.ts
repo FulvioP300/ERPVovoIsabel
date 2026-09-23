@@ -6,11 +6,22 @@ import {
   MedidasUnidadeEnum,
   MoedaEnum,
   CanalVendaEnum,
+  GeneroEnum,
   ImagemSchema,
   MAX_PRODUCT_IMAGES,
 } from "../../../shared/dist/schemas/product.schema.js";
 
-export { ProductSchema, ProductStatusEnum, CondicaoEstadoEnum, MedidasUnidadeEnum, MoedaEnum, CanalVendaEnum, MAX_PRODUCT_IMAGES };
+export { ProductSchema, ProductStatusEnum, CondicaoEstadoEnum, MedidasUnidadeEnum, MoedaEnum, CanalVendaEnum, GeneroEnum, MAX_PRODUCT_IMAGES };
+export type Genero = z.infer<typeof GeneroEnum>;
+
+/** Rótulo de exibição do seletor de gênero (características do produto — spec 005). */
+export const GENERO_LABELS: Record<Genero, string> = {
+  masculino: "Masculino",
+  feminino: "Feminino",
+  menino: "Menino",
+  menina: "Menina",
+  unissex: "Unissex",
+};
 export type Moeda = z.infer<typeof MoedaEnum>;
 
 /** Símbolo de exibição por moeda — usado tanto no seletor do formulário quanto na listagem. */
@@ -78,6 +89,7 @@ export const ProductFormSchema = z
     // Características
     tamanho_etiqueta: z.string().optional(),
     tamanho_equivalente: z.string().optional(),
+    genero: z.enum(["", "masculino", "feminino", "menino", "menina", "unissex"]).default(""),
     cor_principal: z.string().optional(),
     cores_secundarias: z.string().optional(),
     estampa: z.string().optional(),
@@ -222,6 +234,7 @@ export function toProductPayload(values: ProductFormValues, galeria: Imagem[] = 
     caracteristicas: {
       tamanho_etiqueta: textOrUndefined(values.tamanho_etiqueta),
       tamanho_equivalente: textOrUndefined(values.tamanho_equivalente),
+      genero: values.genero === "" ? undefined : values.genero,
       cor_principal: textOrUndefined(values.cor_principal),
       cores_secundarias: parseList(values.cores_secundarias),
       estampa: textOrUndefined(values.estampa),
@@ -297,6 +310,7 @@ export function productToFormValues(product: z.infer<typeof ProductSchema>): Pro
     marca_original: product.marca.original === null ? "" : product.marca.original ? "sim" : "nao",
     tamanho_etiqueta: product.caracteristicas.tamanho_etiqueta ?? "",
     tamanho_equivalente: product.caracteristicas.tamanho_equivalente ?? "",
+    genero: product.caracteristicas.genero ?? "",
     cor_principal: product.caracteristicas.cor_principal ?? "",
     cores_secundarias: joinList(product.caracteristicas.cores_secundarias),
     estampa: product.caracteristicas.estampa ?? "",
@@ -353,6 +367,7 @@ export const DEFAULT_PRODUCT_FORM_VALUES: ProductFormValues = {
   marca_original: "",
   tamanho_etiqueta: "",
   tamanho_equivalente: "",
+  genero: "",
   cor_principal: "",
   cores_secundarias: "",
   estampa: "",

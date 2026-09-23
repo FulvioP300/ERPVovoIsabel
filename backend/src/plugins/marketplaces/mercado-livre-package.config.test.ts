@@ -30,6 +30,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
     caracteristicas: {
       tamanho_etiqueta: null,
       tamanho_equivalente: null,
+      genero: null,
       cor_principal: null,
       cores_secundarias: [],
       estampa: null,

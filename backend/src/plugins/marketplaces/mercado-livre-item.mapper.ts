@@ -101,15 +101,48 @@ const DEPARTAMENTO_GENDER_SYNONYMS: Record<string, string> = {
 };
 
 /**
- * `GENDER` a partir do departamento do ERP, casado (melhor esforço, sem acento/maiúscula) com os
- * valores que a categoria aceita — nunca inventa um `value_id`. `null` se não houver correspondência
- * (a categoria não tem `GENDER`, ou nenhum valor bate com o departamento, mesmo com o sinônimo).
+ * `caracteristicas.genero` (005) → nome esperado pelo Mercado Livre — mapeamento fechado e
+ * determinístico (o campo já é um enum fechado, ao contrário do departamento em texto livre).
+ * Decisão do usuário (23/09/2026): categorias como "Scarpins e Plataformas" exigem `GENDER` e só
+ * aceitam Feminino/Meninas — o departamento genérico "Unissexo" (categoria inteira, spec 003) não
+ * é preciso o bastante para essas.
  */
-export function genderAttribute(departamento: string, genderAttributeDef: CategoryAttribute | undefined): MercadoLivreAttributeCandidate | null {
+const GENERO_TO_ML_NAME: Record<string, string> = {
+  masculino: "masculino",
+  feminino: "feminino",
+  menino: "meninos",
+  menina: "meninas",
+  unissex: "sem gênero",
+};
+
+function findGenderValue(genderAttributeDef: CategoryAttribute, name: string): MercadoLivreAttributeCandidate | null {
+  const match = genderAttributeDef.values.find((v) => v.name.trim().toLowerCase() === name);
+  return match ? { id: "GENDER", value_id: match.id, value_name: match.name } : null;
+}
+
+/**
+ * `GENDER` da peça — tenta primeiro `genero` (explícito, spec 005), depois o departamento (melhor
+ * esforço, sem acento/maiúscula), casado com os valores que a categoria de fato aceita — nunca
+ * inventa um `value_id`. `null` se não houver correspondência com nenhum dos dois (a categoria não
+ * tem `GENDER`, ou nenhum valor bate, mesmo com o sinônimo do departamento).
+ */
+export function genderAttribute(
+  genero: string | null,
+  departamento: string,
+  genderAttributeDef: CategoryAttribute | undefined,
+): MercadoLivreAttributeCandidate | null {
   if (!genderAttributeDef) return null;
-  const normalized = departamento.trim().toLowerCase();
-  const candidates = [normalized, DEPARTAMENTO_GENDER_SYNONYMS[normalized]].filter((v): v is string => v !== undefined);
-  const match = genderAttributeDef.values.find((v) => candidates.includes(v.name.trim().toLowerCase()));
+
+  if (genero !== null) {
+    const byGenero = findGenderValue(genderAttributeDef, GENERO_TO_ML_NAME[genero]!);
+    if (byGenero) return byGenero;
+  }
+
+  const normalizedDepartamento = departamento.trim().toLowerCase();
+  const departamentoCandidates = [normalizedDepartamento, DEPARTAMENTO_GENDER_SYNONYMS[normalizedDepartamento]].filter(
+    (v): v is string => v !== undefined,
+  );
+  const match = genderAttributeDef.values.find((v) => departamentoCandidates.includes(v.name.trim().toLowerCase()));
   if (!match) return null;
   return { id: "GENDER", value_id: match.id, value_name: match.name };
 }

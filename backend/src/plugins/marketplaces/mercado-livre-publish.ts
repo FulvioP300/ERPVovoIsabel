@@ -242,7 +242,7 @@ async function buildAttributes(
     candidates.push(...chartAttributes);
   } else {
     const genderDef = categoryAttributes.find((a) => a.id === "GENDER");
-    const gender = genderAttribute(product.classificacao.departamento, genderDef);
+    const gender = genderAttribute(product.caracteristicas.genero, product.classificacao.departamento, genderDef);
     if (gender) candidates.push(gender);
 
     const plainSize = product.caracteristicas.tamanho_etiqueta ?? product.caracteristicas.tamanho_equivalente;
@@ -295,10 +295,12 @@ async function resolveSizeChartAttributes(
   if (!activeDomains.includes(domain)) return [];
 
   const genderDef = categoryAttributes.find((a) => a.id === "GENDER");
-  const gender = genderAttribute(product.classificacao.departamento, genderDef);
+  const gender = genderAttribute(product.caracteristicas.genero, product.classificacao.departamento, genderDef);
   if (!gender?.value_name) {
     throw new MarketplaceConnectorError(
-      `O Mercado Livre não reconhece o departamento "${product.classificacao.departamento}" como gênero — ajuste a categoria/departamento antes de publicar.`,
+      product.caracteristicas.genero
+        ? `O Mercado Livre não aceita o gênero "${product.caracteristicas.genero}" para esta categoria — ajuste o gênero da peça ou a categoria antes de publicar.`
+        : `O Mercado Livre exige o gênero da peça para esta categoria e o departamento "${product.classificacao.departamento}" não é reconhecido — preencha "Gênero" no cadastro antes de publicar.`,
     );
   }
 

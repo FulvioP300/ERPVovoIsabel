@@ -7,6 +7,8 @@ import {
   CONDICAO_ESTADO_LABELS,
   CondicaoEstadoEnum,
   CreatableStatusEnum,
+  GENERO_LABELS,
+  GeneroEnum,
   MOEDA_SYMBOLS,
   PRODUCT_STATUS_LABELS,
   ProductFormSchema,
@@ -196,6 +198,19 @@ export function ProductForm({ mode, defaultValues, defaultImages = [], onSubmit,
             <label className={labelClass}>
               Tamanho equivalente
               <input className={inputClass} type="text" {...register("tamanho_equivalente")} />
+            </label>
+          </div>
+          <div>
+            <label className={labelClass}>
+              Gênero
+              <select className={inputClass} {...register("genero")}>
+                <option value="">Não informado</option>
+                {GeneroEnum.options.map((option) => (
+                  <option key={option} value={option}>
+                    {GENERO_LABELS[option]}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
           <div>

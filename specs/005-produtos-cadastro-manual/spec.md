@@ -41,6 +41,7 @@ Collection `products`:
   "caracteristicas": {
     "tamanho_etiqueta": "32",
     "tamanho_equivalente": null,
+    "genero": "masculino",
     "cor_principal": "Azul Jeans",
     "cores_secundarias": [],
     "estampa": "Lisa",
@@ -57,6 +58,7 @@ Collection `products`:
     "comprimento": null, "largura_barra": null,
     "coxa": null, "entrepasso": null
   },
+  "peso": { "valor": null, "unidade": "kg" },
   "condicao": {
     "estado": "novo",
     "nota": 10,
