@@ -9,6 +9,7 @@ function baseSuggestion() {
     caracteristicas: {
       tamanho_etiqueta: null,
       tamanho_equivalente: null,
+      genero: null,
       cor_principal: null,
       cores_secundarias: [],
       estampa: null,
@@ -19,7 +20,17 @@ function baseSuggestion() {
       elasticidade: null,
       fechamento: [],
     },
-    medidas: { unidade: "cm", cintura: null, quadril: null, gancho: null, comprimento: null, largura_barra: null, coxa: null, entrepasso: null },
+    medidas: {
+      unidade: "cm",
+      cintura: null,
+      quadril: null,
+      gancho: null,
+      comprimento: null,
+      largura_barra: null,
+      coxa: null,
+      entrepasso: null,
+      busto: null,
+    },
     condicao: {
       estado: "novo",
       nota: null,
@@ -51,5 +62,23 @@ describe("AiSuggestedProductSchema", () => {
   it("rejeita quando uma subseção obrigatória está ausente", () => {
     const { marca: _marca, ...withoutMarca } = baseSuggestion();
     expect(AiSuggestedProductSchema.safeParse(withoutMarca).success).toBe(false);
+  });
+
+  it("aceita um dos 5 valores fechados de genero (spec 005; T060, 23/09/2026)", () => {
+    const suggestion = baseSuggestion();
+    suggestion.caracteristicas.genero = "feminino";
+    expect(AiSuggestedProductSchema.parse(suggestion).caracteristicas.genero).toBe("feminino");
+  });
+
+  it("rejeita um valor de genero fora do enum fechado — nunca inventa um sinônimo", () => {
+    const suggestion = baseSuggestion();
+    suggestion.caracteristicas.genero = "Unissexo";
+    expect(AiSuggestedProductSchema.safeParse(suggestion).success).toBe(false);
+  });
+
+  it("aceita busto numérico e null (não determinável)", () => {
+    const suggestion = baseSuggestion();
+    suggestion.medidas.busto = 92;
+    expect(AiSuggestedProductSchema.parse(suggestion).medidas.busto).toBe(92);
   });
 });

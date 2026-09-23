@@ -94,6 +94,18 @@ da IA (seção 7) e sua ausência do schema torna estruturalmente impossível qu
 manipulado alcance esses campos, mesmo em caso de instrução maliciosa bem-sucedida no texto ou
 na imagem.
 
+⚠ **O contrato "espelha `AiSuggestedProductSchema` campo a campo" (seção 8.3) não é garantido
+automaticamente** — é o schema (Zod), o texto do prompt (`RESPONSE_SCHEMA_TEMPLATE` em
+`ai-intake.service.ts`) e o mapeamento pra tela de revisão (`aiSuggestionToFormValues`,
+frontend) **três lugares independentes**, sem teste de contrato entre eles. Já divergiu na
+prática: `caracteristicas.genero` e `medidas.busto` (specs 005/012, 23-24/09/2026) foram
+adicionados ao schema em algum momento sem atualizar o prompt nem o mapeamento — a IA nunca
+os pedia, mesmo aceitando-os na resposta. Corrigido (tasks.md tem o histórico) — todo campo de
+`medidas`/`caracteristicas` do modelo de produto (`product.schema.ts`) que também exista em
+`AiSuggestedProductSchema` deve estar nos três lugares ao mesmo tempo; ao adicionar um campo
+novo ao modelo de produto, decidir explicitamente se a IA deve tentar identificá-lo (e, se
+sim, mexer nos três) ou se fica manual-only (documentar o porquê, como já vale para `peso`).
+
 Esta operação **NÃO** deve gerar SKU.
 
 ## 6. API — Confirmação
