@@ -26,12 +26,14 @@ const backendEnv = {
   // fotos real durante o spec "cadastrar peça manualmente" (005).
   AZURE_STORAGE_CONNECTION_STRING: process.env.AZURE_STORAGE_CONNECTION_STRING ?? "",
   AZURE_STORAGE_CONTAINER_NAME: process.env.AZURE_STORAGE_CONTAINER_NAME ?? "",
-  // Provedor de IA real (mesmo provedor/credencial de dev) — specs de 006 chamam
-  // POST /products/analyze de verdade, sem mock de adapter (mesma filosofia de "infra real"
-  // do resto do e2e).
-  AI_API_KEY: process.env.AI_API_KEY ?? "",
-  AI_BASE_URL: process.env.AI_BASE_URL ?? "",
-  AI_MODEL: process.env.AI_MODEL ?? "",
+  // Chave-mestra que protege as credenciais cifradas no banco (ADR-021) — precisa existir no
+  // processo do backend pra decifrar tanto credenciais de marketplace quanto (spec 013) a API
+  // key de IA gravada em `ai_settings` por `global-setup.ts`.
+  MARKETPLACE_CREDENTIAL_MASTER_KEY: process.env.MARKETPLACE_CREDENTIAL_MASTER_KEY ?? "",
+  // AI_API_KEY/AI_BASE_URL/AI_MODEL não são mais repassadas pro processo do backend (spec 013)
+  // — `ai-intake.service.ts` só lê a configuração do banco (`ai_settings`, semeada por
+  // `global-setup.ts` a partir das mesmas variáveis, ver lá). Continuam existindo em
+  // `e2e/.env`/`.env.example` só como a fonte que o `global-setup.ts` lê pra semear.
 };
 
 export default defineConfig({

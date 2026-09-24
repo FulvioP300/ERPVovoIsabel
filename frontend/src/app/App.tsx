@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AppLayout } from "../components/AppLayout";
 import { DashboardPage } from "../pages/DashboardPage";
 import { LoginPage } from "../pages/LoginPage";
+import { AiSettingsPage } from "../pages/admin/AiSettingsPage";
 import { AuditLogsPage } from "../pages/admin/AuditLogsPage";
 import { CategoriesPage } from "../pages/admin/CategoriesPage";
 import { MarketplaceAccountsPage } from "../pages/admin/MarketplaceAccountsPage";
@@ -135,6 +136,16 @@ export function App() {
             <ProtectedRoute roles={["admin"]}>
               <AppLayout>
                 <OAuthCallbackPage />
+              </AppLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/ai-settings"
+          element={
+            <ProtectedRoute roles={["admin"]}>
+              <AppLayout>
+                <AiSettingsPage />
               </AppLayout>
             </ProtectedRoute>
           }

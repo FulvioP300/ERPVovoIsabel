@@ -24,6 +24,7 @@ export const AuditActionEnum = z.enum([
   "MARKETPLACE_ACCOUNT_VIEW",
   "MARKETPLACE_CREDENTIAL_KEY_ROTATE",
   "MERCADO_LIVRE_PACKAGE_SETTINGS_UPDATE",
+  "AI_SETTINGS_UPDATE",
 ]);
 export type AuditAction = z.infer<typeof AuditActionEnum>;
 

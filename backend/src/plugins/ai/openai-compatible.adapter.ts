@@ -5,12 +5,14 @@ import type { AiProviderImageInput, AiProviderPort } from "./ai-provider.port.js
  * Adapter concreto do `AiProviderPort` (constituição, princípio VI) para qualquer provedor
  * que exponha uma API compatível com o formato OpenAI Chat Completions (texto + imagem →
  * JSON estruturado). Funciona sem alteração com:
- *  - OpenAI (padrão, quando AI_BASE_URL não é definida);
+ *  - OpenAI (padrão, quando `baseUrl` não é informada);
  *  - gateways/proxies compatíveis (ex.: OpenRouter, Groq, Together AI);
  *  - servidores self-hosted compatíveis (ex.: vLLM, Ollama, LM Studio, LocalAI).
  *
- * Troca de provedor é só uma questão de mudar AI_BASE_URL/AI_API_KEY/AI_MODEL no `.env` —
- * nenhum código de domínio referencia este adapter diretamente, apenas `AiProviderPort`.
+ * Troca de provedor é só uma questão de editar a tela "Administração → Configuração de IA"
+ * (spec 013 — `apiKey`/`baseUrl`/`model` gravados no banco, cifrados) — nenhum código de
+ * domínio referencia este adapter diretamente, apenas `AiProviderPort`; ele mesmo nunca lê
+ * `process.env.AI_*` (removido, spec 013 — a origem do valor é sempre config explícita).
  */
 
 /**
@@ -94,18 +96,20 @@ export class OpenAiCompatibleAdapter implements AiProviderPort {
   private readonly useJsonObjectResponseFormat: boolean;
 
   constructor(config: OpenAiCompatibleAdapterConfig = {}) {
-    const apiKey = config.apiKey ?? process.env.AI_API_KEY;
-    const baseURL = (config.baseURL ?? process.env.AI_BASE_URL) || undefined;
-    const model = config.model ?? process.env.AI_MODEL;
+    // Config sempre explícita, nunca `process.env.AI_*` (spec 013) — a origem do valor é
+    // `ai_settings` no banco, resolvida por `ai-intake.service.ts` antes de instanciar este
+    // adapter; ele mesmo lança `AiSettingsNotConfiguredError` bem antes de chegar aqui quando
+    // não há configuração salva, então os dois `throw` abaixo só protegem contra um chamador
+    // futuro que esqueça de passar `apiKey`/`model`.
+    const apiKey = config.apiKey;
+    const baseURL = config.baseURL || undefined;
+    const model = config.model;
 
     if (!apiKey) {
-      throw new Error("AI_API_KEY não configurada — necessária para usar o provedor de IA.");
+      throw new Error("apiKey não informada — necessária para usar o provedor de IA.");
     }
     if (!model) {
-      throw new Error(
-        "AI_MODEL não configurado — defina o identificador do modelo no .env (ex.: gpt-4o-mini, " +
-          "ou o nome do modelo servido pelo endpoint compatível apontado em AI_BASE_URL).",
-      );
+      throw new Error("model não informado — identificador do modelo no provedor configurado (ex.: gpt-4o-mini).");
     }
 
     this.client = new OpenAI({ apiKey, baseURL });

@@ -27,6 +27,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   MARKETPLACE_ACCOUNT_VIEW: "Conta de marketplace consultada",
   MARKETPLACE_CREDENTIAL_KEY_ROTATE: "Chave de criptografia rotacionada",
   MERCADO_LIVRE_PACKAGE_SETTINGS_UPDATE: "Pacote padrão do Mercado Livre atualizado",
+  AI_SETTINGS_UPDATE: "Configuração do provedor de IA atualizada",
 };
 
 const selectClass =

@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import authenticateMiddleware from "./middleware/authenticate.middleware.js";
 import aiIntakeModule from "./modules/ai-intake.module.js";
+import aiSettingsModule from "./modules/ai-settings.module.js";
 import auditLogModule from "./modules/audit-log.module.js";
 import authModule from "./modules/auth.module.js";
 import categoryModule from "./modules/category.module.js";
@@ -54,6 +55,7 @@ export async function buildApp(opts: BuildAppOptions = {}): Promise<FastifyInsta
   await app.register(marketplaceModule);
   await app.register(imageModule);
   await app.register(aiIntakeModule);
+  await app.register(aiSettingsModule);
   await app.register(dashboardModule);
 
   // Depois de todas as rotas /api/*: o fallback SPA (spec 010) não pode interceptar a API.

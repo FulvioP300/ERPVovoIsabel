@@ -45,6 +45,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
             Marketplaces
           </Link>
           <Link
+            to="/admin/ai-settings"
+            className="font-medium text-wine-700 hover:text-wine-900"
+            onClick={() => setMenuOpen(false)}
+          >
+            Configuração de IA
+          </Link>
+          <Link
             to="/admin/users"
             className="font-medium text-wine-700 hover:text-wine-900"
             onClick={() => setMenuOpen(false)}

@@ -45,6 +45,7 @@ MARKETPLACE_ACCOUNT_CREATE, MARKETPLACE_ACCOUNT_UPDATE, MARKETPLACE_ACCOUNT_DISA
 MARKETPLACE_ACCOUNT_DISCONNECT, MARKETPLACE_ACCOUNT_DELETE, MARKETPLACE_ACCOUNT_VIEW
 MARKETPLACE_CREDENTIAL_KEY_ROTATE
 MERCADO_LIVRE_PACKAGE_SETTINGS_UPDATE                (pacote padrão — 012, seção 3.4; ADR-027)
+AI_SETTINGS_UPDATE                                   (configuração do provedor de IA — 013)
 ```
 
 O enum existe em **dois** lugares — `backend/src/schemas/audit-log.schema.ts` e

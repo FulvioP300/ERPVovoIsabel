@@ -157,6 +157,20 @@ describe("POST /api/products/analyze", () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it("achado real (spec 013): sem ai_settings configurado no banco, 400 com mensagem clara — nunca o erro genérico antigo de AI_API_KEY", async () => {
+    setAiProviderForTesting(undefined); // volta a consultar ai_settings de verdade (nunca seedado neste describe)
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/products/analyze",
+      headers: { cookie: `accessToken=${operatorCookie}` },
+      payload: analyzeFormData("bermuda jeans azul"),
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toContain("Configuração de IA");
+  });
+
   it("viewer não pode analisar (403)", async () => {
     setAiProviderForTesting(fakeProvider(validSuggestion()));
 
@@ -347,6 +361,21 @@ describe("POST /api/products/:id/reanalyze (spec 006, seção 9 — 24/09/2026)"
       headers: { cookie: `accessToken=${operatorCookie}` },
     });
     expect(response.statusCode).toBe(404);
+  });
+
+  it("achado real (spec 013): sem ai_settings configurado no banco, 400 com mensagem clara", async () => {
+    setImageProviderForTesting(fakeImageProvider());
+    const productId = await createProductWithPhoto();
+    setAiProviderForTesting(undefined); // volta a consultar ai_settings de verdade
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/products/${productId}/reanalyze`,
+      headers: { cookie: `accessToken=${operatorCookie}` },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toContain("Configuração de IA");
   });
 
   it("produto sem nenhuma foto: 400, sem chamar o provedor de IA", async () => {

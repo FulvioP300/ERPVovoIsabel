@@ -2,6 +2,7 @@ import { MAX_PRODUCT_IMAGES } from "../../../shared/dist/schemas/product.schema.
 import type { AiProviderImageInput, AiProviderPort } from "../plugins/ai/ai-provider.port.js";
 import { DEFAULT_SYSTEM_PROMPT, OpenAiCompatibleAdapter } from "../plugins/ai/openai-compatible.adapter.js";
 import { AiSuggestedProductSchema, type AiSuggestedProduct } from "../schemas/ai-intake.schema.js";
+import { getAiSettings } from "./ai-settings.service.js";
 import { listCategories } from "./category.service.js";
 import { assertValidImage, downloadImage } from "./image.service.js";
 import { getProductById } from "./product.service.js";
@@ -49,22 +50,45 @@ export class ImageDownloadFailedError extends Error {
   }
 }
 
-let provider: AiProviderPort | undefined;
-
-/**
- * Instanciado sob demanda (nunca no import do módulo) — mesmo padrão de `image.service.ts`
- * (007), evita exigir `AI_API_KEY`/`AI_MODEL` em testes que não chamam análise de verdade.
- * Prompt de sistema passado explicitamente (spec 006, seção 8.3) — nunca depende
- * silenciosamente do fallback do adapter, mesmo sendo o mesmo valor.
- */
-function getProvider(): AiProviderPort {
-  provider ??= new OpenAiCompatibleAdapter({ systemPrompt: DEFAULT_SYSTEM_PROMPT });
-  return provider;
+/** Configuração do provedor de IA (spec 013) ainda não foi salva em "Administração →
+ * Configuração de IA" — substitui `AI_API_KEY não configurada` (erro do adapter, pouco claro
+ * pro operador) por uma mensagem que aponta direto pra onde resolver. */
+export class AiSettingsNotConfiguredError extends Error {
+  constructor() {
+    super("Configure o provedor de IA em Administração → Configuração de IA antes de analisar peças.");
+    this.name = "AiSettingsNotConfiguredError";
+  }
 }
 
-/** Seam de teste — injeta um provider fake (adapter de IA mockado) sem tocar env vars. */
-export function setAiProviderForTesting(fake: AiProviderPort): void {
-  provider = fake;
+let testProvider: AiProviderPort | undefined;
+
+/**
+ * Busca a configuração do banco (spec 013) a cada chamada — **sem cache** (mesmo trade-off já
+ * aceito em ADR-021 pra credenciais de marketplace): elimina a necessidade de invalidar um
+ * singleton quando o admin salva uma configuração nova, ao custo de uma leitura pequena por
+ * análise, dominada pela latência real da chamada de IA em si. Prompt de sistema passado
+ * explicitamente (spec 006, seção 8.3) — nunca depende silenciosamente do fallback do adapter,
+ * mesmo sendo o mesmo valor.
+ */
+async function getProvider(): Promise<AiProviderPort> {
+  if (testProvider) return testProvider;
+
+  const settings = await getAiSettings();
+  if (!settings) throw new AiSettingsNotConfiguredError();
+
+  return new OpenAiCompatibleAdapter({
+    apiKey: settings.apiKey,
+    baseURL: settings.baseUrl || undefined,
+    model: settings.model,
+    systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  });
+}
+
+/** Seam de teste — injeta um provider fake (adapter de IA mockado) sem tocar `ai_settings`.
+ * `undefined` limpa a injeção — o próximo `getProvider()` volta a consultar o banco de
+ * verdade (usado por testes que precisam confirmar o caminho real de "sem configuração"). */
+export function setAiProviderForTesting(fake: AiProviderPort | undefined): void {
+  testProvider = fake;
 }
 
 export interface AnalyzeProductImageInput {
@@ -138,7 +162,8 @@ export async function analyzeProduct(input: AnalyzeProductInput): Promise<AiSugg
     mimeType: image.mimeType,
   }));
 
-  const raw = await getProvider().analyze(prompt, images);
+  const provider = await getProvider();
+  const raw = await provider.analyze(prompt, images);
   const parseResult = AiSuggestedProductSchema.safeParse(raw);
   if (!parseResult.success) {
     const details = parseResult.error.issues.map((issue) => issue.path.join(".")).join(", ");
