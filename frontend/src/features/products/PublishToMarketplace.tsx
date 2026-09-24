@@ -2,7 +2,14 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useMarketplaceAccounts } from "../../hooks/useMarketplaceAccounts";
-import { useCategorySuggestion, useCloseListing, usePublishListing, useSizeSuggestion } from "../../hooks/useMarketplaceListings";
+import {
+  useCategorySuggestion,
+  useCloseListing,
+  usePublishListing,
+  useShippingSuggestion,
+  useSizeSuggestion,
+} from "../../hooks/useMarketplaceListings";
+import type { ShippingOption } from "../../services/marketplace-listing.service";
 import {
   MARKETPLACE_LABELS,
   MarketplaceEnum,
@@ -17,6 +24,27 @@ const inputClass =
   "rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-wine-600 focus:outline-none focus:ring-1 focus:ring-wine-600";
 const buttonClass =
   "rounded-md bg-wine-800 px-4 py-2 text-sm font-medium text-gold-100 hover:bg-wine-900 disabled:opacity-50";
+
+/** Chave estável pra identificar uma opção no `<select>` (spec 012, achado real 24/09/2026). */
+function shippingOptionKey(option: Pick<ShippingOption, "mode" | "logisticType">): string {
+  return `${option.mode}|${option.logisticType}`;
+}
+
+/** Rótulo em português pras combinações mais comuns — sem tradução conhecida, mostra o modo cru
+ * do Mercado Livre em vez de inventar um nome (constituição, princípio I). */
+const SHIPPING_MODE_LABELS: Record<string, string> = {
+  me2: "Mercado Envios 2",
+  not_specified: "Sem especificar",
+  custom: "Envio customizado",
+  me1: "Mercado Envios 1",
+};
+
+function shippingOptionLabel(option: ShippingOption): string {
+  const modeLabel = SHIPPING_MODE_LABELS[option.mode] ?? option.mode;
+  if (option.freeShippingRequired) return `${modeLabel} — frete grátis (obrigatório)`;
+  if (!option.freeShippingAllowed) return `${modeLabel} — frete por conta do comprador`;
+  return `${modeLabel} — frete grátis opcional`;
+}
 
 /**
  * Botão/seletor de publicação de produto em marketplaces (spec 011, seção 4.3) — só faz
@@ -46,6 +74,12 @@ export function PublishToMarketplace({ product }: { product: Product }) {
   // novo toda vez que a categoria muda, porque a tabela é por categoria.
   const sizeSuggestion = useSizeSuggestion();
   const [selectedSize, setSelectedSize] = useState("");
+  // Frete (spec 012, achado real 24/09/2026) — nunca bloqueia a publicação: se a consulta falhar
+  // ou não tiver opção nenhuma, publica sem declarar frete (mesmo comportamento de antes dessa
+  // funcionalidade existir), o Mercado Livre aplica o próprio padrão.
+  const shippingSuggestion = useShippingSuggestion();
+  const [selectedShippingKey, setSelectedShippingKey] = useState("");
+  const [freeShippingChoice, setFreeShippingChoice] = useState(true);
 
   /** Busca a sugestão de tamanho pra uma categoria — chamado sempre que `selectedCategoryId`
    * muda (pré-seleção inicial e troca manual), nunca automaticamente por efeito. */
@@ -60,6 +94,28 @@ export function PublishToMarketplace({ product }: { product: Product }) {
       setSelectedSize(result.applicable && result.currentMatches ? (result.current ?? "") : "");
     } catch {
       setSelectedSize("");
+    }
+  }
+
+  /** Busca as opções de frete válidas — chamado sempre que categoria ou tipo de anúncio mudam
+   * (os dois afetam elegibilidade). Pré-seleciona a opção padrão do Mercado Livre, quando existe. */
+  async function refreshShipping(categoryId: string, listingTypeId: string) {
+    if (marketplace !== "mercado_livre" || !accountId || !categoryId || !listingTypeId) {
+      shippingSuggestion.reset();
+      setSelectedShippingKey("");
+      return;
+    }
+    try {
+      const options = await shippingSuggestion.mutateAsync({ productId: product.id, marketplace, accountId, categoryId, listingTypeId });
+      const preferred = options.find((o) => o.isDefault) ?? options[0];
+      if (!preferred) {
+        setSelectedShippingKey("");
+        return;
+      }
+      setSelectedShippingKey(shippingOptionKey(preferred));
+      setFreeShippingChoice(preferred.freeShippingRequired ? true : preferred.freeShippingAllowed);
+    } catch {
+      setSelectedShippingKey("");
     }
   }
 
@@ -95,15 +151,23 @@ export function PublishToMarketplace({ product }: { product: Product }) {
     // algo que não existe no <select>; melhor deixar em branco e avisar do que fingir uma escolha.
     const suggestionIsCurated = result.suggested && result.options.some((o) => o.categoryId === result.suggested!.categoryId);
     const categoryId = suggestionIsCurated ? result.suggested!.categoryId : "";
+    const listingTypeId = MERCADO_LIVRE_LISTING_TYPES[0]!.id;
     setSelectedCategoryId(categoryId);
     setCategoryFilter("");
-    setSelectedListingTypeId(MERCADO_LIVRE_LISTING_TYPES[0]!.id);
+    setSelectedListingTypeId(listingTypeId);
     await refreshSizeSuggestion(categoryId);
+    await refreshShipping(categoryId, listingTypeId);
   }
 
   async function handleCategoryChange(categoryId: string) {
     setSelectedCategoryId(categoryId);
     await refreshSizeSuggestion(categoryId);
+    await refreshShipping(categoryId, selectedListingTypeId);
+  }
+
+  async function handleListingTypeChange(listingTypeId: string) {
+    setSelectedListingTypeId(listingTypeId);
+    await refreshShipping(selectedCategoryId, listingTypeId);
   }
 
   // Tamanho de calçado (spec 012, achado real 24/09/2026): `applicable` só quando a categoria usa
@@ -112,6 +176,18 @@ export function PublishToMarketplace({ product }: { product: Product }) {
   const sizeIsApplicable = sizeSuggestion.data?.applicable === true;
   const sizeHasNoOptions = sizeIsApplicable && sizeSuggestion.data!.available.length === 0;
   const sizeNeedsChoice = sizeIsApplicable && !sizeHasNoOptions && !selectedSize;
+
+  // Frete nunca bloqueia "Confirmar e publicar" — só complementa quando resolvido; se a consulta
+  // falhou ou não achou opção, publica sem declarar `shipping` (comportamento de antes desta
+  // funcionalidade existir).
+  const selectedShippingOption = shippingSuggestion.data?.find((o) => shippingOptionKey(o) === selectedShippingKey);
+  const shippingChoice = selectedShippingOption
+    ? {
+        mode: selectedShippingOption.mode,
+        logisticType: selectedShippingOption.logisticType,
+        freeShipping: selectedShippingOption.freeShippingRequired ? true : !selectedShippingOption.freeShippingAllowed ? false : freeShippingChoice,
+      }
+    : undefined;
 
   async function handleConfirmPublish() {
     if (!accountId || !selectedCategoryId || sizeHasNoOptions || sizeNeedsChoice) return;
@@ -122,16 +198,21 @@ export function PublishToMarketplace({ product }: { product: Product }) {
       categoryId: selectedCategoryId,
       listingTypeId: selectedListingTypeId,
       sizeOverride: selectedSize || undefined,
+      shipping: shippingChoice,
     });
     suggestion.reset();
     sizeSuggestion.reset();
     setSelectedSize("");
+    shippingSuggestion.reset();
+    setSelectedShippingKey("");
   }
 
   function handleCancelReview() {
     suggestion.reset();
     sizeSuggestion.reset();
     setSelectedSize("");
+    shippingSuggestion.reset();
+    setSelectedShippingKey("");
     setSelectedCategoryId("");
     setCategoryFilter("");
   }
@@ -266,7 +347,7 @@ export function PublishToMarketplace({ product }: { product: Product }) {
             <select
               className={`${inputClass} w-full`}
               value={selectedListingTypeId}
-              onChange={(e) => setSelectedListingTypeId(e.target.value)}
+              onChange={(e) => void handleListingTypeChange(e.target.value)}
             >
               {MERCADO_LIVRE_LISTING_TYPES.map((type) => (
                 <option key={type.id} value={type.id}>
@@ -309,6 +390,43 @@ export function PublishToMarketplace({ product }: { product: Product }) {
                   </option>
                 ))}
               </select>
+            </div>
+          )}
+
+          {shippingSuggestion.isPending && <p className="text-sm text-gray-600">Consultando opções de frete no Mercado Livre...</p>}
+
+          {shippingSuggestion.isError && (
+            <p className="text-sm text-amber-700">
+              Não foi possível consultar as opções de frete — publica sem declarar frete (o Mercado Livre aplica um
+              padrão próprio).
+            </p>
+          )}
+
+          {!shippingSuggestion.isPending && shippingSuggestion.data && shippingSuggestion.data.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500">Frete</label>
+              <select
+                className={`${inputClass} w-full`}
+                value={selectedShippingKey}
+                onChange={(e) => setSelectedShippingKey(e.target.value)}
+              >
+                <option value="">Não declarar (o Mercado Livre aplica um padrão próprio)</option>
+                {shippingSuggestion.data.map((option) => (
+                  <option key={shippingOptionKey(option)} value={shippingOptionKey(option)}>
+                    {shippingOptionLabel(option)}
+                  </option>
+                ))}
+              </select>
+              {selectedShippingOption && !selectedShippingOption.freeShippingRequired && selectedShippingOption.freeShippingAllowed && (
+                <label className="mt-1 flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={freeShippingChoice}
+                    onChange={(e) => setFreeShippingChoice(e.target.checked)}
+                  />
+                  Oferecer frete grátis (melhora a pontuação de qualidade do anúncio)
+                </label>
+              )}
             </div>
           )}
 

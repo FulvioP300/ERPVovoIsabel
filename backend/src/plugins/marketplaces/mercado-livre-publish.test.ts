@@ -24,6 +24,7 @@ const apiMocks = {
   getSizeChart: vi.fn(),
   createSizeChart: vi.fn(),
   addSizeChartRow: vi.fn(),
+  getShippingModes: vi.fn(),
 };
 
 vi.mock("../../database/mongo.client.js", () => ({ getDb: () => ({}) }));
@@ -43,7 +44,7 @@ vi.mock("./mercado-livre-api.client.js", async () => {
   return { ...actual, ...apiMocks };
 });
 
-const { publishItem, resolveFootwearSizeSuggestion } = await import("./mercado-livre-publish.js");
+const { publishItem, resolveFootwearSizeSuggestion, resolveShippingSuggestion } = await import("./mercado-livre-publish.js");
 const { PriceOutOfRangeError } = await import("./mercado-livre-item.mapper.js");
 const { MercadoLivreApiError } = await import("./mercado-livre-api.client.js");
 
@@ -702,6 +703,62 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
 
       const calls = apiMocks.searchSizeCharts.mock.calls.map((c) => (c[1] as { type?: string }).type);
       expect(calls[0]).toBe("BRAND");
+    });
+  });
+
+  describe("resolveShippingSuggestion (spec 012; achado real 24/09/2026)", () => {
+    beforeEach(() => {
+      apiMocks.getShippingModes.mockResolvedValue([]);
+    });
+
+    it("sem preço de venda: lista vazia, sem chamar o Mercado Livre", async () => {
+      const product = makeProduct({ preco: { ...makeProduct().preco, preco_venda: null } });
+      const result = await resolveShippingSuggestion(ACCESS_TOKEN, product, "MLB188064", "free");
+      expect(result).toEqual([]);
+      expect(apiMocks.getShippingModes).not.toHaveBeenCalled();
+    });
+
+    it("categoria sem catalogDomain: lista vazia", async () => {
+      apiMocks.getCategory.mockResolvedValue({ ...CATEGORY_SETTINGS, catalogDomain: undefined });
+      const result = await resolveShippingSuggestion(ACCESS_TOKEN, makeProduct(), "MLB188064", "free");
+      expect(result).toEqual([]);
+    });
+
+    it("consulta getShippingModes com condição/marca/pacote — sem depender de tamanho/GTIN", async () => {
+      apiMocks.getCategory.mockResolvedValue({ ...CATEGORY_SETTINGS, catalogDomain: "MLB-SHORTS" });
+
+      await resolveShippingSuggestion(ACCESS_TOKEN, makeProduct({ marca: { nome: "Nike", original: true } }), "MLB188064", "free");
+
+      expect(apiMocks.getShippingModes).toHaveBeenCalledWith(
+        ACCESS_TOKEN,
+        expect.objectContaining({
+          sellerId: "987654",
+          categoryId: "MLB188064",
+          domainId: "MLB-SHORTS",
+          listingTypeId: "free",
+          condition: "used", // makeProduct() default: condicao.estado = "usado"
+        }),
+      );
+      const [, callInput] = apiMocks.getShippingModes.mock.calls[0] as [string, { attributes: { id: string }[] }];
+      const attributeIds = callInput.attributes.map((a) => a.id);
+      expect(attributeIds).toEqual(expect.arrayContaining(["ITEM_CONDITION", "BRAND", "SELLER_PACKAGE_HEIGHT"]));
+    });
+
+    it("traduz freeShipping mandatory/required para freeShippingRequired, not_allowed para freeShippingAllowed=false", async () => {
+      apiMocks.getCategory.mockResolvedValue({ ...CATEGORY_SETTINGS, catalogDomain: "MLB-SHORTS" });
+      apiMocks.getShippingModes.mockResolvedValue([
+        { mode: "me2", logisticType: "self_service", isDefault: true, freeShipping: "mandatory", costs: "not_allowed", localPickUp: "optional" },
+        { mode: "custom", logisticType: "custom", isDefault: true, freeShipping: "not_allowed", costs: "required", localPickUp: "optional" },
+        { mode: "not_specified", logisticType: "not_specified", isDefault: true, freeShipping: "optional", costs: "not_allowed", localPickUp: "optional" },
+      ]);
+
+      const result = await resolveShippingSuggestion(ACCESS_TOKEN, makeProduct(), "MLB188064", "free");
+
+      expect(result).toEqual([
+        { mode: "me2", logisticType: "self_service", isDefault: true, freeShippingRequired: true, freeShippingAllowed: true },
+        { mode: "custom", logisticType: "custom", isDefault: true, freeShippingRequired: false, freeShippingAllowed: false },
+        { mode: "not_specified", logisticType: "not_specified", isDefault: true, freeShippingRequired: false, freeShippingAllowed: true },
+      ]);
     });
   });
 

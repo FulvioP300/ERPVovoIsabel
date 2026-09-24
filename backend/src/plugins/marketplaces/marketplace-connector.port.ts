@@ -54,6 +54,14 @@ export interface PublishInput extends ConnectorContext {
    * `categoryId`/`listingTypeId`.
    */
   sizeOverride?: string | null;
+  /**
+   * Frete escolhido pelo operador na revisão (spec 012, achado real 24/09/2026) — publicar sem
+   * declarar `shipping` deixa o Mercado Livre aplicar um padrão próprio, que pode conflitar com
+   * o que a conta tem habilitado (achado real: aviso sobre o modo `me1` não estar ativado numa
+   * conta que nunca configurou frete nenhum explicitamente). Hoje só o Mercado Livre usa o
+   * campo, mesmo espírito de `categoryId`/`listingTypeId`/`sizeOverride`.
+   */
+  shipping?: { mode: string; logisticType: string; freeShipping: boolean } | null;
 }
 
 export interface CloseInput extends ConnectorContext {

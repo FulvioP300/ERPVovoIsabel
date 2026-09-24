@@ -92,6 +92,8 @@ export interface PublishListingInput {
   /** Tamanho de calçado escolhido na revisão quando o do cadastro não bate com a tabela do
    * Mercado Livre (spec 012, achado real 24/09/2026). */
   sizeOverride?: string | null;
+  /** Frete escolhido na tela de revisão (spec 012, achado real 24/09/2026). */
+  shipping?: { mode: string; logisticType: string; freeShipping: boolean } | null;
 }
 
 /**
@@ -127,6 +129,7 @@ export async function publishListing(input: PublishListingInput): Promise<Produc
         categoryId: input.categoryId,
         listingTypeId: input.listingTypeId,
         sizeOverride: input.sizeOverride,
+        shipping: input.shipping,
       }),
     );
 

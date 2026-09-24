@@ -98,7 +98,7 @@ export interface MercadoLivreApiResult<T> {
 async function request<T>(
   path: string,
   accessToken: string,
-  init: { method?: string; body?: unknown; query?: Record<string, string | undefined> } = {},
+  init: { method?: string; body?: unknown; query?: Record<string, string | undefined>; headers?: Record<string, string> } = {},
 ): Promise<MercadoLivreApiResult<T>> {
   const url = new URL(resolveBaseUrl() + path);
   for (const [key, value] of Object.entries(init.query ?? {})) {
@@ -113,6 +113,7 @@ async function request<T>(
         accept: "application/json",
         authorization: `Bearer ${accessToken}`,
         ...(init.body !== undefined ? { "content-type": "application/json" } : {}),
+        ...init.headers,
       },
       body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -587,4 +588,112 @@ export async function addSizeChartRow(accessToken: string, chartId: string, row:
     method: "POST",
     body: { attributes: row.attributes.map((a) => ({ id: a.id, values: a.values.map((name) => ({ name })) })) },
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Frete (spec 012, achado real 24/09/2026)
+
+/** Um `attributes[]` do rascunho de item para `getShippingModes` — inclui `name` (a doc mostra
+ * o atributo completo, não só id/valor como o resto do conector usa). */
+export interface ShippingDraftAttribute {
+  id: string;
+  name: string;
+  valueId?: string;
+  valueName?: string;
+}
+
+export interface GetShippingModesInput {
+  sellerId: string;
+  title: string;
+  itemPrice: number;
+  categoryId: string;
+  domainId: string;
+  attributes: ShippingDraftAttribute[];
+  listingTypeId: string;
+  /** `"new" | "used"` — vocabulário do campo `condition` de `POST /items`, diferente do valor
+   * localizado do atributo `ITEM_CONDITION` (`mapCondition`). */
+  condition: "new" | "used";
+}
+
+/**
+ * Requisito de frete grátis/custos por combinação de modo+tipo de logística — vocabulário cru
+ * do Mercado Livre (`"mandatory"`, `"required"`, `"optional"`, `"not_allowed"`, `"not_required"`,
+ * `"clear"` já confirmados em exemplos oficiais diferentes; nunca normalizado aqui, pra nunca
+ * inventar um significado pra um valor que ainda não apareceu contra a API real).
+ */
+export interface ShippingModeOption {
+  mode: string;
+  logisticType: string;
+  isDefault: boolean;
+  freeShipping: string;
+  costs: string;
+  localPickUp: string;
+}
+
+/**
+ * `POST /users/{sellerId}/shipping_modes` — combinações de frete (modo + tipo de logística)
+ * realmente válidas para um rascunho de item, **antes** de publicar (spec 012, achado real
+ * 24/09/2026: publicar sem declarar frete deixa o Mercado Livre aplicar um padrão próprio, que
+ * pode conflitar com o que a conta tem habilitado). Documentação oficial consistente em
+ * en_us/es_ar, mas com o exemplo de `curl` malformado nas duas (sem `-H` nos headers extras,
+ * sem corpo) — o formato do corpo abaixo segue o JSON de exemplo (que está completo), não o
+ * `curl`. **Ainda não confirmado contra a API real** (sem token de acesso válido neste ambiente
+ * de execução).
+ */
+export async function getShippingModes(accessToken: string, input: GetShippingModesInput): Promise<ShippingModeOption[]> {
+  const { body } = await request<{ channels?: { marketplace?: { available_modes?: unknown[] } } }>(
+    `/users/${input.sellerId}/shipping_modes`,
+    accessToken,
+    {
+      method: "POST",
+      headers: { "x-multichannel": "true", "X-Format-New": "true" },
+      body: {
+        site_id: SITE_ID,
+        seller_id: Number(input.sellerId),
+        title: input.title,
+        item_price: input.itemPrice,
+        item_currency: "BRL",
+        category_id: input.categoryId,
+        catalog: {
+          domain_id: input.domainId,
+          attributes: input.attributes.map((a) => ({
+            id: a.id,
+            name: a.name,
+            ...(a.valueName !== undefined ? { value_name: a.valueName } : {}),
+            ...(a.valueId !== undefined ? { value_id: a.valueId } : {}),
+          })),
+        },
+        sale_terms: [],
+        listing_type_id: input.listingTypeId,
+        buying_mode: "buy_it_now",
+        condition: input.condition,
+        channels: [{ id: "marketplace" }],
+        new_format: true,
+        verbose: false,
+      },
+    },
+  );
+
+  const availableModes = body.channels?.marketplace?.available_modes ?? [];
+  const options: ShippingModeOption[] = [];
+  for (const raw of availableModes) {
+    const m = raw as Record<string, unknown>;
+    const mode = typeof m.mode === "string" ? m.mode : undefined;
+    const logisticTypes = Array.isArray(m.logistic_types) ? (m.logistic_types as Record<string, unknown>[]) : [];
+    if (!mode) continue;
+    for (const lt of logisticTypes) {
+      const type = typeof lt.type === "string" ? lt.type : undefined;
+      const attrs = (lt.attributes ?? {}) as Record<string, unknown>;
+      if (!type) continue;
+      options.push({
+        mode,
+        logisticType: type,
+        isDefault: lt.default === true,
+        freeShipping: typeof attrs.free_shipping === "string" ? attrs.free_shipping : "optional",
+        costs: typeof attrs.costs === "string" ? attrs.costs : "not_allowed",
+        localPickUp: typeof attrs.local_pick_up === "string" ? attrs.local_pick_up : "not_allowed",
+      });
+    }
+  }
+  return options;
 }

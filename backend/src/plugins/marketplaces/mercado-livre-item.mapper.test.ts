@@ -29,6 +29,7 @@ import {
   sanitizePlainText,
   sizeChartAttributes,
   skuAttribute,
+  topLevelCondition,
   truncateName,
   warrantyTerms,
 } from "./mercado-livre-item.mapper.js";
@@ -136,6 +137,16 @@ describe("mapCondition (spec 012, seção 3)", () => {
     expect(() => mapCondition("novo", attr({ id: "ITEM_CONDITION", values: [{ id: "1", name: "Usado" }] }))).toThrow(
       /não aceita a condição "Novo"/,
     );
+  });
+});
+
+describe("topLevelCondition (spec 012, achado real 24/09/2026)", () => {
+  it("novo → \"new\"", () => {
+    expect(topLevelCondition("novo")).toBe("new");
+  });
+
+  it.each(["seminovo", "usado"] as const)("%s → \"used\"", (estado) => {
+    expect(topLevelCondition(estado)).toBe("used");
   });
 });
 
@@ -515,6 +526,14 @@ describe("buildCreatePayload (spec 012, seções 3, 3.3)", () => {
       tags: ["immediate_payment"],
     });
   });
+
+  it("shipping (achado real 24/09/2026): só aparece quando escolhido na revisão", () => {
+    expect(buildCreatePayload({ ...baseInput, useUserProducts: true })).not.toHaveProperty("shipping");
+    expect(buildCreatePayload({ ...baseInput, useUserProducts: true, shipping: null })).not.toHaveProperty("shipping");
+    expect(
+      buildCreatePayload({ ...baseInput, useUserProducts: true, shipping: { mode: "me2", logisticType: "self_service", freeShipping: true } }),
+    ).toMatchObject({ shipping: { mode: "me2", logistic_type: "self_service", free_shipping: true } });
+  });
 });
 
 describe("buildUpdatePayload (spec 012, seção 3.1)", () => {
@@ -549,5 +568,17 @@ describe("buildUpdatePayload (spec 012, seção 3.1)", () => {
     const payload = buildUpdatePayload({ ...baseInput, useUserProducts: true, soldQuantity: 0 });
     expect(payload).not.toHaveProperty("category_id");
     expect(payload).not.toHaveProperty("listing_type_id");
+  });
+
+  it("shipping (achado real 24/09/2026): só aparece quando escolhido na revisão", () => {
+    expect(buildUpdatePayload({ ...baseInput, useUserProducts: true, soldQuantity: 0 })).not.toHaveProperty("shipping");
+    expect(
+      buildUpdatePayload({
+        ...baseInput,
+        useUserProducts: true,
+        soldQuantity: 0,
+        shipping: { mode: "not_specified", logisticType: "not_specified", freeShipping: false },
+      }),
+    ).toMatchObject({ shipping: { mode: "not_specified", logistic_type: "not_specified", free_shipping: false } });
   });
 });
