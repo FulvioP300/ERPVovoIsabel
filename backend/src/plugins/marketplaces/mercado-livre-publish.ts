@@ -31,6 +31,7 @@ import {
   sanitizePlainText,
   sizeChartAttributes,
   skuAttribute,
+  topLevelCondition,
   warrantyTerms,
 } from "./mercado-livre-item.mapper.js";
 import type { Product } from "../../schemas/product.schema.js";
@@ -46,6 +47,7 @@ export async function publishItem(accessToken: string, input: PublishInput): Pro
   const categoryId = input.categoryId;
   const listingTypeId = input.listingTypeId;
   const sizeOverride = input.sizeOverride;
+  const shipping = input.shipping;
   if (!categoryId) {
     throw new MarketplaceConnectorError("Nenhuma categoria confirmada — revise a categoria na tela de publicação antes de continuar.");
   }
@@ -73,7 +75,7 @@ export async function publishItem(accessToken: string, input: PublishInput): Pro
 
   // Republicar (spec 012, seção 3.1): só quando a entrada já tem id_anuncio e status = publicado.
   if (listing?.id_anuncio && listing.status === "publicado") {
-    return updateExistingItem(accessToken, listing.id_anuncio, product, categoryId, categoryAttributes, settings, useUserProducts, sellerId, sizeOverride);
+    return updateExistingItem(accessToken, listing.id_anuncio, product, categoryId, categoryAttributes, settings, useUserProducts, sellerId, sizeOverride, shipping);
   }
 
   // Criar (entrada nova, ou recriar sobre um anúncio encerrado): resposta perdida — procura antes
@@ -83,11 +85,11 @@ export async function publishItem(accessToken: string, input: PublishInput): Pro
     const items = await api.getItemsByIds(accessToken, foundIds.slice(0, 20));
     const adopted = items.find((item) => item.status !== "closed");
     if (adopted) {
-      return updateExistingItem(accessToken, adopted.id, product, categoryId, categoryAttributes, settings, useUserProducts, sellerId, sizeOverride);
+      return updateExistingItem(accessToken, adopted.id, product, categoryId, categoryAttributes, settings, useUserProducts, sellerId, sizeOverride, shipping);
     }
   }
 
-  return createNewItem(accessToken, product, categoryId, categoryAttributes, settings, useUserProducts, listingTypeId, sellerId, sizeOverride);
+  return createNewItem(accessToken, product, categoryId, categoryAttributes, settings, useUserProducts, listingTypeId, sellerId, sizeOverride, shipping);
 }
 
 /**
@@ -120,6 +122,7 @@ async function createNewItem(
   listingTypeId: string,
   sellerId: string,
   sizeOverride: string | null | undefined,
+  shipping: PublishInput["shipping"],
 ): Promise<MarketplacePublishResult> {
   const attributes = await buildAttributes(accessToken, product, categoryId, categoryAttributes, settings, sellerId, sizeOverride);
 
@@ -132,6 +135,7 @@ async function createNewItem(
     pictureUrls: buildPictureUrls(product, settings.maxPicturesPerItem),
     listingTypeId,
     tags: immediateTag(settings.immediatePayment),
+    shipping,
   });
 
   const created = await api.createItem(accessToken, payload);
@@ -159,6 +163,7 @@ async function updateExistingItem(
   useUserProducts: boolean,
   sellerId: string,
   sizeOverride: string | null | undefined,
+  shipping: PublishInput["shipping"],
 ): Promise<MarketplacePublishResult> {
   const currentItem = await api.getItem(accessToken, itemId);
   if (currentItem.status === "closed") {
@@ -176,6 +181,7 @@ async function updateExistingItem(
     price: product.preco.preco_venda!,
     attributes,
     pictureUrls: buildPictureUrls(product, settings.maxPicturesPerItem),
+    shipping,
   });
 
   const updated = await api.updateItem(accessToken, itemId, payload);
@@ -467,6 +473,76 @@ export async function resolveFootwearSizeSuggestion(accessToken: string, product
   const detail = await api.getSizeChart(accessToken, chart.id);
   const available = availableSizeLabels(detail.rows);
   return { applicable: true, available, current, currentMatches: current !== null && available.includes(current) };
+}
+
+export interface ShippingSuggestionOption {
+  mode: string;
+  logisticType: string;
+  isDefault: boolean;
+  /** `true` quando o Mercado Livre exige frete grátis nessa combinação (ex.: modo `me2`) — a
+   * revisão não oferece escolha nesse caso, só informa. */
+  freeShippingRequired: boolean;
+  /** `false` quando o Mercado Livre não aceita frete grátis nessa combinação (ex.: modo `custom`
+   * com custo declarado pelo vendedor). */
+  freeShippingAllowed: boolean;
+}
+
+/**
+ * Sugestão de frete pra tela de revisão (spec 012, achado real 24/09/2026) — mesmo espírito de
+ * `resolveFootwearSizeSuggestion`: só consulta, nunca publica. Usa um subconjunto mais leve de
+ * atributos (condição, marca, pacote) em vez de `buildAttributes` completo — não depende de
+ * tamanho/GTIN/tabela de medidas, que não são relevantes pra elegibilidade de frete e podem não
+ * estar resolvidos ainda nesse ponto da revisão.
+ */
+export async function resolveShippingSuggestion(
+  accessToken: string,
+  product: Product,
+  categoryId: string,
+  listingTypeId: string,
+): Promise<ShippingSuggestionOption[]> {
+  const price = product.preco.preco_venda;
+  if (price === null) return [];
+
+  const settings = await api.getCategory(accessToken, categoryId);
+  if (!settings.catalogDomain) return [];
+
+  const categoryAttributes = await api.getCategoryAttributes(accessToken, categoryId);
+  const currentUser = await mercadoLivreOAuthClient.fetchCurrentUser(accessToken);
+  const sellerId = String(currentUser.id);
+
+  const itemConditionDef = categoryAttributes.find((a) => a.id === "ITEM_CONDITION");
+  const candidates: MercadoLivreAttributeCandidate[] = [mapCondition(product.condicao.estado, itemConditionDef)];
+  const brand = brandAttribute(product.marca.nome, categoryAttributes.some((a) => a.id === "BRAND"));
+  if (brand) candidates.push(brand);
+  const resolvedPackage = await resolvePackage(getDb(), product);
+  candidates.push(...packageAttributes(resolvedPackage));
+  const attributes = pickAttributes(candidates, categoryAttributes);
+
+  const draftAttributes: api.ShippingDraftAttribute[] = attributes.map((a) => ({
+    id: a.id,
+    name: categoryAttributes.find((ca) => ca.id === a.id)?.name ?? a.id,
+    valueId: a.value_id,
+    valueName: a.value_name,
+  }));
+
+  const rawOptions = await api.getShippingModes(accessToken, {
+    sellerId,
+    title: product.identificacao.nome,
+    itemPrice: price,
+    categoryId,
+    domainId: settings.catalogDomain,
+    attributes: draftAttributes,
+    listingTypeId,
+    condition: topLevelCondition(product.condicao.estado),
+  });
+
+  return rawOptions.map((o) => ({
+    mode: o.mode,
+    logisticType: o.logisticType,
+    isDefault: o.isDefault,
+    freeShippingRequired: o.freeShipping === "mandatory" || o.freeShipping === "required",
+    freeShippingAllowed: o.freeShipping !== "not_allowed",
+  }));
 }
 
 async function resolveClothingChart(

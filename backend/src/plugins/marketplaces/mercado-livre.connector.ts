@@ -14,10 +14,16 @@ import {
   type PublishInput,
 } from "./marketplace-connector.port.js";
 import { parseMercadoLivreCredential, type MercadoLivreCredential } from "../../schemas/mercado-livre-credential.schema.js";
-import { publishItem, resolveFootwearSizeSuggestion, type FootwearSizeSuggestion } from "./mercado-livre-publish.js";
+import {
+  publishItem,
+  resolveFootwearSizeSuggestion,
+  resolveShippingSuggestion,
+  type FootwearSizeSuggestion,
+  type ShippingSuggestionOption,
+} from "./mercado-livre-publish.js";
 import type { Product } from "../../schemas/product.schema.js";
 
-export type { FootwearSizeSuggestion };
+export type { FootwearSizeSuggestion, ShippingSuggestionOption };
 
 /**
  * Adaptador do Mercado Livre (spec 012) — implementa `MarketplaceConnectorPort` (011, seção 4.1).
@@ -181,6 +187,20 @@ export async function suggestFootwearSizes(
   categoryId: string,
 ): Promise<ConnectorOutcome<FootwearSizeSuggestion>> {
   return callWithFreshToken(credentialJson, (accessToken) => resolveFootwearSizeSuggestion(accessToken, product, categoryId));
+}
+
+/**
+ * Sugestão de frete pra tela de revisão (spec 012, achado real 24/09/2026) — mesmo espírito de
+ * `suggestFootwearSizes`/`suggestCategory`: fora da porta comum, só consulta, nunca publica.
+ * Chamado depois que o operador já escolheu categoria, tamanho (se aplicável) e tipo de anúncio.
+ */
+export async function suggestShipping(
+  credentialJson: string,
+  product: Product,
+  categoryId: string,
+  listingTypeId: string,
+): Promise<ConnectorOutcome<ShippingSuggestionOption[]>> {
+  return callWithFreshToken(credentialJson, (accessToken) => resolveShippingSuggestion(accessToken, product, categoryId, listingTypeId));
 }
 
 export const mercadoLivreConnector: MarketplaceConnectorPort = { publish, close };

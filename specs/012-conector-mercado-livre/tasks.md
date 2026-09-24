@@ -567,6 +567,37 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
       **Frontend:** `useSizeSuggestion` (novo hook); `PublishToMarketplace.tsx` consulta a sugestão toda
       vez que a categoria muda (pré-seleção inicial e troca manual) — imperativo, sem `useEffect`, mesmo
       estilo do resto do arquivo.
+- [x] T062 Revisão de frete (spec 012, seção 4; achado real 24/09/2026) — publicar sem declarar
+      `shipping` deixou o Mercado Livre aplicar um padrão próprio (achado real: anúncio publicado com
+      "envio por conta do comprador" e aviso sobre o modo `me1` não estar ativado na conta). Pedido do
+      usuário: caixa de seleção **dinâmica** (não estática) pro operador escolher o tipo de frete,
+      consultando o Mercado Livre antes de oferecer — mesmo rigor da revisão de categoria/tamanho, nunca
+      oferece uma opção que pode não valer pra aquele item.
+      **Documentação com lacuna real**: o exemplo de `curl` de `POST /users/{sellerId}/shipping_modes`
+      está malformado nas duas fontes oficiais (en_us e es_ar) — sem `-H` nos headers extras
+      (`x-multichannel`, `X-Format-New`), sem corpo antes da URL. O formato do corpo implementado segue
+      o JSON de exemplo (completo, consistente nas duas fontes), não o `curl`. **Ainda não confirmado
+      contra a API real** (sem token de acesso válido neste ambiente de execução).
+      **Backend:** `mercado-livre-api.client.ts` ganhou `getShippingModes` (`request()` ganhou suporte a
+      headers extras); achata `channels.marketplace.available_modes[].logistic_types[]` numa lista de
+      opções, mantendo o vocabulário cru do Mercado Livre pros campos `free_shipping`/`costs`
+      (`"mandatory"`/`"required"`/`"optional"`/`"not_allowed"` já confirmados em exemplos oficiais
+      diferentes — nunca normalizado num enum fechado, pra não inventar significado pra um valor novo).
+      `mercado-livre-item.mapper.ts` ganhou `topLevelCondition` (campo `condition` de
+      `getShippingModes`, vocabulário diferente do atributo `ITEM_CONDITION`) e `shipping` em
+      `buildCreatePayload`/`buildUpdatePayload`. `mercado-livre-publish.ts` ganhou
+      `resolveShippingSuggestion` — usa um subconjunto mais leve de atributos (condição, marca, pacote)
+      em vez de `buildAttributes` completo, pra não depender de tamanho/GTIN ainda não resolvidos nesse
+      ponto da revisão. `mercado-livre.connector.ts` ganhou `suggestShipping` (mesmo padrão de
+      `suggestFootwearSizes`); novo `marketplace-shipping-suggestion.service.ts` (mesma regra da
+      sugestão de tamanho: falha real propaga, não é previsão dispensável). Nova rota
+      `POST /:id/marketplace-shipping-suggestion`. `PublishInput`/`PublishListingInput`/
+      `PublishListingBodySchema` ganharam `shipping` opcional (`{mode, logisticType, freeShipping}`).
+      **Frontend:** `useShippingSuggestion` (novo hook); `PublishToMarketplace.tsx` consulta toda vez
+      que categoria ou tipo de anúncio mudam, pré-seleciona a opção `default`, mostra um checkbox de
+      frete grátis só quando a opção escolhida permite mas não exige. **Nunca bloqueia a publicação** —
+      diferente do tamanho (T061): se a consulta falhar ou não achar opção, publica sem `shipping`
+      (mesmo comportamento de antes desta funcionalidade existir).
 - [ ] T035 `features/products/ActiveListingsNotice.tsx` (novo): aviso "esta peça tem anúncio no ar" com
       "Encerrar anúncios e continuar" / "Continuar sem encerrar" / "Cancelar"; encerra em sequência e, se
       algum encerramento falhar, para, mostra o erro e **não** muda o status da peça — depende de T033.
@@ -828,3 +859,14 @@ de só um erro sem saída? Resposta: sim, a tabela `BRAND`/`STANDARD` já é bus
 faltava expor isso numa tela em vez de descartar depois de usar. Implementado como um passo a mais no
 mesmo painel de revisão de categoria/tipo de anúncio (T059/T010), proativo (decisão do usuário — mostra
 antes de tentar publicar, não só depois de falhar). Ver detalhes completos no T061 acima.
+
+24/09/2026 (mesmo dia, primeira publicação real após T060/T061): **T062 — revisão de frete**. O
+anúncio publicou com sucesso (confirmação real de T060 e T061 funcionando), mas ficou com "envio por
+conta do comprador" e um aviso sobre o modo `me1` não estar ativado na conta — o conector nunca
+declarava `shipping` no `POST /items`, então o Mercado Livre aplicava um padrão próprio. Pedido do
+usuário, com uma condição explícita: caixa de seleção **dinâmica** (não estática), consultando o
+Mercado Livre antes de oferecer — mesmo padrão de rigor já estabelecido pra categoria/tamanho.
+Documentação oficial (`POST /users/{sellerId}/shipping_modes`) tinha o mesmo tipo de lacuna já visto
+no T060 (exemplo de `curl` malformado) — implementado a partir do JSON de exemplo, que estava completo
+e consistente nas duas fontes (en_us/es_ar) mesmo com o `curl` quebrado. Ver detalhes completos no
+T062 acima. **Ainda não confirmado contra a API real.**

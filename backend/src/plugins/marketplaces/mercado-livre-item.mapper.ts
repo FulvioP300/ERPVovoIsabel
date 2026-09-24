@@ -50,6 +50,19 @@ export function mapCondition(estado: CondicaoEstado, itemConditionAttribute: Cat
   return { id: "ITEM_CONDITION", value_id: match.id, value_name: match.name };
 }
 
+const TOP_LEVEL_CONDITION: Record<CondicaoEstado, "new" | "used"> = {
+  novo: "new",
+  seminovo: "used",
+  usado: "used",
+};
+
+/** `condition` de nível raiz do item (`POST /items`, `getShippingModes` — spec 012, achado real
+ * 24/09/2026) — vocabulário em inglês minúsculo, diferente do valor localizado do atributo
+ * `ITEM_CONDITION` (`mapCondition`, acima). Mesmo mapeamento novo/seminovo→usado. */
+export function topLevelCondition(estado: CondicaoEstado): "new" | "used" {
+  return TOP_LEVEL_CONDITION[estado];
+}
+
 // ---------------------------------------------------------------------------------------------
 // Filtro final de atributos (spec 012, seção 4)
 
@@ -403,6 +416,19 @@ export function warrantyTerms(): MercadoLivreAttributeCandidate[] {
 // ---------------------------------------------------------------------------------------------
 // Payload de criação/atualização (spec 012, seções 3, 3.1, 3.3)
 
+/** Modo de frete escolhido na revisão (spec 012, achado real 24/09/2026) — `null`/ausente
+ * quando o operador não escolheu nada (categorias sem opção aplicável, ou revisão pulada). */
+export interface ShippingChoice {
+  mode: string;
+  logisticType: string;
+  freeShipping: boolean;
+}
+
+function shippingPayload(shipping: ShippingChoice | null | undefined): Record<string, unknown> | undefined {
+  if (!shipping) return undefined;
+  return { mode: shipping.mode, logistic_type: shipping.logisticType, free_shipping: shipping.freeShipping };
+}
+
 export interface CreateItemPayloadInput {
   categoryId: string;
   /** `family_name` (modelo *User Products*) quando `true`; senão `title` (spec 012, seção 3.3). */
@@ -413,9 +439,11 @@ export interface CreateItemPayloadInput {
   pictureUrls: string[];
   listingTypeId: string;
   tags: string[];
+  shipping?: ShippingChoice | null;
 }
 
 export function buildCreatePayload(input: CreateItemPayloadInput): Record<string, unknown> {
+  const shipping = shippingPayload(input.shipping);
   return {
     category_id: input.categoryId,
     ...(input.useUserProducts ? { family_name: input.name } : { title: input.name }),
@@ -427,6 +455,7 @@ export function buildCreatePayload(input: CreateItemPayloadInput): Record<string
     pictures: input.pictureUrls.map((url) => ({ source: url })),
     attributes: input.attributes,
     ...(input.tags.length > 0 ? { tags: input.tags } : {}),
+    ...(shipping ? { shipping } : {}),
   };
 }
 
@@ -438,6 +467,7 @@ export interface UpdateItemPayloadInput {
   price: number;
   attributes: MercadoLivreAttributeCandidate[];
   pictureUrls: string[];
+  shipping?: ShippingChoice | null;
 }
 
 /**
@@ -460,5 +490,7 @@ export function buildUpdatePayload(input: UpdateItemPayloadInput): Record<string
   if (!input.useUserProducts && input.soldQuantity === 0) {
     payload.title = input.name;
   }
+  const shipping = shippingPayload(input.shipping);
+  if (shipping) payload.shipping = shipping;
   return payload;
 }

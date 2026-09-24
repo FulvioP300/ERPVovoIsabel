@@ -42,6 +42,24 @@ const FootwearSizeSuggestionSchema = z.object({
 });
 export type FootwearSizeSuggestion = z.infer<typeof FootwearSizeSuggestionSchema>;
 
+/** Opção de frete pra revisão (spec 012, achado real 24/09/2026) — combinação de modo + tipo de
+ * logística realmente válida pra esta peça/categoria/tipo de anúncio. */
+const ShippingOptionSchema = z.object({
+  mode: z.string(),
+  logisticType: z.string(),
+  isDefault: z.boolean(),
+  freeShippingRequired: z.boolean(),
+  freeShippingAllowed: z.boolean(),
+});
+export type ShippingOption = z.infer<typeof ShippingOptionSchema>;
+
+/** Escolha de frete confirmada na revisão — o que de fato viaja no corpo de `publish`. */
+export interface ShippingChoice {
+  mode: string;
+  logisticType: string;
+  freeShipping: boolean;
+}
+
 export const marketplaceListingService = {
   async publish(
     productId: string,
@@ -50,6 +68,7 @@ export const marketplaceListingService = {
     categoryId?: string,
     listingTypeId?: string,
     sizeOverride?: string,
+    shipping?: ShippingChoice,
   ): Promise<Product> {
     const response = await fetch(`/api/products/${productId}/marketplace-listings`, {
       method: "POST",
@@ -61,6 +80,7 @@ export const marketplaceListingService = {
         ...(categoryId ? { categoryId } : {}),
         ...(listingTypeId ? { listingTypeId } : {}),
         ...(sizeOverride ? { sizeOverride } : {}),
+        ...(shipping ? { shipping } : {}),
       }),
     });
     return ProductSchema.parse(await parseEnvelope<unknown>(response));
@@ -95,5 +115,22 @@ export const marketplaceListingService = {
       body: JSON.stringify({ marketplace, accountId, categoryId }),
     });
     return FootwearSizeSuggestionSchema.parse(await parseEnvelope<unknown>(response));
+  },
+
+  /** Depende da categoria e do tipo de anúncio já escolhidos na revisão (spec 012, achado real 24/09/2026). */
+  async suggestShipping(
+    productId: string,
+    marketplace: Marketplace,
+    accountId: string,
+    categoryId: string,
+    listingTypeId: string,
+  ): Promise<ShippingOption[]> {
+    const response = await fetch(`/api/products/${productId}/marketplace-shipping-suggestion`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ marketplace, accountId, categoryId, listingTypeId }),
+    });
+    return z.array(ShippingOptionSchema).parse(await parseEnvelope<unknown>(response));
   },
 };

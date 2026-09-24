@@ -23,7 +23,7 @@ vi.mock("./mercado-livre-api.client.js", async () => {
   };
 });
 
-const { mercadoLivreConnector, suggestCategory, suggestFootwearSizes } = await import("./mercado-livre.connector.js");
+const { mercadoLivreConnector, suggestCategory, suggestFootwearSizes, suggestShipping } = await import("./mercado-livre.connector.js");
 const { MercadoLivreInvalidGrantError, MercadoLivreOAuthError } = await import("./mercado-livre-oauth.client.js");
 const { MercadoLivreApiError } = await import("./mercado-livre-api.client.js");
 const { MarketplaceConnectorError } = await import("./marketplace-connector.port.js");
@@ -313,6 +313,27 @@ describe("suggestFootwearSizes (spec 012; achado real 24/09/2026) — delega par
     );
 
     expect(result.value.applicable).toBe(false);
+    expect(JSON.parse(result.updatedCredential!)).toMatchObject({ access_token: "ACESSO-NOVO" });
+  });
+});
+
+describe("suggestShipping (spec 012; achado real 24/09/2026) — delega para mercado-livre-publish.ts", () => {
+  it("sem preço de venda: lista vazia, sem chamar rede nenhuma (a orquestração completa é testada em mercado-livre-publish.test.ts)", async () => {
+    const result = await suggestShipping(credentialJson(), { preco: { preco_venda: null } } as never, "MLB188064", "free");
+    expect(result.value).toEqual([]);
+  });
+
+  it("renova o token quando necessário, como publish/close/suggestCategory/suggestFootwearSizes", async () => {
+    refreshTokenMock.mockResolvedValue({ accessToken: "ACESSO-NOVO", refreshToken: "REFRESH-NOVO", expiresIn: 21600, userId: 987654 });
+
+    const result = await suggestShipping(
+      credentialJson({ expires_at: new Date(Date.now() + 1000).toISOString() }),
+      { preco: { preco_venda: null } } as never,
+      "MLB188064",
+      "free",
+    );
+
+    expect(result.value).toEqual([]);
     expect(JSON.parse(result.updatedCredential!)).toMatchObject({ access_token: "ACESSO-NOVO" });
   });
 });

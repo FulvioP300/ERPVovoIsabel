@@ -13,6 +13,7 @@ import {
   getDomainSizeChartAttributes,
   getItem,
   getItemsByIds,
+  getShippingModes,
   getSizeChart,
   predictCategory,
   searchItemsBySellerSku,
@@ -550,5 +551,89 @@ describe("tabela de medidas (spec 012, seção 3.5; ADR-024)", () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe("https://api.mercadolibre.com/catalog/charts/999/rows");
     expect(JSON.parse(init.body as string)).toEqual({ attributes: [{ id: "SIZE", values: [{ name: "40" }] }] });
+  });
+});
+
+describe("getShippingModes (spec 012, achado real 24/09/2026)", () => {
+  const input = {
+    sellerId: "987654",
+    title: "Bermuda Jeans",
+    itemPrice: 89.9,
+    categoryId: "MLB188064",
+    domainId: "MLB-SHORTS",
+    attributes: [{ id: "BRAND", name: "Marca", valueName: "Nike" }],
+    listingTypeId: "free",
+    condition: "new" as const,
+  };
+
+  it("POST /users/{sellerId}/shipping_modes com os headers extras e o corpo documentado", async () => {
+    const fetchMock = stubFetch(200, { channels: { marketplace: { available_modes: [] } } });
+
+    await getShippingModes(TOKEN, input);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.mercadolibre.com/users/987654/shipping_modes");
+    expect(init.method).toBe("POST");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["x-multichannel"]).toBe("true");
+    expect(headers["X-Format-New"]).toBe("true");
+    expect(JSON.parse(init.body as string)).toEqual({
+      site_id: "MLB",
+      seller_id: 987654,
+      title: "Bermuda Jeans",
+      item_price: 89.9,
+      item_currency: "BRL",
+      category_id: "MLB188064",
+      catalog: { domain_id: "MLB-SHORTS", attributes: [{ id: "BRAND", name: "Marca", value_name: "Nike" }] },
+      sale_terms: [],
+      listing_type_id: "free",
+      buying_mode: "buy_it_now",
+      condition: "new",
+      channels: [{ id: "marketplace" }],
+      new_format: true,
+      verbose: false,
+    });
+  });
+
+  it("achata channels.marketplace.available_modes[].logistic_types[] numa lista de opções", async () => {
+    stubFetch(200, {
+      channels: {
+        marketplace: {
+          available_modes: [
+            {
+              mode: "me2",
+              logistic_types: [
+                { type: "self_service", default: true, attributes: { free_shipping: "mandatory", costs: "not_allowed", local_pick_up: "optional" } },
+              ],
+            },
+            {
+              mode: "not_specified",
+              logistic_types: [
+                { type: "not_specified", default: true, attributes: { free_shipping: "optional", costs: "not_allowed", local_pick_up: "optional" } },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    const result = await getShippingModes(TOKEN, input);
+
+    expect(result).toEqual([
+      { mode: "me2", logisticType: "self_service", isDefault: true, freeShipping: "mandatory", costs: "not_allowed", localPickUp: "optional" },
+      {
+        mode: "not_specified",
+        logisticType: "not_specified",
+        isDefault: true,
+        freeShipping: "optional",
+        costs: "not_allowed",
+        localPickUp: "optional",
+      },
+    ]);
+  });
+
+  it("resposta sem available_modes (ou formato inesperado): lista vazia, nunca quebra", async () => {
+    stubFetch(200, {});
+    await expect(getShippingModes(TOKEN, input)).resolves.toEqual([]);
   });
 });

@@ -579,11 +579,33 @@ essa publicação — nunca é gravado de volta no cadastro (o cadastro continua
 verdade da peça; o Mercado Livre só recebe o valor mais próximo que ele aceita). Roupa nunca
 passa por isso — cria a própria linha (seção 3.5), nunca "não encontra".
 
-Alternativa descartada: mapeamento configurável categoria do ERP (003) → categoria do Mercado
-Livre, com o preditor só como reserva e sem revisão humana — rejeitada porque, com a revisão já
-obrigatória a cada publicação, esse mapeamento não reduziria risco que a revisão já não cobrisse,
-só adicionaria uma configuração (12 categorias) para manter em sincronia com a taxonomia do
-Mercado Livre (ADR-025).
+**Revisão de frete (achado real 24/09/2026), depois de categoria/tamanho/tipo de anúncio.**
+Publicar sem declarar `shipping` no `POST /items` deixa o Mercado Livre aplicar um padrão
+próprio — achado real: um anúncio publicado ficou com "envio por conta do comprador" e um aviso
+sobre o modo `me1` não estar ativado na conta (que nunca configurou frete nenhum
+explicitamente). Depois de categoria e tipo de anúncio confirmados, o sistema consulta
+`POST /api/products/:id/marketplace-shipping-suggestion`, que por sua vez chama `POST
+/users/{sellerId}/shipping_modes` do Mercado Livre (documentação oficial en_us/es_ar
+consistente, mas com o exemplo de `curl` malformado nas duas fontes — o formato do corpo segue o
+JSON de exemplo completo, não o `curl`; **ainda não confirmado contra a API real**) — devolve as
+combinações de modo+tipo de logística realmente válidas pra aquela peça/categoria/tipo de
+anúncio, cada uma com o requisito de frete grátis (`mandatory`/`required` = obrigatório,
+`not_allowed` = proibido, `optional` = escolha do operador). A tela pré-seleciona a combinação
+`default` do Mercado Livre; o operador pode trocar. **Nunca bloqueia a publicação**: se a
+consulta falhar ou não achar opção nenhuma, publica sem declarar `shipping` — mesmo
+comportamento de antes dessa funcionalidade existir, nunca pior.
+
+Alternativa descartada: caixa de seleção estática (ex.: "Frete grátis" vs. "Comprador paga"),
+sem consultar o Mercado Livre antes — mais rápida de entregar, mas sem garantia de que toda
+categoria aceita as duas opções (decisão do usuário, 24/09/2026: mesmo padrão de rigor da
+revisão de categoria/tamanho, nunca oferecer uma escolha que pode não ser válida pra aquele
+item específico).
+
+Alternativa descartada (categoria): mapeamento configurável categoria do ERP (003) → categoria do
+Mercado Livre, com o preditor só como reserva e sem revisão humana — rejeitada porque, com a
+revisão já obrigatória a cada publicação, esse mapeamento não reduziria risco que a revisão já
+não cobrisse, só adicionaria uma configuração (12 categorias) para manter em sincronia com a
+taxonomia do Mercado Livre (ADR-025).
 
 Com o `category_id` confirmado, o conector consulta dois recursos:
 

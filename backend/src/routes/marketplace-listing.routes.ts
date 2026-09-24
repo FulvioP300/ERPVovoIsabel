@@ -22,7 +22,17 @@ import {
   MarketplaceSizeSuggestionUnsupportedError,
   suggestSize,
 } from "../services/marketplace-size-suggestion.service.js";
+import {
+  MarketplaceShippingSuggestionUnsupportedError,
+  suggestShippingOptions,
+} from "../services/marketplace-shipping-suggestion.service.js";
 import { CategoryCatalogError } from "../plugins/marketplaces/mercado-livre-category-catalog.js";
+
+const ShippingChoiceSchema = z.object({
+  mode: z.string().min(1),
+  logisticType: z.string().min(1),
+  freeShipping: z.boolean(),
+});
 
 const PublishListingBodySchema = z.object({
   marketplace: MarketplaceEnum,
@@ -35,6 +45,8 @@ const PublishListingBodySchema = z.object({
   // Tamanho de calçado escolhido na tela de revisão quando o do cadastro não bate com a tabela
   // do Mercado Livre (spec 012, achado real 24/09/2026) — opcional, só calçado usa.
   sizeOverride: z.string().min(1).optional(),
+  // Frete escolhido na tela de revisão (spec 012, achado real 24/09/2026) — opcional.
+  shipping: ShippingChoiceSchema.optional(),
 });
 
 const CloseListingBodySchema = z.object({
@@ -72,6 +84,23 @@ const FootwearSizeSuggestionResponseSchema = z.object({
   currentMatches: z.boolean(),
 });
 
+const ShippingSuggestionBodySchema = z.object({
+  marketplace: MarketplaceEnum,
+  accountId: z.string().min(1),
+  // Depende da categoria e do tipo de anúncio já escolhidos na revisão (spec 012, achado real
+  // 24/09/2026) — a elegibilidade de frete varia por categoria e tipo de anúncio.
+  categoryId: z.string().min(1),
+  listingTypeId: z.string().min(1),
+});
+
+const ShippingOptionSchema = z.object({
+  mode: z.string(),
+  logisticType: z.string(),
+  isDefault: z.boolean(),
+  freeShippingRequired: z.boolean(),
+  freeShippingAllowed: z.boolean(),
+});
+
 export default async function marketplaceListingRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>(
     "/:id/marketplace-listings",
@@ -91,6 +120,7 @@ export default async function marketplaceListingRoutes(fastify: FastifyInstance)
           categoryId: parseResult.data.categoryId,
           listingTypeId: parseResult.data.listingTypeId,
           sizeOverride: parseResult.data.sizeOverride,
+          shipping: parseResult.data.shipping,
         });
         return { success: true, data: ProductSchema.parse(product) };
       } catch (err) {
@@ -202,6 +232,42 @@ export default async function marketplaceListingRoutes(fastify: FastifyInstance)
           return reply.code(404).send({ success: false, error: err.message });
         }
         if (err instanceof MarketplaceAccountMismatchError || err instanceof MarketplaceSizeSuggestionUnsupportedError) {
+          return reply.code(400).send({ success: false, error: err.message });
+        }
+        if (err instanceof AccountBusyError) {
+          return reply.code(409).send({ success: false, error: err.message });
+        }
+        throw err;
+      }
+    },
+  );
+
+  // Sugestão de frete pra tela de revisão (spec 012, achado real 24/09/2026) — só consulta.
+  // Depende da categoria e do tipo de anúncio já escolhidos; uma falha real aqui não vira "sem
+  // sugestão em silêncio", mesmo espírito da sugestão de tamanho.
+  fastify.post<{ Params: { id: string } }>(
+    "/:id/marketplace-shipping-suggestion",
+    { preHandler: [fastify.authenticate, authorize(["admin", "operator"])] },
+    async (request, reply) => {
+      const parseResult = ShippingSuggestionBodySchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.code(400).send({ success: false, error: "Dados de sugestão de frete inválidos." });
+      }
+
+      try {
+        const result = await suggestShippingOptions({
+          productId: request.params.id,
+          marketplace: parseResult.data.marketplace,
+          accountId: parseResult.data.accountId,
+          categoryId: parseResult.data.categoryId,
+          listingTypeId: parseResult.data.listingTypeId,
+        });
+        return { success: true, data: z.array(ShippingOptionSchema).parse(result) };
+      } catch (err) {
+        if (err instanceof ProductNotFoundError || err instanceof MarketplaceAccountNotFoundError) {
+          return reply.code(404).send({ success: false, error: err.message });
+        }
+        if (err instanceof MarketplaceAccountMismatchError || err instanceof MarketplaceShippingSuggestionUnsupportedError) {
           return reply.code(400).send({ success: false, error: err.message });
         }
         if (err instanceof AccountBusyError) {
