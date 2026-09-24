@@ -89,6 +89,9 @@ export interface PublishListingInput {
   categoryId?: string | null;
   /** Tipo de anúncio já escolhido na mesma tela de revisão (spec 012, seção 3.2; ADR-026). */
   listingTypeId?: string | null;
+  /** Tamanho de calçado escolhido na revisão quando o do cadastro não bate com a tabela do
+   * Mercado Livre (spec 012, achado real 24/09/2026). */
+  sizeOverride?: string | null;
 }
 
 /**
@@ -123,6 +126,7 @@ export async function publishListing(input: PublishListingInput): Promise<Produc
         credential,
         categoryId: input.categoryId,
         listingTypeId: input.listingTypeId,
+        sizeOverride: input.sizeOverride,
       }),
     );
 

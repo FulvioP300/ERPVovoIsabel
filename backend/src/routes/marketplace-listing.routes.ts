@@ -18,6 +18,10 @@ import {
   MarketplaceSuggestionUnsupportedError,
   suggestCategory,
 } from "../services/marketplace-category-suggestion.service.js";
+import {
+  MarketplaceSizeSuggestionUnsupportedError,
+  suggestSize,
+} from "../services/marketplace-size-suggestion.service.js";
 import { CategoryCatalogError } from "../plugins/marketplaces/mercado-livre-category-catalog.js";
 
 const PublishListingBodySchema = z.object({
@@ -28,6 +32,9 @@ const PublishListingBodySchema = z.object({
   // consumidor real (T023/T025).
   categoryId: z.string().min(1).optional(),
   listingTypeId: z.string().min(1).optional(),
+  // Tamanho de calçado escolhido na tela de revisão quando o do cadastro não bate com a tabela
+  // do Mercado Livre (spec 012, achado real 24/09/2026) — opcional, só calçado usa.
+  sizeOverride: z.string().min(1).optional(),
 });
 
 const CloseListingBodySchema = z.object({
@@ -50,6 +57,21 @@ const CategorySuggestionResponseSchema = z.object({
   options: z.array(CategoryOptionSchema),
 });
 
+const SizeSuggestionBodySchema = z.object({
+  marketplace: MarketplaceEnum,
+  accountId: z.string().min(1),
+  // Depende da categoria já escolhida na revisão — o tamanho é resolvido contra a tabela daquela
+  // categoria específica (spec 012, achado real 24/09/2026).
+  categoryId: z.string().min(1),
+});
+
+const FootwearSizeSuggestionResponseSchema = z.object({
+  applicable: z.boolean(),
+  available: z.array(z.string()),
+  current: z.string().nullable(),
+  currentMatches: z.boolean(),
+});
+
 export default async function marketplaceListingRoutes(fastify: FastifyInstance) {
   fastify.post<{ Params: { id: string } }>(
     "/:id/marketplace-listings",
@@ -68,6 +90,7 @@ export default async function marketplaceListingRoutes(fastify: FastifyInstance)
           actingUserId: request.user!.id,
           categoryId: parseResult.data.categoryId,
           listingTypeId: parseResult.data.listingTypeId,
+          sizeOverride: parseResult.data.sizeOverride,
         });
         return { success: true, data: ProductSchema.parse(product) };
       } catch (err) {
@@ -147,6 +170,42 @@ export default async function marketplaceListingRoutes(fastify: FastifyInstance)
         }
         if (err instanceof CategoryCatalogError) {
           return reply.code(500).send({ success: false, error: err.message });
+        }
+        throw err;
+      }
+    },
+  );
+
+  // Sugestão de tamanho pra tela de revisão (spec 012, achado real 24/09/2026) — só calçado, só
+  // consulta. Depende da categoria já escolhida (chamado depois da revisão de categoria, não
+  // antes) — diferente da sugestão de categoria, uma falha real aqui não vira "sem sugestão em
+  // silêncio": o operador precisa saber que não foi possível checar o tamanho.
+  fastify.post<{ Params: { id: string } }>(
+    "/:id/marketplace-size-suggestion",
+    { preHandler: [fastify.authenticate, authorize(["admin", "operator"])] },
+    async (request, reply) => {
+      const parseResult = SizeSuggestionBodySchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.code(400).send({ success: false, error: "Dados de sugestão de tamanho inválidos." });
+      }
+
+      try {
+        const result = await suggestSize({
+          productId: request.params.id,
+          marketplace: parseResult.data.marketplace,
+          accountId: parseResult.data.accountId,
+          categoryId: parseResult.data.categoryId,
+        });
+        return { success: true, data: FootwearSizeSuggestionResponseSchema.parse(result) };
+      } catch (err) {
+        if (err instanceof ProductNotFoundError || err instanceof MarketplaceAccountNotFoundError) {
+          return reply.code(404).send({ success: false, error: err.message });
+        }
+        if (err instanceof MarketplaceAccountMismatchError || err instanceof MarketplaceSizeSuggestionUnsupportedError) {
+          return reply.code(400).send({ success: false, error: err.message });
+        }
+        if (err instanceof AccountBusyError) {
+          return reply.code(409).send({ success: false, error: err.message });
         }
         throw err;
       }

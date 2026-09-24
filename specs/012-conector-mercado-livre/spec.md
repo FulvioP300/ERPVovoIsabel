@@ -559,6 +559,26 @@ corpo de `POST /api/products/:id/marketplace-listings` (`categoryId`, spec 011 s
 conector **não** chama mais o preditor por dentro de `publish()`; recebe o `category_id` já
 resolvido.
 
+**Revisão de tamanho de calçado (achado real 24/09/2026), na mesma tela.** Categorias de calçado
+usam tabela `BRAND`/`STANDARD`, fixa — o ERP não pode criar uma linha nova nela (diferente da
+`SPECIFIC` de roupa, seção 3.5). Publicar direto com o `tamanho_etiqueta` do cadastro, sem checar
+antes, gerava um erro cru e sem saída ("a tabela não tem o tamanho X") sempre que o vocabulário do
+cadastro não batia exatamente com o da tabela. Depois de o operador confirmar a categoria, o
+sistema consulta os tamanhos reais daquela tabela (`POST
+/api/products/:id/marketplace-size-suggestion`, com o `categoryId` já escolhido) e:
+
+- se o tamanho do cadastro já bate (`currentMatches`), não mostra nada — segue direto;
+- se não bate, mostra um `<select>` com os tamanhos reais da tabela pra escolher (mesmo espírito
+  da revisão de categoria: nunca finge que bate quando não bate);
+- se a categoria não tem tabela nenhuma (nem `BRAND` nem `STANDARD`), avisa que não é possível
+  publicar esse calçado nessa categoria — sem tentar, sem erro cru do Mercado Livre.
+
+O tamanho escolhido (`sizeOverride`) viaja junto de `categoryId`/`listingTypeId` no corpo de
+`POST /api/products/:id/marketplace-listings`; tem prioridade sobre `tamanho_etiqueta` só pra
+essa publicação — nunca é gravado de volta no cadastro (o cadastro continua sendo a fonte de
+verdade da peça; o Mercado Livre só recebe o valor mais próximo que ele aceita). Roupa nunca
+passa por isso — cria a própria linha (seção 3.5), nunca "não encontra".
+
 Alternativa descartada: mapeamento configurável categoria do ERP (003) → categoria do Mercado
 Livre, com o preditor só como reserva e sem revisão humana — rejeitada porque, com a revisão já
 obrigatória a cada publicação, esse mapeamento não reduziria risco que a revisão já não cobrisse,

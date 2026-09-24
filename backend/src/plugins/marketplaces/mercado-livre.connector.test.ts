@@ -23,7 +23,7 @@ vi.mock("./mercado-livre-api.client.js", async () => {
   };
 });
 
-const { mercadoLivreConnector, suggestCategory } = await import("./mercado-livre.connector.js");
+const { mercadoLivreConnector, suggestCategory, suggestFootwearSizes } = await import("./mercado-livre.connector.js");
 const { MercadoLivreInvalidGrantError, MercadoLivreOAuthError } = await import("./mercado-livre-oauth.client.js");
 const { MercadoLivreApiError } = await import("./mercado-livre-api.client.js");
 const { MarketplaceConnectorError } = await import("./marketplace-connector.port.js");
@@ -294,6 +294,26 @@ describe("suggestCategory (spec 012, seção 4; ADR-025; T058) — fora da Marke
     );
 
     expect(error).toBeInstanceOf(MarketplaceConnectorError);
+  });
+});
+
+describe("suggestFootwearSizes (spec 012; achado real 24/09/2026) — delega para mercado-livre-publish.ts", () => {
+  it("produto não é calçado: applicable false, sem chamar rede nenhuma (a orquestração completa é testada em mercado-livre-publish.test.ts)", async () => {
+    const result = await suggestFootwearSizes(credentialJson(), { classificacao: { categoria_codigo: "BERM" } } as never, "MLB188064");
+    expect(result.value).toEqual({ applicable: false, available: [], current: null, currentMatches: false });
+  });
+
+  it("renova o token quando necessário, como publish/close/suggestCategory", async () => {
+    refreshTokenMock.mockResolvedValue({ accessToken: "ACESSO-NOVO", refreshToken: "REFRESH-NOVO", expiresIn: 21600, userId: 987654 });
+
+    const result = await suggestFootwearSizes(
+      credentialJson({ expires_at: new Date(Date.now() + 1000).toISOString() }),
+      { classificacao: { categoria_codigo: "BERM" } } as never,
+      "MLB188064",
+    );
+
+    expect(result.value.applicable).toBe(false);
+    expect(JSON.parse(result.updatedCredential!)).toMatchObject({ access_token: "ACESSO-NOVO" });
   });
 });
 

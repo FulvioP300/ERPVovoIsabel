@@ -13,13 +13,15 @@ export function usePublishListing() {
       accountId,
       categoryId,
       listingTypeId,
+      sizeOverride,
     }: {
       productId: string;
       marketplace: Marketplace;
       accountId: string;
       categoryId?: string;
       listingTypeId?: string;
-    }) => marketplaceListingService.publish(productId, marketplace, accountId, categoryId, listingTypeId),
+      sizeOverride?: string;
+    }) => marketplaceListingService.publish(productId, marketplace, accountId, categoryId, listingTypeId, sizeOverride),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: PRODUCTS_QUERY_KEY }),
   });
 }
@@ -29,6 +31,24 @@ export function useCategorySuggestion() {
   return useMutation({
     mutationFn: ({ productId, marketplace, accountId }: { productId: string; marketplace: Marketplace; accountId: string }) =>
       marketplaceListingService.suggestCategory(productId, marketplace, accountId),
+  });
+}
+
+/** Sugestão de tamanho de calçado (spec 012, achado real 24/09/2026) — depende da categoria já
+ * escolhida na revisão; nunca cria nem altera nada. */
+export function useSizeSuggestion() {
+  return useMutation({
+    mutationFn: ({
+      productId,
+      marketplace,
+      accountId,
+      categoryId,
+    }: {
+      productId: string;
+      marketplace: Marketplace;
+      accountId: string;
+      categoryId: string;
+    }) => marketplaceListingService.suggestSize(productId, marketplace, accountId, categoryId),
   });
 }
 

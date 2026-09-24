@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { useMarketplaceAccounts } from "../../hooks/useMarketplaceAccounts";
-import { useCategorySuggestion, useCloseListing, usePublishListing } from "../../hooks/useMarketplaceListings";
+import { useCategorySuggestion, useCloseListing, usePublishListing, useSizeSuggestion } from "../../hooks/useMarketplaceListings";
 import {
   MARKETPLACE_LABELS,
   MarketplaceEnum,
@@ -41,6 +41,27 @@ export function PublishToMarketplace({ product }: { product: Product }) {
   // Tipo de anúncio, mesma tela de revisão (spec 012, seção 3.2; ADR-026) — sempre pré-selecionado
   // no mais barato (`free`, primeiro da lista estática), o operador troca se quiser mais exposição.
   const [selectedListingTypeId, setSelectedListingTypeId] = useState(MERCADO_LIVRE_LISTING_TYPES[0]!.id);
+  // Tamanho de calçado (spec 012, achado real 24/09/2026) — só relevante quando a categoria usa
+  // tabela BRAND/STANDARD do Mercado Livre (`sizeSuggestion.data?.applicable`); consultado de
+  // novo toda vez que a categoria muda, porque a tabela é por categoria.
+  const sizeSuggestion = useSizeSuggestion();
+  const [selectedSize, setSelectedSize] = useState("");
+
+  /** Busca a sugestão de tamanho pra uma categoria — chamado sempre que `selectedCategoryId`
+   * muda (pré-seleção inicial e troca manual), nunca automaticamente por efeito. */
+  async function refreshSizeSuggestion(categoryId: string) {
+    if (marketplace !== "mercado_livre" || !accountId || !categoryId) {
+      sizeSuggestion.reset();
+      setSelectedSize("");
+      return;
+    }
+    try {
+      const result = await sizeSuggestion.mutateAsync({ productId: product.id, marketplace, accountId, categoryId });
+      setSelectedSize(result.applicable && result.currentMatches ? (result.current ?? "") : "");
+    } catch {
+      setSelectedSize("");
+    }
+  }
 
   // Pula a escolha de conta quando só há uma ativa para o marketplace selecionado (spec 011,
   // seção 4.3) — derivado durante a renderização, não via `useEffect` + `setState`.
@@ -73,25 +94,44 @@ export function PublishToMarketplace({ product }: { product: Product }) {
     // confundiu o preditor com categorias de teste de piscina) — nesse caso não dá pra pré-selecionar
     // algo que não existe no <select>; melhor deixar em branco e avisar do que fingir uma escolha.
     const suggestionIsCurated = result.suggested && result.options.some((o) => o.categoryId === result.suggested!.categoryId);
-    setSelectedCategoryId(suggestionIsCurated ? result.suggested!.categoryId : "");
+    const categoryId = suggestionIsCurated ? result.suggested!.categoryId : "";
+    setSelectedCategoryId(categoryId);
     setCategoryFilter("");
     setSelectedListingTypeId(MERCADO_LIVRE_LISTING_TYPES[0]!.id);
+    await refreshSizeSuggestion(categoryId);
   }
 
+  async function handleCategoryChange(categoryId: string) {
+    setSelectedCategoryId(categoryId);
+    await refreshSizeSuggestion(categoryId);
+  }
+
+  // Tamanho de calçado (spec 012, achado real 24/09/2026): `applicable` só quando a categoria usa
+  // tabela BRAND/STANDARD; sem tabela nenhuma não dá pra publicar (mesmo bloqueio que o Mercado
+  // Livre já faria, só que antes de tentar); com tabela, precisa de uma escolha antes de publicar.
+  const sizeIsApplicable = sizeSuggestion.data?.applicable === true;
+  const sizeHasNoOptions = sizeIsApplicable && sizeSuggestion.data!.available.length === 0;
+  const sizeNeedsChoice = sizeIsApplicable && !sizeHasNoOptions && !selectedSize;
+
   async function handleConfirmPublish() {
-    if (!accountId || !selectedCategoryId) return;
+    if (!accountId || !selectedCategoryId || sizeHasNoOptions || sizeNeedsChoice) return;
     await publish.mutateAsync({
       productId: product.id,
       marketplace,
       accountId,
       categoryId: selectedCategoryId,
       listingTypeId: selectedListingTypeId,
+      sizeOverride: selectedSize || undefined,
     });
     suggestion.reset();
+    sizeSuggestion.reset();
+    setSelectedSize("");
   }
 
   function handleCancelReview() {
     suggestion.reset();
+    sizeSuggestion.reset();
+    setSelectedSize("");
     setSelectedCategoryId("");
     setCategoryFilter("");
   }
@@ -206,7 +246,7 @@ export function PublishToMarketplace({ product }: { product: Product }) {
             <select
               className={`${inputClass} w-full`}
               value={selectedCategoryId}
-              onChange={(e) => setSelectedCategoryId(e.target.value)}
+              onChange={(e) => void handleCategoryChange(e.target.value)}
             >
               <option value="">Selecione...</option>
               {suggestion.data.options
@@ -236,11 +276,47 @@ export function PublishToMarketplace({ product }: { product: Product }) {
             </select>
           </div>
 
+          {sizeSuggestion.isPending && <p className="text-sm text-gray-600">Consultando tamanhos disponíveis no Mercado Livre...</p>}
+
+          {sizeSuggestion.isError && (
+            <p className="text-sm text-red-600">
+              {sizeSuggestion.error instanceof Error ? sizeSuggestion.error.message : "Não foi possível checar os tamanhos disponíveis."}
+            </p>
+          )}
+
+          {sizeIsApplicable && sizeHasNoOptions && (
+            <p className="text-sm text-red-600">
+              Não há tabela de medidas (da marca ou padrão) para esta categoria no Mercado Livre — não é possível
+              publicar este calçado. Escolha outra categoria que tenha tabela, ou não publique esta peça por ora.
+            </p>
+          )}
+
+          {sizeIsApplicable && !sizeHasNoOptions && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500">Tamanho</label>
+              {!sizeSuggestion.data!.currentMatches && (
+                <p className="mb-1 text-sm text-amber-700">
+                  {sizeSuggestion.data!.current
+                    ? `O tamanho do cadastro ("${sizeSuggestion.data!.current}") não está na tabela do Mercado Livre — escolha um tamanho real abaixo.`
+                    : "A peça não tem tamanho cadastrado — escolha um tamanho real da tabela do Mercado Livre abaixo."}
+                </p>
+              )}
+              <select className={`${inputClass} w-full`} value={selectedSize} onChange={(e) => setSelectedSize(e.target.value)}>
+                <option value="">Selecione...</option>
+                {sizeSuggestion.data!.available.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button
               type="button"
               className={buttonClass}
-              disabled={!selectedCategoryId || publish.isPending}
+              disabled={!selectedCategoryId || publish.isPending || sizeSuggestion.isPending || sizeHasNoOptions || sizeNeedsChoice}
               onClick={() => void handleConfirmPublish()}
             >
               {publish.isPending ? "Publicando..." : "Confirmar e publicar"}
