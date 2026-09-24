@@ -234,6 +234,86 @@ editar mostra a foto pré-carregada corretamente, adicionar uma nova + remover a
 edição atualiza a capa exibida na listagem após salvar — sem erros de console além do 401
 esperado pré-login.
 
+## Fase 8 — Edição sem navegação automática e reavaliação por IA (24/09/2026, spec seções 4.2/4.3;
+plan.md seções 8/9)
+
+Pedido do usuário: (1) salvar a edição de um produto sem ser levado de volta pra listagem, e
+(2) um botão na tela de edição que reavalia a peça pela mesma IA do cadastro (006), usando as
+fotos já salvas, preenchendo os campos direto no formulário sem tela de revisão separada. A
+lógica de IA em si (rota, serviço, adapter) é implementada em
+[006/tasks.md](../006-produtos-cadastro-ia/tasks.md), Fase 7 — aqui só a integração no
+formulário reutilizável e na página de edição.
+
+- [x] T034 `frontend/src/features/products/ProductForm.tsx`: dentro de `submit()`, depois de
+      `await onSubmit(values, images)` resolver com sucesso, chama `reset(values)` (React Hook
+      Form — limpa o estado "dirty"/touched sem trocar os valores exibidos) e liga uma flag
+      local (`useState<boolean>` `justSaved`) que mostra uma confirmação inline `role="status"`
+      ("Alterações salvas."), mesmo padrão visual já usado em `MarketplaceAccountsPage.tsx`
+      (`text-sm text-green-700`). A flag some sozinha assim que `formState.isDirty` volta a
+      `true` (qualquer edição de campo depois de salvar) — condição `justSaved && !isDirty` na
+      renderização, sem assinatura/efeito extra.
+- [x] T035 `frontend/src/pages/products/ProductFormPage.tsx`: `EditProductSection.handleUpdate`
+      parou de chamar `onDone()` (navegação pra `/products`) depois de `update.mutateAsync` — o
+      formulário permanece montado, já refletindo o produto persistido (cache do TanStack Query
+      atualizado pela própria mutação). `handleCreate` (cadastro) **não muda** — continua
+      navegando para `/products` após criar. Ganhou um link explícito
+      `<Link to="/products">← Voltar para produtos</Link>` no cabeçalho da tela, independente do
+      botão de salvar — depende de T034.
+- [x] T036 `ProductForm.tsx` ganhou prop opcional `productId?: string`. Quando `mode === "edit"`
+      **e** `productId` está presente, renderiza o botão "Reavaliar com IA" (seção "Fotos",
+      perto do `ImageUploader`) — usa `useReanalyzeProduct` ([006/T024](../006-produtos-cadastro-ia/tasks.md)).
+      Desabilitado quando `images.length === 0`, com texto auxiliar "Usa as fotos já salvas da
+      peça — se você acabou de adicionar ou remover fotos, salve as alterações antes de
+      reavaliar" (a reanálise lê a galeria persistida no banco, não o estado local ainda não
+      salvo — comportamento aceito, documentado em spec 006 seção 9.1, não um bug). Em caso de
+      sucesso: `reset(aiSuggestionToFormValues(suggestion, getValues()))`
+      ([006/T025](../006-produtos-cadastro-ia/tasks.md)) e exibe `AiConfidenceBadges` (006) para
+      os campos recém-preenchidos — depende de T034, [006/T024, T025](../006-produtos-cadastro-ia/tasks.md).
+- [x] T037 `ProductFormPage.tsx` passa `productId={id}` pro `ProductForm` no modo edição —
+      depende de T036.
+- [x] T038 `e2e/tests/product-edit.spec.ts` atualizado pra refletir que salvar não navega mais —
+      os dois testes agora confirmam a permanência na tela (mensagem "Alterações salvas.", URL
+      inalterada) e só saem explicitamente pelo link "Voltar para produtos" — depende de T035,
+      T036. Sem teste unitário dedicado de `ProductForm` (não havia suíte de testes unitários de
+      componente React já estabelecida no frontend — ver Nota abaixo — cobertura ficou pelo E2E
+      e pela validação manual de ponta a ponta).
+
+**Validado manualmente de ponta a ponta no navegador** (Playwright avulso, admin real, produto
+real, Mongo/Azure Blob/provedor de IA de dev reais): editar nome e salvar → confirmação
+"Alterações salvas." aparece, URL não muda; editar de novo → confirmação some; link "Voltar
+para produtos" funciona; botão "Reavaliar com IA" chama o provedor de IA real e aplica a
+sugestão nos campos do formulário sem persistir nada (confirmado via API que a categoria
+original permanece intacta até um "Salvar alterações" explícito).
+
+**Validado via E2E contra o cluster de teste dedicado** (`product-edit.spec.ts`, 2 casos): após
+o achado do bug do `fieldset()` (ver Nota abaixo), os dois testes passam confirmando a
+permanência na tela de edição depois de salvar.
+
+## Nota (24/09/2026) — dois bugs reais encontrados implementando a Fase 8
+
+1. **`PATCH /api/products/:id` quebrava com 500 ao adicionar a primeira foto de uma peça sem
+   nenhuma** (`imagens.principal` alternando entre `null` e objeto — Mongo recusa `$set` em
+   `"imagens.principal.id"` quando o valor atual é `null`). Descoberto testando manualmente a
+   reavaliação por IA (o roteiro natural passa por adicionar fotos numa peça sem nenhuma).
+   Corrigido em `backend/src/repositories/product.repository.ts`: `flattenToDotNotation` ganhou
+   `ATOMIC_KEYS` (hoje só `imagens`) — essas chaves nunca são achatadas campo a campo, sempre
+   `$set` como bloco atômico, que já era o comportamento pretendido documentado em T029 (Fase 7)
+   mas não estava de fato implementado assim. Teste de regressão novo em
+   `backend/tests/integration/products.spec.ts`.
+2. **Helper `fieldset()` dos specs de e2e de produto casava com o `<fieldset class="contents">`
+   externo do `ProductForm.tsx`** (wrapper que envolve todas as seções, usado pro modo "view"
+   travar tudo) — `hasText` também casa com esse wrapper (contém o texto de toda seção como
+   descendente) e `.first()` sempre resolve pra ele. Bug pré-existente (o wrapper já existia
+   antes desta fase), só descoberto agora porque `product-edit.spec.ts` precisou ser reescrito
+   e exercitou o helper de novo depois de um tempo sem ninguém rodar esses specs. Afeta também
+   `product-manual-registration.spec.ts`, `product-mark-as-sold.spec.ts` e `product-ai.spec.ts`
+   — corrigido nos quatro arquivos (`fieldset:not(.contents)`). Reconfirmado rodando os quatro
+   specs contra o cluster de teste: `product-edit`/`product-manual-registration`/
+   `product-mark-as-sold` passam; `product-ai` falhou por timeout aguardando resposta do
+   provedor de IA de teste (achado não relacionado a este bug nem a esta fase — mesmo provedor
+   self-hosted já documentado em `e2e/AGENTS.md` como instável sob certas condições — não
+   investigado a fundo, fora do escopo desta tarefa).
+
 ## Dependências entre tarefas
 
 ```
@@ -246,4 +326,6 @@ T027 → T029 → T030
 T028 → T031 → T032 → T033
 T027, T032 → T033
 T023, T033 → T024,T025,T026
+T034 → T035 → T036 → T037 → T038
+006/T020-T026 → T036
 ```

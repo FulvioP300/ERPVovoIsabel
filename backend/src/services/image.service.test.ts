@@ -4,6 +4,7 @@ import { MAX_IMAGE_SIZE_BYTES } from "../schemas/image.schema.js";
 import {
   ImageTooLargeError,
   InvalidImageTypeError,
+  downloadImage,
   removeImage,
   setImageProviderForTesting,
   uploadImage,
@@ -13,6 +14,7 @@ function fakeProvider(): ImageProviderPort {
   return {
     upload: vi.fn().mockResolvedValue({ id: "fake-id.jpg", url: "https://blob.test/fake-id.jpg" }),
     remove: vi.fn().mockResolvedValue(undefined),
+    download: vi.fn().mockResolvedValue({ buffer: Buffer.from("fake-bytes"), mimeType: "image/jpeg" }),
   };
 }
 
@@ -48,5 +50,11 @@ describe("image.service", () => {
   it("removeImage delega ao provedor", async () => {
     await removeImage("fake-id.jpg");
     expect(provider.remove).toHaveBeenCalledWith("fake-id.jpg");
+  });
+
+  it("downloadImage delega ao provedor e devolve buffer+mimeType", async () => {
+    const result = await downloadImage("fake-id.jpg");
+    expect(provider.download).toHaveBeenCalledWith("fake-id.jpg");
+    expect(result).toEqual({ buffer: Buffer.from("fake-bytes"), mimeType: "image/jpeg" });
   });
 });

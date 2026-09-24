@@ -130,3 +130,123 @@ AiIntakeForm (fotos + descrição)
   Ainda em aberto: qual provedor efetivamente usar em produção (OpenAI, OpenRouter, um
   servidor self-hosted etc.) — decisão de custo/operação, não de código.
 - Definir formato exato de `AI_ANALYZE_RATE_LIMIT` (por usuário vs. por IP) na implementação.
+
+## 8. Reavaliação de produto existente (spec, seção 9 — 24/09/2026)
+
+Reaproveita integralmente a infraestrutura de IA já existente (adapter, prompt de sistema,
+`AiSuggestedProductSchema`, `analyzeProduct`) — a única peça nova é **de onde vêm os bytes das
+imagens**: em vez de upload multipart no mesmo request (fluxo original, seção 3), a reanálise
+busca os bytes das fotos **já armazenadas** no Azure Blob Storage a partir de
+`product.imagens.galeria` (007).
+
+### 8.1 `ImageProviderPort` ganha `download`
+
+```ts
+// backend/src/plugins/images/image-provider.port.ts
+export interface DownloadedImage {
+  buffer: Buffer;
+  mimeType: string;
+}
+
+export interface ImageProviderPort {
+  upload(buffer: Buffer, mimeType: string, extension: string): Promise<UploadedImage>;
+  remove(id: string): Promise<void>;
+  download(id: string): Promise<DownloadedImage>;   // NOVO
+}
+```
+
+`AzureBlobImageProvider.download` usa `BlockBlobClient.downloadToBuffer()` para o conteúdo e o
+`contentType` da resposta (ou `getProperties()`, a confirmar qual é mais direto na
+implementação — seção 8.6) para o MIME type gravado no upload (`blobHTTPHeaders.blobContentType`,
+já setado hoje em `upload()`, `azure-blob.adapter.ts` linha 37) — sem isso não haveria como
+recuperar o MIME type de uma imagem já salva: `products.imagens.galeria[]` só guarda
+`{id, url, ordem, tipo}` (005, seção 2; `tipo` aqui é "frente/costas/etiqueta" etc., não MIME).
+
+### 8.2 Novo serviço `reanalyzeProduct`
+
+```ts
+// backend/src/services/ai-intake.service.ts (mesmo arquivo — reaproveita analyzeProduct sem alterá-la)
+export async function reanalyzeProduct(productId: string): Promise<AiSuggestedProduct> {
+  const product = await productRepository.findById(db, productId);
+  if (!product) throw new ProductNotFoundError();               // já existe em product.service.ts (005)
+  if (product.imagens.galeria.length === 0) throw new NoSavedImagesError(); // novo
+
+  const images = await Promise.all(
+    product.imagens.galeria.map((img) => imageProvider.download(img.id)),
+  );
+  const prompt = product.identificacao.descricao || product.identificacao.nome;
+
+  return analyzeProduct({ prompt, images });
+}
+```
+
+`analyzeProduct` (seção 5 acima) **não muda** — a reanálise só monta um `AnalyzeProductInput`
+diferente (imagens vindas do Blob Storage em vez de upload direto) e chama a mesma função,
+herdando de graça: validação `.strict()`, revalidação de categoria (`assertCategoryActive`),
+todas as defesas de prompt injection (spec, seção 8), guardrails de sistema. `ProductNotFoundError`
+é **reaproveitada** de `product.service.ts` (005) — não é criada uma segunda classe de erro
+para o mesmo caso.
+
+### 8.3 Rota
+
+```
+POST /api/products/:id/reanalyze
+```
+
+Registrada em `ai-intake.routes.ts` (mesmo arquivo de `/analyze` e `/confirm` — prefixo
+`/api/products` já mapeia `:id/reanalyze` corretamente, sem colidir com nenhuma rota de
+`product.routes.ts`, que não tem `POST /:id`). Mesmo `writeGuard` (`admin`/`operator`) e mesmo
+`config.rateLimit` de `/analyze` — reaproveita a constante `AI_ANALYZE_RATE_LIMIT` existente,
+**não cria um orçamento novo** (spec, seção 9.1). Sem corpo de requisição. Erros mapeados:
+`ProductNotFoundError` → 404, `NoSavedImagesError` → 400, `InvalidAiResponseError` (já
+existente) → 400.
+
+### 8.4 Frontend
+
+```
+frontend/src/services/ai-intake.service.ts   # + reanalyze(productId): Promise<AiSuggestedProduct>
+frontend/src/hooks/useAiAnalysis.ts          # + useReanalyzeProduct() (mutation)
+frontend/src/schemas/ai-intake.schema.ts     # aiSuggestionToFormValues ganha 2º parâmetro opcional
+                                              #   base: ProductFormValues = DEFAULT_PRODUCT_FORM_VALUES
+frontend/src/features/products/ProductForm.tsx  # botão "Reavaliar com IA" — ver 005/plan.md, seção 9
+```
+
+`aiSuggestionToFormValues(suggestion, base?)`: no cadastro (uso existente, `AiReviewForm.tsx`)
+continua partindo do default em branco (chamada sem segundo argumento); na reavaliação em
+edição (005) passa `getValues()` do formulário aberto, preservando preço/estoque/e-commerce/
+status/sku/fotos intocados — único ponto de mudança na função existente, sem quebrar o
+contrato atual (parâmetro opcional, comportamento padrão idêntico ao de hoje).
+
+Nenhuma tela nova — o botão e o preenchimento acontecem dentro do próprio `ProductForm`
+reaproveitado (005), consistente com a decisão de não duplicar a UI de revisão do cadastro
+inicial (spec, seção 9.1).
+
+### 8.5 Testes planejados
+
+- Unitário: `azure-blob.adapter` — `download` retorna buffer+mimeType corretos (contra um
+  emulador/mock do SDK, sem Azure real, mesmo padrão já usado para `upload`/`remove`);
+  `ai-intake.service.reanalyzeProduct` — produto sem fotos rejeita sem chamar o adapter de IA;
+  produto inexistente rejeita; monta `prompt` a partir de `descricao` (ou `nome` se `descricao`
+  vazia); resultado idêntico ao de `analyzeProduct` dado o mesmo input (mock de
+  `ImageProviderPort.download` + adapter de IA mockado, mesma seam `setAiProviderForTesting`).
+- Integração: `POST /api/products/:id/reanalyze` sem autenticação → 401; `viewer` → 403;
+  produto inexistente → 404; produto sem fotos → 400 sem chamar o provider de IA (spy); produto
+  com fotos (image provider + IA mockados) → 200 com `AiSuggestedProduct` válido — confirma que
+  nenhum documento em `products` é alterado pela chamada (mesma garantia de `/analyze`,
+  contagem/hash do documento antes/depois).
+- E2E: fora de escopo automatizar por ora — dependeria de um produto já cadastrado com fotos
+  reais mais uma segunda chamada ao provedor de IA real (custo/latência adicional, mesma
+  filosofia de "validar manualmente uma vez" já usada para o fluxo de cadastro, seção 5 acima);
+  reavaliado por validação manual no critério de aceite (spec, seção 9.3), não por um spec
+  Playwright novo.
+
+### 8.6 Riscos / decisões em aberto
+
+- Confirmar em implementação se `BlockBlobClient.download()` do SDK `@azure/storage-blob`
+  retorna `contentType` diretamente na resposta (mais barato, uma chamada só) ou se é
+  necessário um `getProperties()` à parte por imagem (uma chamada HTTP a mais cada) — decisão
+  de implementação, não de contrato.
+- `prompt` da reanálise usa `descricao` (ou `nome`) tal como estão gravados — se o operador
+  nunca preencheu nenhum dos dois (cadastro muito antigo/incompleto), a IA recebe uma string
+  vazia; `analyzeProduct` já lida com isso hoje (mesmo caminho de uma descrição vazia digitada
+  manualmente no cadastro por IA) — sem tratamento especial adicional necessário.

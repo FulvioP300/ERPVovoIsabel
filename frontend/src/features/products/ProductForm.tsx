@@ -3,6 +3,9 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { ImageUploader } from "../../components/ImageUploader";
 import { useCategories } from "../../hooks/useCategories";
+import { useReanalyzeProduct } from "../../hooks/useAiAnalysis";
+import { aiSuggestionToFormValues, type AiSuggestedProduct } from "../../schemas/ai-intake.schema";
+import { AiConfidenceBadges } from "../products-ai/AiConfidenceBadges";
 import {
   CONDICAO_ESTADO_LABELS,
   CondicaoEstadoEnum,
@@ -31,6 +34,9 @@ interface ProductFormProps {
   mode: "create" | "edit" | "view";
   defaultValues: ProductFormValues;
   defaultImages?: Imagem[];
+  /** Só presente no modo edição — habilita o botão "Reavaliar com IA" (spec 006, seção 9; 005,
+   * seção 4.3). */
+  productId?: string;
   onSubmit: (values: ProductFormValues, imagens: Imagem[]) => Promise<void>;
   isSubmitting: boolean;
 }
@@ -40,15 +46,20 @@ interface ProductFormProps {
  * por 006-produtos-cadastro-ia para revisão dos campos gerados pela IA. Campos "de lista"
  * (estilo, defeitos, tags etc.) usam texto separado por vírgula (ver product.schema.ts).
  */
-export function ProductForm({ mode, defaultValues, defaultImages = [], onSubmit, isSubmitting }: ProductFormProps) {
+export function ProductForm({ mode, defaultValues, defaultImages = [], productId, onSubmit, isSubmitting }: ProductFormProps) {
   const { data: categories } = useCategories(true);
   const [images, setImages] = useState<Imagem[]>(defaultImages);
+  const [justSaved, setJustSaved] = useState(false);
+  const [lastSuggestion, setLastSuggestion] = useState<AiSuggestedProduct | null>(null);
+  const reanalyze = useReanalyzeProduct();
   const {
     register,
     handleSubmit,
     watch,
     setError,
-    formState: { errors },
+    reset,
+    getValues,
+    formState: { errors, isDirty },
   } = useForm<ProductFormValues>({
     resolver: zodResolver(ProductFormSchema),
     defaultValues,
@@ -59,8 +70,26 @@ export function ProductForm({ mode, defaultValues, defaultImages = [], onSubmit,
   async function submit(values: ProductFormValues) {
     try {
       await onSubmit(values, images);
+      // Edição permanece na mesma tela depois de salvar (005, seção 4.2) — limpa o estado
+      // "dirty" sem trocar os valores exibidos e mostra a confirmação; some sozinha assim que
+      // `isDirty` voltar a `true` (qualquer campo editado de novo), sem efeito/assinatura extra.
+      reset(values);
+      setJustSaved(true);
     } catch (err) {
       setError("root", { message: err instanceof Error ? err.message : "Não foi possível salvar." });
+      setJustSaved(false);
+    }
+  }
+
+  async function handleReanalyze() {
+    if (!productId) return;
+    setJustSaved(false);
+    try {
+      const suggestion = await reanalyze.mutateAsync(productId);
+      reset(aiSuggestionToFormValues(suggestion, getValues()));
+      setLastSuggestion(suggestion);
+    } catch {
+      // Erro já exposto via `reanalyze.error` abaixo — nada a fazer aqui.
     }
   }
 
@@ -117,6 +146,31 @@ export function ProductForm({ mode, defaultValues, defaultImages = [], onSubmit,
       <fieldset className={sectionClass}>
         <legend className={sectionTitleClass}>Fotos</legend>
         <ImageUploader images={images} onChange={setImages} disabled={isSubmitting || mode === "view"} />
+
+        {mode === "edit" && productId && (
+          <div className="space-y-2 border-t border-gray-100 pt-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                className={buttonClass}
+                disabled={images.length === 0 || reanalyze.isPending}
+                onClick={() => void handleReanalyze()}
+              >
+                {reanalyze.isPending ? "Reavaliando..." : "Reavaliar com IA"}
+              </button>
+              <p className="text-sm text-gray-500">
+                Usa as fotos já salvas da peça — se você acabou de adicionar ou remover fotos, salve as
+                alterações antes de reavaliar.
+              </p>
+            </div>
+            {reanalyze.isError && (
+              <p className={errorClass}>
+                {reanalyze.error instanceof Error ? reanalyze.error.message : "Não foi possível reavaliar por IA."}
+              </p>
+            )}
+            {lastSuggestion && <AiConfidenceBadges suggestion={lastSuggestion} />}
+          </div>
+        )}
       </fieldset>
 
       <fieldset className={sectionClass}>
@@ -519,9 +573,16 @@ export function ProductForm({ mode, defaultValues, defaultImages = [], onSubmit,
       {errors.root?.message && <p className={errorClass}>{errors.root.message}</p>}
 
       {mode !== "view" && (
-        <button type="submit" className={buttonClass} disabled={isSubmitting}>
-          {isSubmitting ? "Salvando..." : mode === "create" ? "Cadastrar produto" : "Salvar alterações"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button type="submit" className={buttonClass} disabled={isSubmitting}>
+            {isSubmitting ? "Salvando..." : mode === "create" ? "Cadastrar produto" : "Salvar alterações"}
+          </button>
+          {justSaved && !isDirty && (
+            <p className="text-sm text-green-700" role="status">
+              Alterações salvas.
+            </p>
+          )}
+        </div>
       )}
     </form>
   );

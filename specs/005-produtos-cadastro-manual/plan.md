@@ -113,3 +113,46 @@ ProductFormPage (RHF + Zod)
 - Confirmar com o time se `operator` pode de fato executar soft-delete (`DELETE`) — a spec
   002 lista "excluir logicamente produtos" apenas em permissões de `admin`; ajustar
   `authorize` de `DELETE /api/products/:id` para `["admin"]` antes da implementação final.
+
+## 8. Edição sem navegação automática (spec, seção 4.2 — 24/09/2026)
+
+Sem mudança de backend — reaproveita integralmente `PATCH /api/products/:id` (seção 6) e a
+auditoria `PRODUCT_UPDATE` já existente. Mudança é só de frontend:
+
+- `ProductForm.tsx`: dentro de `submit()`, depois de `await onSubmit(values, images)` resolver
+  com sucesso, chama `reset(values)` (React Hook Form) — limpa o estado "dirty"/touched sem
+  trocar os valores exibidos — e liga uma flag local (`useState<boolean>`) que mostra uma
+  confirmação inline `role="status"` ("Alterações salvas."), no mesmo padrão visual já usado em
+  `MarketplaceAccountsPage.tsx` (`text-sm text-green-700`). A flag desliga automaticamente na
+  próxima alteração de campo (assinatura do `watch()` já usada para `possui_defeitos`).
+- `ProductFormPage.tsx` → `EditProductSection`: `handleUpdate` continua chamando
+  `update.mutateAsync(...)`, mas **para de chamar `onDone()`** depois — o cache do TanStack
+  Query (`useProductMutations`) já é invalidado/atualizado pela mutação, então o formulário
+  permanece montado, agora refletindo o produto persistido. Ganha um link explícito
+  `<Link to="/products">← Voltar para produtos</Link>` no cabeçalho da tela, independente do
+  botão de salvar.
+- `handleCreate` (cadastro) **não muda** — `onDone()` continua navegando para `/products` após
+  criar, por decisão explícita (spec, seção 4.2).
+
+## 9. Reavaliar por IA (spec, seção 4.3; [006/plan.md, seção 8](../006-produtos-cadastro-ia/plan.md#8-reavaliação-de-produto-existente-24092026) — 24/09/2026)
+
+A lógica de IA (rota, serviço, adapter) é toda de 006 — aqui só a integração no formulário
+reutilizável:
+
+- `ProductForm.tsx` ganha uma prop opcional `productId?: string`. Quando `mode === "edit"` **e**
+  `productId` está presente, renderiza o botão "Reavaliar com IA" (posição sugerida: seção
+  "Fotos", perto do `ImageUploader"), usando o hook `useReanalyzeProduct` (006).
+- Botão desabilitado quando `images.length === 0` (a galeria local do form já reflete a
+  galeria persistida na entrada em modo edição) — mesmo texto que o backend devolveria em erro,
+  evitado no cliente antes de gastar uma chamada de IA. Texto auxiliar ao lado do botão:
+  "Usa as fotos já salvas da peça — se você acabou de adicionar ou remover fotos, salve as
+  alterações antes de reavaliar" (a reanálise lê a galeria **persistida** no banco, não o
+  estado local ainda não salvo — comportamento aceito, não um bug, ver 006 seção 9.1).
+- Em caso de sucesso: `reset(aiSuggestionToFormValues(suggestion, getValues()))` — a função de
+  006 ganha um segundo parâmetro opcional `base` (a mudança está detalhada no plan de 006) para
+  fundir a sugestão nos valores **atuais** do formulário em vez de reiniciar a partir dos
+  defaults em branco do cadastro; preço, estoque, e-commerce, status, sku e fotos nunca são
+  tocados (garantia estrutural de `AiSuggestedProductSchema`, 006 seção 5/8). Os badges de
+  confiança (`AiConfidenceBadges`, 006) aparecem para os campos recém-preenchidos.
+- Sem tela de revisão separada — o operador ajusta os campos recém-preenchidos ali mesmo e usa
+  o fluxo normal de salvar (seção 8 acima) para persistir.

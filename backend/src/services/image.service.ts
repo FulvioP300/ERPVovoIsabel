@@ -1,4 +1,4 @@
-import type { ImageProviderPort, UploadedImage } from "../plugins/images/image-provider.port.js";
+import type { DownloadedImage, ImageProviderPort, UploadedImage } from "../plugins/images/image-provider.port.js";
 import { AzureBlobImageProvider } from "../plugins/images/azure-blob.adapter.js";
 import { ALLOWED_IMAGE_MIME_TYPES, MAX_IMAGE_SIZE_BYTES } from "../schemas/image.schema.js";
 
@@ -60,4 +60,10 @@ export async function uploadImage(input: UploadImageInput): Promise<UploadedImag
 
 export async function removeImage(id: string): Promise<void> {
   await getProvider().remove(id);
+}
+
+/** Usado pela reavaliação por IA de um produto já cadastrado (006, spec seção 9) — busca uma
+ * foto já enviada, pelo mesmo `id` persistido em `products.imagens.galeria`. */
+export async function downloadImage(id: string): Promise<DownloadedImage> {
+  return getProvider().download(id);
 }

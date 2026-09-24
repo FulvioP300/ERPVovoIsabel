@@ -14,8 +14,13 @@ async function loginAsAdmin(page: Page) {
   await page.waitForURL("/");
 }
 
+// Achado real (24/09/2026): `ProductForm.tsx` envolve todas as seções num
+// `<fieldset class="contents">` (trava tudo no modo "view") — sem excluí-lo, `hasText`
+// também casa com esse wrapper (que contém o texto de toda seção como descendente), e
+// `.first()` sempre resolve pra ele (primeiro `<fieldset>` no DOM), silenciosamente buscando
+// em TODO o formulário em vez de só na seção pedida.
 function fieldset(page: Page, legend: string): Locator {
-  return page.locator("fieldset", { hasText: legend }).first();
+  return page.locator("fieldset:not(.contents)", { hasText: legend }).first();
 }
 
 async function createMinimalProduct(page: Page, nome: string) {
@@ -28,7 +33,13 @@ async function createMinimalProduct(page: Page, nome: string) {
 }
 
 // T025 — spec 005-produtos-cadastro-manual, tasks.md
-test("admin edita nome e preço de uma peça e a mudança aparece na listagem", async ({ page }) => {
+// Achado real (24/09/2026, spec seção 4.2/T035): salvar na edição deixou de navegar de volta
+// pra listagem automaticamente — o teste original esperava `waitForURL("**/products")` logo
+// após o submit, o que quebrou com a mudança. Agora confirma a permanência na tela (mensagem
+// "Alterações salvas.") e só então sai explicitamente pelo link "Voltar para produtos".
+test("admin edita nome e preço de uma peça, permanece na tela de edição, e a mudança aparece na listagem", async ({
+  page,
+}) => {
   await loginAsAdmin(page);
 
   const nomeOriginal = `E2E Peça Edição ${Date.now()}`;
@@ -38,6 +49,7 @@ test("admin edita nome e preço de uma peça e a mudança aparece na listagem", 
   await expect(row).toBeVisible();
   await row.getByText("Editar").click();
   await page.waitForURL(/\/products\/[a-f0-9]+$/);
+  const editUrl = page.url();
 
   const nomeEditado = `${nomeOriginal} (editado)`;
   await fieldset(page, "Identificação").locator('input[type="text"]').first().fill(nomeEditado);
@@ -46,13 +58,17 @@ test("admin edita nome e preço de uma peça e a mudança aparece na listagem", 
   await page.getByLabel("Preço de venda").fill("149.90");
   await page.click('button[type="submit"]');
 
+  await expect(page.getByText("Alterações salvas.")).toBeVisible();
+  expect(page.url()).toBe(editUrl);
+
+  await page.getByRole("link", { name: /voltar para produtos/i }).click();
   await page.waitForURL("**/products");
   const editedRow = page.locator("tr", { hasText: nomeEditado });
   await expect(editedRow).toBeVisible();
   await expect(editedRow).toContainText("149,90");
 });
 
-test("admin preenche o peso (kg, com casas decimais) e o valor persiste após reabrir a edição", async ({
+test("admin preenche o peso (kg, com casas decimais) e o valor persiste sem sair da tela de edição", async ({
   page,
 }) => {
   await loginAsAdmin(page);
@@ -63,12 +79,15 @@ test("admin preenche o peso (kg, com casas decimais) e o valor persiste após re
   const row = page.locator("tr", { hasText: nome });
   await row.getByText("Editar").click();
   await page.waitForURL(/\/products\/[a-f0-9]+$/);
+  const editUrl = page.url();
 
   await page.getByLabel("Peso (kg)").fill("0.35");
   await page.click('button[type="submit"]');
-  await page.waitForURL("**/products");
+  await expect(page.getByText("Alterações salvas.")).toBeVisible();
+  expect(page.url()).toBe(editUrl);
 
-  await row.getByText("Editar").click();
-  await page.waitForURL(/\/products\/[a-f0-9]+$/);
+  // Recarrega a mesma tela (em vez de ir e voltar pela listagem) pra confirmar que persistiu
+  // de verdade no banco, não só no estado local do formulário.
+  await page.reload();
   await expect(page.getByLabel("Peso (kg)")).toHaveValue("0.35");
 });

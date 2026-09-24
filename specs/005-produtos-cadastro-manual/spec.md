@@ -142,6 +142,34 @@ tanto adicionar novas fotos quanto apagar fotos já existentes da peça. A prime
 galeria é usada automaticamente como `imagens.principal` (capa exibida na listagem, seção 5) —
 não há seletor dedicado de "foto principal" no MVP.
 
+### 4.2 Edição — salvar sem sair da tela (24/09/2026)
+
+Diferente do cadastro (que, ao salvar pela primeira vez, navega para a listagem de produtos —
+comportamento inalterado), a tela de **edição** de um produto já existente permanece na mesma
+tela depois de salvar (`PATCH /api/products/:id`) — sem redirecionamento automático para a
+listagem. O formulário exibe uma confirmação visual de que as alterações foram salvas e
+atualiza seus campos com o produto retornado pela API; a auditoria (`PRODUCT_UPDATE`,
+[008-auditoria](../008-auditoria/spec.md)) continua sendo gerada normalmente a cada
+salvamento. A tela tem um link/botão explícito "Voltar para produtos", independente do botão
+de salvar, para o operador sair quando quiser — a navegação deixa de ser automática, mas
+continua disponível a um clique.
+
+Motivação: o operador frequentemente ajusta um produto em várias idas e vindas na mesma
+sessão (ex.: salva uma correção, reavalia por IA — seção 4.3 — ajusta o resultado, salva de
+novo) e ser devolvido à listagem a cada salvamento obrigava reabrir a edição repetidamente.
+
+### 4.3 Reavaliar por IA (24/09/2026)
+
+A tela de edição de um produto existente tem um botão "Reavaliar com IA", que roda a mesma
+análise de IA do cadastro assistido
+([006](../006-produtos-cadastro-ia/spec.md#9-reavaliação-por-ia-produto-já-cadastrado)) sobre
+as fotos **já cadastradas** da peça (galeria atual — não é preciso reenviar fotos), e preenche
+os campos correspondentes do formulário de edição diretamente para revisão — sem sair da tela
+de edição e sem uma tela de revisão separada (diferente do cadastro inicial, seção 3 de 006).
+O operador ajusta livremente os campos preenchidos e usa o fluxo normal de salvar (seção 4.2)
+para persistir; nada é gravado automaticamente pela reavaliação em si. Ver 006, seção 9, para
+o fluxo completo, a API e as garantias de segurança/Human in the Loop.
+
 ## 5. Administração de produtos
 
 Tela "Produtos" com: busca, filtros, ordenação, paginação, novo produto, edição,

@@ -3,14 +3,18 @@ import { authorize } from "../middleware/authorize.middleware.js";
 import { AiAnalysisInputSchema } from "../schemas/ai-intake.schema.js";
 import { CreateProductSchema, ProductSchema } from "../schemas/product.schema.js";
 import {
+  ImageDownloadFailedError,
   InvalidAiResponseError,
   NoImagesProvidedError,
+  NoSavedImagesError,
   TooManyImagesError,
   analyzeProduct,
+  reanalyzeProduct,
 } from "../services/ai-intake.service.js";
 import { InvalidCategoryError } from "../services/category.service.js";
 import { ImageTooLargeError, InvalidImageTypeError } from "../services/image.service.js";
 import { confirmProduct } from "../services/product-confirm.service.js";
+import { ProductNotFoundError } from "../services/product.service.js";
 
 /** Limite configurável (spec 006, seção 7) — conter custo de IA e tentativas de prompt
  * injection por força bruta (spec, seção 8.2-H). */
@@ -81,4 +85,31 @@ export default async function aiIntakeRoutes(fastify: FastifyInstance) {
       throw err;
     }
   });
+
+  // Reavaliação de produto já cadastrado (spec, seção 9) — mesma análise de `/analyze`, fotos
+  // já salvas na galeria do produto em vez de upload novo; nunca persiste nem gera SKU. Mesmo
+  // rate limit de `/analyze` (não abre um orçamento novo pro mesmo tipo de abuso/custo).
+  fastify.post(
+    "/:id/reanalyze",
+    { ...writeGuard, config: { rateLimit: { max: AI_ANALYZE_RATE_LIMIT, timeWindow: "1 minute" } } },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+
+      try {
+        const suggestion = await reanalyzeProduct(id);
+        return { success: true, data: suggestion };
+      } catch (err) {
+        if (err instanceof ProductNotFoundError) {
+          return reply.code(404).send({ success: false, error: err.message });
+        }
+        if (err instanceof NoSavedImagesError || err instanceof InvalidAiResponseError) {
+          return reply.code(400).send({ success: false, error: err.message });
+        }
+        if (err instanceof ImageDownloadFailedError) {
+          return reply.code(502).send({ success: false, error: err.message });
+        }
+        throw err;
+      }
+    },
+  );
 }

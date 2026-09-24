@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { BlobServiceClient, type ContainerClient } from "@azure/storage-blob";
-import type { ImageProviderPort, UploadedImage } from "./image-provider.port.js";
+import type { DownloadedImage, ImageProviderPort, UploadedImage } from "./image-provider.port.js";
 
 /**
  * Adapter concreto do `ImageProviderPort` para Azure Blob Storage (ADR-001/ADR-003).
@@ -40,5 +40,13 @@ export class AzureBlobImageProvider implements ImageProviderPort {
 
   async remove(id: string): Promise<void> {
     await this.containerClient.getBlockBlobClient(id).deleteIfExists();
+  }
+
+  async download(id: string): Promise<DownloadedImage> {
+    const blockBlobClient = this.containerClient.getBlockBlobClient(id);
+    // `contentType` não é persistido em `products.imagens` (005, seção 2) — só o Azure sabe o
+    // MIME type gravado no upload (`blobHTTPHeaders.blobContentType`), daí a segunda chamada.
+    const [buffer, properties] = await Promise.all([blockBlobClient.downloadToBuffer(), blockBlobClient.getProperties()]);
+    return { buffer, mimeType: properties.contentType ?? "application/octet-stream" };
   }
 }

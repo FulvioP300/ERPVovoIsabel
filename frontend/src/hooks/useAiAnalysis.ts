@@ -9,3 +9,10 @@ export function useAiAnalysis() {
     mutationFn: ({ prompt, images }: { prompt: string; images: File[] }) => aiIntakeService.analyze(prompt, images),
   });
 }
+
+/** Reavaliação de produto já cadastrado (spec 006, seção 9) — tela de edição (005, seção 4.3). */
+export function useReanalyzeProduct() {
+  return useMutation({
+    mutationFn: (productId: string) => aiIntakeService.reanalyze(productId),
+  });
+}

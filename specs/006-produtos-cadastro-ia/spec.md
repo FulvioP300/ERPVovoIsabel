@@ -376,7 +376,80 @@ comportamento real do modelo, não de uma regra de código): deve ser validado p
 manual do prompt (seção 8.3) contra um pequeno conjunto de fotos de etiquetas reais durante a
 implementação de `ai-intake.service.ts`, antes de considerar T006 (tasks.md) concluída.
 
-## 9. Critérios de aceite
+## 9. Reavaliação por IA (produto já cadastrado) (24/09/2026)
+
+Além do cadastro inicial (seções 3–4), o operador pode acionar uma nova análise de IA sobre um
+produto **já salvo**, a partir da tela de edição
+([005](../005-produtos-cadastro-manual/spec.md#43-reavaliar-por-ia-achado-real-24092026)) —
+útil quando a etiqueta foi lida com mais atenção depois, uma foto nova foi adicionada à peça, ou
+o cadastro original (manual ou por IA) deixou campos em branco.
+
+### 9.1 Fluxo
+
+```
+Tela de edição → botão "Reavaliar com IA"
+   → POST /api/products/:id/reanalyze
+   → Backend busca as fotos já salvas da peça (imagens.galeria, 007) + descrição atual como prompt
+   → LLM multimodal → Structured Output → Zod (mesmo AiSuggestedProductSchema da seção 5)
+   → Campos do formulário de edição são preenchidos com os valores sugeridos
+   → Operador revisa/ajusta livremente e clica em "Salvar alterações" (005, seção 4.2) para persistir
+```
+
+- Usa **as fotos já cadastradas da peça** — não é preciso reenviar nada. Sem nenhuma foto na
+  galeria, o botão fica desabilitado (ou a chamada retorna erro claro sem acionar o provedor
+  de IA) — sem fotos não há o que reanalisar.
+- O texto usado como `prompt` da reanálise é a descrição atual do produto
+  (`identificacao.descricao`; se estiver vazia, usa `identificacao.nome`) — não introduz um
+  campo de texto novo na tela de edição especificamente para isso.
+- **Sem tela de revisão separada** (diferente do cadastro inicial, seção 3): os valores
+  sugeridos substituem diretamente os campos correspondentes do formulário de edição já
+  aberto — o operador vê e ajusta ali mesmo, exatamente como ajustaria qualquer campo digitado
+  manualmente, antes de salvar. A reanálise em si **nunca persiste nem gera SKU** (mesma regra
+  da seção 4 para `/analyze`) — só a confirmação explícita em "Salvar alterações" (005) grava
+  no banco. Human in the Loop (constituição, princípio II) continua valendo integralmente,
+  só que colapsado na própria tela de edição em vez de uma tela de revisão dedicada.
+- Campos fora de `AiSuggestedProductSchema` (`sku`, `preco.*`, `status`, `estoque.*`,
+  `ecommerce.*`, `venda.*`, `imagens`) nunca são alterados pela reanálise — permanecem
+  exatamente como estavam antes do clique (mesma garantia estrutural da seção 5/8, defesa C).
+- Os badges de confiança por campo (seção 7, `AiConfidenceBadges`) são reaproveitados na tela
+  de edição para os campos recém-preenchidos pela reanálise.
+- Sujeita às mesmas defesas de prompt injection da seção 8 (mesmo prompt de sistema, mesmo
+  schema estrito, mesma ausência de function calling) — muda apenas a origem das imagens (já
+  estavam no Blob Storage em vez de vir de upload direto no formulário), nunca o nível de
+  desconfiança estrutural aplicado ao conteúdo.
+- Sujeita ao **mesmo rate limit** de `/analyze` (seção 7) — reaproveita o mesmo limite por
+  usuário, não abre um orçamento adicional para o mesmo tipo de abuso/custo que a seção 7 já
+  existe para conter.
+
+### 9.2 API
+
+```
+POST /api/products/:id/reanalyze
+```
+
+Sem corpo (ou corpo vazio) — todas as entradas (fotos, descrição) vêm do produto já salvo,
+identificado por `:id`. Saída: mesmo envelope e mesmo formato de `AiSuggestedProductSchema` da
+seção 5. Requer papel `admin`/`operator` (mesma regra de `/analyze` e de `PATCH
+/api/products/:id`, [005](../005-produtos-cadastro-manual/spec.md#6-api)).
+
+Retorna erro claro, sem chamar o provedor de IA, quando o produto não tem nenhuma foto em
+`imagens.galeria`.
+
+### 9.3 Critérios de aceite
+
+DADO um produto já cadastrado com pelo menos uma foto na galeria, QUANDO o operador clicar em
+"Reavaliar com IA" na tela de edição, ENTÃO o sistema deve: buscar as fotos já salvas da peça;
+enviar ao mesmo fluxo de análise de IA da seção 3 (mesmo schema, mesmas defesas de prompt
+injection da seção 8); preencher os campos correspondentes do formulário de edição com os
+valores sugeridos; nunca alterar `sku`/`preco.*`/`estoque.*`/`status`/`ecommerce.*`/`venda.*`/
+`imagens`; nunca salvar automaticamente — exige clique explícito em "Salvar alterações" (005)
+para persistir.
+
+DADO um produto sem nenhuma foto cadastrada, QUANDO o operador tentar reavaliar por IA, ENTÃO
+o sistema deve impedir a chamada com uma mensagem clara, sem consumir uma chamada ao provedor
+de IA (evita custo/rate-limit desnecessário para um caso já sabido inválido).
+
+## 10. Critérios de aceite
 
 **Cadastro com IA**
 DADO um operador autenticado, E fotografias de uma peça, E uma descrição textual, QUANDO
@@ -388,9 +461,10 @@ permitir edição; **não salvar automaticamente**.
 DADO que a marca não seja visível nas fotos, QUANDO a IA analisar a peça, ENTÃO deve produzir
 `{"marca": {"nome": null}}` — nunca inventar uma marca.
 
-(Critérios de aceite específicos de prompt injection: seção 8.4.)
+(Critérios de aceite específicos de prompt injection: seção 8.4. Critérios de aceite da
+reavaliação de produto já cadastrado: seção 9.3.)
 
-## 10. Fora de escopo
+## 11. Fora de escopo
 
 Recomendação de produtos por IA, precificação automática por IA, geração automática de SKU
 pela IA (proibido em qualquer fase) — ver constituição. **Qualquer capacidade de
@@ -398,12 +472,12 @@ function/tool calling, acesso a rede, ou ação autônoma do modelo** também es
 permanentemente fora de escopo desta spec (seção 8.2, defesa E) — não é uma limitação
 temporária a remover depois, é uma decisão de segurança.
 
-## 11. Conformidade constitucional
+## 12. Conformidade constitucional
 
 Esta spec é a implementação direta do princípio I ("A IA interpreta; a aplicação decide") e
 do princípio II (Human in the Loop) da [constituição](../../memory/constitution.md). A seção
 8 (proteção contra prompt injection) implementa o princípio VII ("Segurança por padrão, não
 por adição posterior") especificamente para a única integração do projeto que expõe um LLM a
-conteúdo fornecido por usuário; a ausência de function/tool calling (seção 10) implementa o
+conteúdo fornecido por usuário; a ausência de function/tool calling (seção 11) implementa o
 princípio VI (integrações externas abstraídas e de superfície mínima) e o princípio V
 (simplicidade arquitetural — nenhuma orquestração de agente/ferramentas nesta fase).

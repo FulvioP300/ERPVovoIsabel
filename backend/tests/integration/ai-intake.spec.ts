@@ -3,7 +3,9 @@ import type { FastifyInstance } from "fastify";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { hashPassword } from "../../src/services/password.service.js";
 import { setAiProviderForTesting } from "../../src/services/ai-intake.service.js";
+import { setImageProviderForTesting } from "../../src/services/image.service.js";
 import type { AiProviderPort } from "../../src/plugins/ai/ai-provider.port.js";
+import type { ImageProviderPort } from "../../src/plugins/images/image-provider.port.js";
 
 let mongoServer: MongoMemoryServer;
 let app: FastifyInstance;
@@ -294,5 +296,121 @@ describe("POST /api/products/confirm", () => {
     });
 
     expect(response.statusCode).toBe(400);
+  });
+});
+
+describe("POST /api/products/:id/reanalyze (spec 006, seção 9 — 24/09/2026)", () => {
+  function fakeImageProvider(): ImageProviderPort {
+    return {
+      upload: vi.fn().mockResolvedValue({ id: "fake-id.jpg", url: "https://blob.test/fake-id.jpg" }),
+      remove: vi.fn().mockResolvedValue(undefined),
+      download: vi.fn().mockResolvedValue({ buffer: Buffer.from("fake-bytes"), mimeType: "image/jpeg" }),
+    };
+  }
+
+  async function createProductWithPhoto(overrides: Record<string, unknown> = {}) {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/products",
+      headers: { cookie: `accessToken=${operatorCookie}` },
+      payload: {
+        identificacao: { nome: "Bermuda Jeans Stretch", descricao: "Bermuda jeans azul, tamanho 32" },
+        classificacao: { categoria_codigo: "BERM" },
+        condicao: { estado: "novo" },
+        imagens: { principal: null, galeria: [{ id: "foto-1.jpg", url: "https://blob.test/foto-1.jpg", ordem: 0, tipo: null }] },
+        ...overrides,
+      },
+    });
+    return response.json().data.id as string;
+  }
+
+  it("sem autenticação retorna 401", async () => {
+    const response = await app.inject({ method: "POST", url: "/api/products/000000000000000000000000/reanalyze" });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("viewer não pode reavaliar (403)", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/products/000000000000000000000000/reanalyze",
+      headers: { cookie: `accessToken=${viewerCookie}` },
+    });
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("produto inexistente: 404", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/products/000000000000000000000000/reanalyze",
+      headers: { cookie: `accessToken=${operatorCookie}` },
+    });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it("produto sem nenhuma foto: 400, sem chamar o provedor de IA", async () => {
+    const productId = await createProductWithPhoto({ imagens: { principal: null, galeria: [] } });
+    const provider = fakeProvider(validSuggestion());
+    setAiProviderForTesting(provider);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/products/${productId}/reanalyze`,
+      headers: { cookie: `accessToken=${operatorCookie}` },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(provider.analyze).not.toHaveBeenCalled();
+  });
+
+  it("produto com foto: 200 com sugestão estruturada, e nenhum documento é alterado", async () => {
+    setImageProviderForTesting(fakeImageProvider());
+    const productId = await createProductWithPhoto();
+    setAiProviderForTesting(fakeProvider(validSuggestion({ identificacao: { nome: "Bermuda revista pela IA", descricao: null } })));
+
+    const before = await app.inject({
+      method: "GET",
+      url: `/api/products/${productId}`,
+      headers: { cookie: `accessToken=${operatorCookie}` },
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/products/${productId}/reanalyze`,
+      headers: { cookie: `accessToken=${operatorCookie}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.success).toBe(true);
+    expect(body.data.identificacao.nome).toBe("Bermuda revista pela IA");
+    expect(body.data.sku).toBeUndefined();
+
+    const after = await app.inject({
+      method: "GET",
+      url: `/api/products/${productId}`,
+      headers: { cookie: `accessToken=${operatorCookie}` },
+    });
+    expect(after.json().data.identificacao.nome).toBe(before.json().data.identificacao.nome);
+  });
+
+  it("achado real testando (24/09/2026): foto órfã (blob não existe mais no provedor) — 502 com mensagem clara, nunca vaza erro do SDK", async () => {
+    setImageProviderForTesting({
+      upload: vi.fn(),
+      remove: vi.fn(),
+      download: vi.fn().mockRejectedValue(Object.assign(new Error(""), { name: "RestError", statusCode: 404 })),
+    });
+    const productId = await createProductWithPhoto();
+    const provider = fakeProvider(validSuggestion());
+    setAiProviderForTesting(provider);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/products/${productId}/reanalyze`,
+      headers: { cookie: `accessToken=${operatorCookie}` },
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json().success).toBe(false);
+    expect(provider.analyze).not.toHaveBeenCalled();
   });
 });

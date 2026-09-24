@@ -244,6 +244,87 @@ Fixtures de teste atualizados em `shared/schemas/ai-intake.schema.test.ts`,
 `backend/src/services/ai-intake.service.test.ts` e `backend/tests/integration/ai-intake.spec.ts`
 (mesma classe de fixture desatualizada já corrigida uma vez nesta sessão para coxa/entrepasso).
 
+## Fase 7 — Reavaliação de produto existente (24/09/2026, spec seção 9; plan.md seção 8)
+
+Pedido do usuário: um botão na tela de edição de produto (005) reavalia a peça pela mesma IA
+do cadastro, usando as fotos **já salvas**, e preenche os campos direto no formulário — sem
+tela de revisão separada. Ver [005/tasks.md](../005-produtos-cadastro-manual/tasks.md), Fase 8,
+para a integração em `ProductForm.tsx`/`ProductFormPage.tsx`.
+
+- [x] T020 [P] `backend/src/plugins/images/image-provider.port.ts` ganha
+      `download(id: string): Promise<DownloadedImage>` (`{buffer, mimeType}`);
+      `backend/src/plugins/images/azure-blob.adapter.ts` implementa via
+      `BlockBlobClient.downloadToBuffer()` + `getProperties()` (MIME type gravado no upload,
+      `blobHTTPHeaders.blobContentType`) — ver plan.md, seção 8.1. `image.service.ts` ganha
+      `downloadImage(id)` (mesmo padrão de `uploadImage`/`removeImage`). Teste unitário em
+      `image.service.test.ts` (fake provider); fakes `ImageProviderPort` existentes em
+      `images.spec.ts` atualizados com o novo método (TS exige).
+- [x] T021 `backend/src/services/ai-intake.service.ts` ganha `reanalyzeProduct(productId:
+      string): Promise<AiSuggestedProduct>` — reaproveita `getProductById` (já existe em
+      `product.service.ts`, 005 — propaga `ProductNotFoundError` de lá, não cria uma segunda
+      classe de erro), rejeita sem nenhuma foto (`NoSavedImagesError`, novo), baixa cada foto da
+      galeria via T020, monta `prompt` a partir de `identificacao.descricao` (`nome` como
+      fallback se vazia) e **reaproveita `analyzeProduct` sem alterá-la** — depende de T020.
+      **Achado real testando** (24/09/2026, ver Nota ao final desta fase): download de foto
+      órfã (blob removido fora do fluxo normal) vazava `RestError` bruto do SDK do Azure —
+      corrigido com `ImageDownloadFailedError` (novo) envolvendo qualquer falha de download.
+- [x] T022 `backend/src/routes/ai-intake.routes.ts`: nova rota `POST /:id/reanalyze` (mesmo
+      `writeGuard` — `admin`/`operator` — e mesmo `config.rateLimit`/`AI_ANALYZE_RATE_LIMIT` de
+      `/analyze`, não um orçamento novo); mapeia `ProductNotFoundError` → 404,
+      `NoSavedImagesError`/`InvalidAiResponseError` → 400, `ImageDownloadFailedError` → 502 —
+      depende de T021.
+- [x] T023 Teste de integração em `backend/tests/integration/ai-intake.spec.ts` (novo describe
+      `POST /api/products/:id/reanalyze`, 5 casos): sem autenticação → 401; `viewer` → 403;
+      produto inexistente → 404; produto sem fotos → 400 sem chamar o provedor de IA (spy);
+      produto com fotos (image provider + IA mockados) → 200 com `AiSuggestedProduct` válido,
+      confirmando que nenhum documento em `products` é alterado; foto órfã (provider mockado
+      rejeitando o download) → 502 — depende de T022.
+- [x] T024 [P] `frontend/src/services/ai-intake.service.ts` ganha `reanalyze(productId: string):
+      Promise<AiSuggestedProduct>` (`POST /api/products/:id/reanalyze`, sem corpo).
+      `frontend/src/hooks/useAiAnalysis.ts` ganha `useReanalyzeProduct()` (mutation TanStack
+      Query) — depende de T022.
+- [x] T025 `frontend/src/schemas/ai-intake.schema.ts`: `aiSuggestionToFormValues` ganha um
+      segundo parâmetro opcional `base: ProductFormValues = DEFAULT_PRODUCT_FORM_VALUES` — no
+      cadastro (`AiReviewForm.tsx`, uso existente, sem segundo argumento) continua partindo do
+      default em branco; na reavaliação em edição (005) recebe `getValues()` do formulário já
+      aberto, preservando preço/estoque/e-commerce/status/sku/fotos intocados. Teste novo em
+      `frontend/src/schemas/ai-intake.schema.test.ts` (3 casos) cobrindo o caso com `base`
+      customizado.
+- [x] T026 Integração em `frontend/src/features/products/ProductForm.tsx` — ver
+      [005/tasks.md](../005-produtos-cadastro-manual/tasks.md), Fase 8 (tarefa do botão
+      "Reavaliar com IA") — depende de T024, T025.
+
+**Validado de ponta a ponta contra o provedor de IA real e o Azure Blob Storage de dev**
+(Playwright avulso, admin real, produto de teste real): botão "Reavaliar com IA" na tela de
+edição → `POST /reanalyze` → 200 → campos do formulário preenchidos com a sugestão (nome/
+categoria/cor `null` → badges "⚠ não identificado" corretos, já que a foto de teste era um PNG
+1x1 sem conteúdo real) → confirmado via API que **nada foi persistido** no produto real
+(categoria original intacta) até um "Salvar alterações" explícito — Human in the Loop
+confirmado na prática, não só em teste mockado.
+
+## Nota (24/09/2026) — dois bugs reais encontrados testando a reavaliação no navegador
+
+Achados durante a validação manual de ponta a ponta acima (T021–T026), não cobertos pelos
+testes automatizados originais até serem adicionados:
+
+1. **Foto órfã vazava erro bruto do Azure SDK.** Um produto de teste tinha uma foto em
+   `imagens.galeria` cujo blob já não existia mais no Azure (removido fora do fluxo normal de
+   `DELETE /api/images/:id`). `azure-blob.adapter.ts.download()` propagava o `RestError`
+   (`BlobNotFound`) sem tratamento, virando um 404 vazio (`{"statusCode":404}` sem envelope) na
+   resposta HTTP. Corrigido com `ImageDownloadFailedError` (T021) — `reanalyzeProduct` envolve
+   qualquer falha de `downloadImage` numa mensagem clara, mapeada para 502 na rota (T022).
+2. **`PATCH /api/products/:id` quebrava com 500 ao adicionar a primeira foto de uma peça sem
+   nenhuma.** `product.repository.ts.flattenToDotNotation` achatava `imagens` campo a campo
+   como qualquer outra subseção — mas `imagens.principal` alterna entre `null` (nenhuma foto) e
+   um objeto (`{id,url,ordem,tipo}`), e o MongoDB recusa `$set` em `"imagens.principal.id"`
+   quando o valor atual é `null` (`MongoServerError: Cannot create field 'id' in element
+   {principal: null}`). Isso não é specific de 006 — é um bug pré-existente de 005 que só foi
+   *descoberto* testando esta feature (o roteiro natural de reavaliar por IA passa por adicionar
+   fotos numa peça que talvez não tivesse nenhuma). Corrigido em
+   [005/tasks.md](../005-produtos-cadastro-manual/tasks.md) (`ATOMIC_KEYS`, tratando `imagens`
+   como bloco atômico no `$set`, igual ao que a spec já dizia ser o comportamento pretendido)
+   — teste de regressão em `backend/tests/integration/products.spec.ts`.
+
 ## Dependências entre tarefas
 
 ```
@@ -251,4 +332,6 @@ T001,T002 → T005,T006 → T008 → T009
 T007 depende de 005 completo (T008 de 005)
 T008 → T010 (requer 008-auditoria)
 T011,T012 → T013,T014,T015 → T016 → T017 → T018,T019
+T020 → T021 → T022 → T023
+T022 → T024 → T026 (junto com T025)
 ```

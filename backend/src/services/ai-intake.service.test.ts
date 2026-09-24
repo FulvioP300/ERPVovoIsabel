@@ -3,6 +3,8 @@ import type { Category } from "../repositories/category.repository.js";
 import type { AiProviderPort } from "../plugins/ai/ai-provider.port.js";
 
 const listMock = vi.fn();
+const getProductByIdMock = vi.fn();
+const downloadImageMock = vi.fn();
 
 vi.mock("../repositories/category.repository.js", () => ({
   categoryRepository: {
@@ -14,9 +16,32 @@ vi.mock("../database/mongo.client.js", () => ({
   getDb: () => ({}),
 }));
 
-const { analyzeProduct, setAiProviderForTesting, InvalidAiResponseError, NoImagesProvidedError, TooManyImagesError } =
-  await import("./ai-intake.service.js");
+// `ProductNotFoundError` continua real (usado nos testes abaixo via `rejects.toBeInstanceOf`)
+// — só `getProductById` é fake.
+vi.mock("./product.service.js", async () => {
+  const actual = await vi.importActual<typeof import("./product.service.js")>("./product.service.js");
+  return { ...actual, getProductById: (...args: unknown[]) => getProductByIdMock(...args) };
+});
+
+// `assertValidImage` continua real (analyzeProduct depende dela) — só `downloadImage` é fake,
+// pra reanalyzeProduct não tentar falar com o Azure Blob Storage de verdade.
+vi.mock("./image.service.js", async () => {
+  const actual = await vi.importActual<typeof import("./image.service.js")>("./image.service.js");
+  return { ...actual, downloadImage: (...args: unknown[]) => downloadImageMock(...args) };
+});
+
+const {
+  analyzeProduct,
+  reanalyzeProduct,
+  setAiProviderForTesting,
+  ImageDownloadFailedError,
+  InvalidAiResponseError,
+  NoImagesProvidedError,
+  NoSavedImagesError,
+  TooManyImagesError,
+} = await import("./ai-intake.service.js");
 const { InvalidImageTypeError } = await import("./image.service.js");
+const { ProductNotFoundError } = await import("./product.service.js");
 const { MAX_PRODUCT_IMAGES } = await import("../../../shared/dist/schemas/product.schema.js");
 
 function makeCategory(overrides: Partial<Category> = {}): Category {
@@ -154,5 +179,97 @@ describe("ai-intake.service.analyzeProduct", () => {
     setAiProviderForTesting(fakeProvider(baseSuggestion()));
     const result = await analyzeProduct({ prompt: "bermuda", images: [fakeImage()] });
     expect(result.classificacao.categoria_codigo).toBe("BERM");
+  });
+});
+
+function fakeProduct(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "prod-1",
+    identificacao: { nome: "Bermuda Jeans", descricao: "Bermuda jeans azul, tamanho 32" },
+    imagens: { principal: null, galeria: [{ id: "foto-1.jpg", url: "https://blob.test/foto-1.jpg", ordem: 0, tipo: null }] },
+    ...overrides,
+  };
+}
+
+describe("ai-intake.service.reanalyzeProduct (spec 006, seção 9 — 24/09/2026)", () => {
+  beforeEach(() => {
+    listMock.mockReset();
+    listMock.mockResolvedValue([makeCategory()]);
+    getProductByIdMock.mockReset();
+    downloadImageMock.mockReset();
+    downloadImageMock.mockResolvedValue(fakeImage());
+  });
+
+  it("produto inexistente: propaga ProductNotFoundError, sem baixar fotos nem chamar a IA", async () => {
+    getProductByIdMock.mockRejectedValue(new ProductNotFoundError());
+    const provider = fakeProvider(baseSuggestion());
+    setAiProviderForTesting(provider);
+
+    await expect(reanalyzeProduct("prod-inexistente")).rejects.toBeInstanceOf(ProductNotFoundError);
+    expect(downloadImageMock).not.toHaveBeenCalled();
+    expect(provider.analyze).not.toHaveBeenCalled();
+  });
+
+  it("produto sem nenhuma foto salva: rejeita com NoSavedImagesError, sem chamar a IA", async () => {
+    getProductByIdMock.mockResolvedValue(fakeProduct({ imagens: { principal: null, galeria: [] } }));
+    const provider = fakeProvider(baseSuggestion());
+    setAiProviderForTesting(provider);
+
+    await expect(reanalyzeProduct("prod-1")).rejects.toBeInstanceOf(NoSavedImagesError);
+    expect(provider.analyze).not.toHaveBeenCalled();
+  });
+
+  it("baixa cada foto da galeria e usa a descrição atual como prompt", async () => {
+    getProductByIdMock.mockResolvedValue(
+      fakeProduct({
+        imagens: {
+          principal: null,
+          galeria: [
+            { id: "foto-1.jpg", url: "https://blob.test/foto-1.jpg", ordem: 0, tipo: null },
+            { id: "foto-2.jpg", url: "https://blob.test/foto-2.jpg", ordem: 1, tipo: null },
+          ],
+        },
+      }),
+    );
+    const provider = fakeProvider(baseSuggestion());
+    setAiProviderForTesting(provider);
+
+    await reanalyzeProduct("prod-1");
+
+    expect(downloadImageMock).toHaveBeenCalledTimes(2);
+    expect(downloadImageMock).toHaveBeenCalledWith("foto-1.jpg");
+    expect(downloadImageMock).toHaveBeenCalledWith("foto-2.jpg");
+    const [sentPrompt] = (provider.analyze as ReturnType<typeof vi.fn>).mock.calls[0] as [string, unknown];
+    expect(sentPrompt).toContain("Bermuda jeans azul, tamanho 32");
+  });
+
+  it("descrição vazia: usa o nome do produto como prompt", async () => {
+    getProductByIdMock.mockResolvedValue(fakeProduct({ identificacao: { nome: "Bermuda Jeans", descricao: "" } }));
+    const provider = fakeProvider(baseSuggestion());
+    setAiProviderForTesting(provider);
+
+    await reanalyzeProduct("prod-1");
+
+    const [sentPrompt] = (provider.analyze as ReturnType<typeof vi.fn>).mock.calls[0] as [string, unknown];
+    expect(sentPrompt).toContain("Bermuda Jeans");
+  });
+
+  it("resultado idêntico ao de analyzeProduct dado o mesmo input (mesma validação/defesas)", async () => {
+    getProductByIdMock.mockResolvedValue(fakeProduct());
+    setAiProviderForTesting(fakeProvider(baseSuggestion({ marca: { nome: "Nike", original: true } })));
+
+    const result = await reanalyzeProduct("prod-1");
+    expect(result.marca.nome).toBe("Nike");
+    expect(result.classificacao.categoria_codigo).toBe("BERM");
+  });
+
+  it("achado real testando (24/09/2026): foto órfã (blob removido direto no Azure, fora de DELETE /api/images) — nunca vaza o erro bruto do SDK, converte em ImageDownloadFailedError", async () => {
+    getProductByIdMock.mockResolvedValue(fakeProduct());
+    downloadImageMock.mockRejectedValue(Object.assign(new Error(""), { name: "RestError", statusCode: 404 }));
+    const provider = fakeProvider(baseSuggestion());
+    setAiProviderForTesting(provider);
+
+    await expect(reanalyzeProduct("prod-1")).rejects.toBeInstanceOf(ImageDownloadFailedError);
+    expect(provider.analyze).not.toHaveBeenCalled();
   });
 });

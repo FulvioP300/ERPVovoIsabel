@@ -28,10 +28,22 @@ function toProduct(doc: ProductDocument): Product {
 }
 
 /**
+ * `imagens.principal` alterna entre `null` (nenhuma foto ainda) e um objeto (`{id, url, ordem,
+ * tipo}`) — achatar essa subseção por campo faz o Mongo recusar `$set` de
+ * `"imagens.principal.id"` sempre que o valor atual for `null` ("Cannot create field 'id' in
+ * element {principal: null}", achado real testando a reavaliação por IA, 24/09/2026: salvar a
+ * primeira foto de uma peça que não tinha nenhuma quebrava com 500). `imagens` já era pra ser
+ * tratada como bloco atômico (005/007 — o cliente sempre envia a galeria completa), não campo a
+ * campo; as demais subseções não têm esse padrão de campo nullable-ou-objeto, só `imagens`.
+ */
+const ATOMIC_KEYS = new Set(["imagens"]);
+
+/**
  * Achata um objeto aninhado em pares de dot-notation (`{a: {b: 1}}` → `{"a.b": 1}`) para uso
  * em `$set` — permite ao PATCH atualizar só os campos enviados, sem sobrescrever os irmãos
- * não enviados na mesma subseção. Arrays e `Date` são tratados como valor-folha (nunca
- * achatados por índice). Chaves com valor `undefined` são omitidas (nunca tocam o campo).
+ * não enviados na mesma subseção. Arrays, `Date` e as chaves em `ATOMIC_KEYS` são tratados como
+ * valor-folha (nunca achatados por dentro). Chaves com valor `undefined` são omitidas (nunca
+ * tocam o campo).
  */
 function flattenToDotNotation(obj: Record<string, unknown>, prefix = ""): Record<string, unknown> {
   const result: Record<string, unknown> = {};
@@ -40,7 +52,7 @@ function flattenToDotNotation(obj: Record<string, unknown>, prefix = ""): Record
     const path = prefix ? `${prefix}.${key}` : key;
     const isPlainObject =
       value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date);
-    if (isPlainObject) {
+    if (isPlainObject && !ATOMIC_KEYS.has(key)) {
       Object.assign(result, flattenToDotNotation(value as Record<string, unknown>, path));
     } else {
       result[path] = value;

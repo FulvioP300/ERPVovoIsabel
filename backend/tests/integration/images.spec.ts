@@ -20,6 +20,7 @@ let viewerCookie: string;
 const fakeProvider: ImageProviderPort = {
   upload: vi.fn().mockResolvedValue({ id: "fake-uuid.jpg", url: "https://blob.test/fake-uuid.jpg" }),
   remove: vi.fn().mockResolvedValue(undefined),
+  download: vi.fn().mockResolvedValue({ buffer: Buffer.from("fake-bytes"), mimeType: "image/jpeg" }),
 };
 
 async function loginAs(credentials: { email: string; password: string }) {

@@ -15,13 +15,21 @@ function joinList(list: string[]): string {
 
 /**
  * Preenche o formulário de revisão (`ProductForm`, 005) a partir da sugestão da IA. Campos que
- * a IA nunca sugere (preço, estoque, e-commerce — spec 006, seção 7) ficam nos defaults em
- * branco, para o operador preencher manualmente; nada aqui é salvo até o clique em "Salvar
- * produto" no formulário revisado (Human in the Loop, constituição princípio II).
+ * a IA nunca sugere (preço, estoque, e-commerce — spec 006, seção 7) ficam com os valores de
+ * `base`, para o operador preencher/conferir manualmente; nada aqui é salvo até o clique
+ * explícito em "Salvar produto"/"Salvar alterações" (Human in the Loop, constituição princípio
+ * II). No cadastro (`AiReviewForm.tsx`), `base` é omitido e assume o default em branco. Na
+ * reavaliação de um produto já cadastrado (spec 006, seção 9; `ProductForm.tsx`, 005 seção 4.3),
+ * `base` é o formulário de edição já aberto (`getValues()`) — preserva preço/estoque/
+ * e-commerce/status/sku/fotos intocados, únicos campos que `AiSuggestedProductSchema`
+ * estruturalmente não sugere.
  */
-export function aiSuggestionToFormValues(suggestion: AiSuggestedProduct): ProductFormValues {
+export function aiSuggestionToFormValues(
+  suggestion: AiSuggestedProduct,
+  base: ProductFormValues = DEFAULT_PRODUCT_FORM_VALUES,
+): ProductFormValues {
   return {
-    ...DEFAULT_PRODUCT_FORM_VALUES,
+    ...base,
     nome: suggestion.identificacao.nome ?? "",
     descricao: suggestion.identificacao.descricao ?? "",
     categoria_codigo: suggestion.classificacao.categoria_codigo ?? "",

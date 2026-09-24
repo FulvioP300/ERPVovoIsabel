@@ -287,6 +287,29 @@ describe("PATCH /api/products/:id", () => {
     });
   });
 
+  it("achado real testando reavaliação por IA (24/09/2026): adicionar a primeira foto via PATCH numa peça sem nenhuma antes não quebra (imagens.principal null → objeto)", async () => {
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/products",
+      cookies: { accessToken: adminCookie },
+      payload: minimalProductPayload(),
+    });
+    const id = create.json().data.id;
+    expect(create.json().data.imagens.principal).toBeNull();
+
+    const foto = { id: "foto-1.jpg", url: "https://blob.test/foto-1.jpg", ordem: 0, tipo: null };
+    const patch = await app.inject({
+      method: "PATCH",
+      url: `/api/products/${id}`,
+      cookies: { accessToken: adminCookie },
+      payload: { imagens: { principal: foto, galeria: [foto] } },
+    });
+
+    expect(patch.statusCode).toBe(200);
+    expect(patch.json().data.imagens.principal).toMatchObject({ id: "foto-1.jpg" });
+    expect(patch.json().data.imagens.galeria).toHaveLength(1);
+  });
+
   it("altera peso.valor via PATCH, mantendo casas decimais", async () => {
     const create = await app.inject({
       method: "POST",

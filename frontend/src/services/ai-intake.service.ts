@@ -33,6 +33,16 @@ export const aiIntakeService = {
     return AiSuggestedProductSchema.parse(await parseEnvelope<unknown>(response));
   },
 
+  /** Reavaliação de produto já cadastrado (spec 006, seção 9) — usa as fotos já salvas na
+   * galeria do produto, sem reenviar nada. */
+  async reanalyze(productId: string): Promise<AiSuggestedProduct> {
+    const response = await fetch(`/api/products/${productId}/reanalyze`, {
+      method: "POST",
+      credentials: "include",
+    });
+    return AiSuggestedProductSchema.parse(await parseEnvelope<unknown>(response));
+  },
+
   async confirm(payload: unknown): Promise<Product> {
     const response = await fetch("/api/products/confirm", {
       method: "POST",

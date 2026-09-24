@@ -15,8 +15,13 @@ async function loginAsAdmin(page: Page) {
   await page.waitForURL("/");
 }
 
+// Achado real (24/09/2026): `ProductForm.tsx` envolve todas as seções num
+// `<fieldset class="contents">` (trava tudo no modo "view") — sem excluí-lo, `hasText`
+// também casa com esse wrapper (que contém o texto de toda seção como descendente), e
+// `.first()` sempre resolve pra ele (primeiro `<fieldset>` no DOM), silenciosamente buscando
+// em TODO o formulário em vez de só na seção pedida.
 function fieldset(page: Page, legend: string): Locator {
-  return page.locator("fieldset", { hasText: legend }).first();
+  return page.locator("fieldset:not(.contents)", { hasText: legend }).first();
 }
 
 // Um JPEG mínimo, mas real o suficiente para o navegador anexar como `image/jpeg` — o backend

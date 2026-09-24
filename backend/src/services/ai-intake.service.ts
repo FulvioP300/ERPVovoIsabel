@@ -3,7 +3,8 @@ import type { AiProviderImageInput, AiProviderPort } from "../plugins/ai/ai-prov
 import { DEFAULT_SYSTEM_PROMPT, OpenAiCompatibleAdapter } from "../plugins/ai/openai-compatible.adapter.js";
 import { AiSuggestedProductSchema, type AiSuggestedProduct } from "../schemas/ai-intake.schema.js";
 import { listCategories } from "./category.service.js";
-import { assertValidImage } from "./image.service.js";
+import { assertValidImage, downloadImage } from "./image.service.js";
+import { getProductById } from "./product.service.js";
 
 export class NoImagesProvidedError extends Error {
   constructor() {
@@ -23,6 +24,28 @@ export class InvalidAiResponseError extends Error {
   constructor(details?: string) {
     super(`A IA retornou uma resposta fora do contrato esperado.${details ? ` (${details})` : ""}`);
     this.name = "InvalidAiResponseError";
+  }
+}
+
+/** Reavaliação por IA de produto já cadastrado (spec, seção 9) — sem nenhuma foto salva não há
+ * o que reanalisar; evita chamar o provedor de IA pra um caso já sabido inválido. */
+export class NoSavedImagesError extends Error {
+  constructor() {
+    super("Esta peça não tem nenhuma foto cadastrada — não é possível reavaliar por IA.");
+    this.name = "NoSavedImagesError";
+  }
+}
+
+/** Achado real testando (24/09/2026): um registro em `imagens.galeria` pode apontar pra um
+ * blob que não existe mais no Azure Blob Storage (removido diretamente no provedor, fora do
+ * fluxo normal de `DELETE /api/images/:id`) — sem isso, o erro bruto do SDK do Azure
+ * (`RestError`/`BlobNotFound`) vazava sem tratamento até a resposta HTTP. */
+export class ImageDownloadFailedError extends Error {
+  constructor() {
+    super(
+      "Não foi possível carregar as fotos desta peça no armazenamento para reavaliar por IA — tente novamente em instantes.",
+    );
+    this.name = "ImageDownloadFailedError";
   }
 }
 
@@ -138,4 +161,28 @@ export async function analyzeProduct(input: AnalyzeProductInput): Promise<AiSugg
       categoria_codigo: categoriaValida ? suggestion.classificacao.categoria_codigo : null,
     },
   };
+}
+
+/**
+ * Reavaliação por IA de um produto já cadastrado (spec, seção 9) — mesma análise de
+ * `analyzeProduct`, mas as fotos vêm das já salvas na galeria do produto (Azure Blob Storage,
+ * 007) em vez de um upload novo no mesmo request, e o `prompt` é a descrição/nome atuais do
+ * produto em vez de texto digitado na hora. Nunca persiste nem gera SKU, exatamente como
+ * `/analyze` — só o `POST /confirm`/`PATCH /api/products/:id` grava alguma coisa.
+ */
+export async function reanalyzeProduct(productId: string): Promise<AiSuggestedProduct> {
+  const product = await getProductById(productId); // lança ProductNotFoundError (product.service.ts)
+  if (product.imagens.galeria.length === 0) {
+    throw new NoSavedImagesError();
+  }
+
+  let images;
+  try {
+    images = await Promise.all(product.imagens.galeria.map((imagem) => downloadImage(imagem.id)));
+  } catch {
+    throw new ImageDownloadFailedError();
+  }
+  const prompt = product.identificacao.descricao || product.identificacao.nome;
+
+  return analyzeProduct({ prompt, images });
 }

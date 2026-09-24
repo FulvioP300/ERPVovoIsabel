@@ -13,7 +13,17 @@ export interface UploadedImage {
   url: string;
 }
 
+export interface DownloadedImage {
+  buffer: Buffer;
+  mimeType: string;
+}
+
 export interface ImageProviderPort {
   upload(buffer: Buffer, mimeType: string, extension: string): Promise<UploadedImage>;
   remove(id: string): Promise<void>;
+  /** Recupera os bytes + MIME type de uma imagem já enviada, a partir do mesmo `id` retornado
+   * por `upload` (spec 006, seção 9 — reavaliação por IA de um produto já cadastrado busca as
+   * fotos já salvas em vez de receber upload novo). `products.imagens.galeria[]` não persiste
+   * MIME type (005, seção 2), então o adapter precisa recuperá-lo do próprio provedor. */
+  download(id: string): Promise<DownloadedImage>;
 }
