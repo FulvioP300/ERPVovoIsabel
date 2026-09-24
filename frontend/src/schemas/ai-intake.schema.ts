@@ -60,6 +60,8 @@ export function aiSuggestionToFormValues(
     coxa: numberOrEmpty(suggestion.medidas.coxa),
     entrepasso: numberOrEmpty(suggestion.medidas.entrepasso),
     busto: numberOrEmpty(suggestion.medidas.busto),
+    largura_ombro: numberOrEmpty(suggestion.medidas.largura_ombro),
+    comprimento_manga: numberOrEmpty(suggestion.medidas.comprimento_manga),
     estado: suggestion.condicao.estado ?? "novo",
     nota: numberOrEmpty(suggestion.condicao.nota),
     possui_etiqueta: suggestion.condicao.possui_etiqueta ?? false,

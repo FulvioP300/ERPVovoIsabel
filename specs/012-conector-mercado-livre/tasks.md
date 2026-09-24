@@ -870,3 +870,20 @@ Documentação oficial (`POST /users/{sellerId}/shipping_modes`) tinha o mesmo t
 no T060 (exemplo de `curl` malformado) — implementado a partir do JSON de exemplo, que estava completo
 e consistente nas duas fontes (en_us/es_ar) mesmo com o `curl` quebrado. Ver detalhes completos no
 T062 acima. **Ainda não confirmado contra a API real.**
+
+24/09/2026 (mesmo dia, produto real em produção): **T063 — GARMENT_* de ombro/manga e variantes
+`_TO`**. Publicar uma jaqueta de couro esbarrou exatamente na lacuna que o T060 já havia previsto
+("partes de cima podem exigir mais medidas — ombro, manga — sem atributo `GARMENT_*` confirmado"):
+erro real listando `GARMENT_CHEST_WIDTH_TO`, `GARMENT_LENGTH_TO`, `GARMENT_SHOULDER_WIDTH_FROM/TO`
+e `GARMENT_SLEEVE_LENGTH_FROM/TO` como exigidos e ainda não capturados pelo cadastro. Confirmado e
+mapeado: `medidas.largura_ombro` (novo campo) → `GARMENT_SHOULDER_WIDTH_FROM/TO`,
+`medidas.comprimento_manga` (novo campo) → `GARMENT_SLEEVE_LENGTH_FROM/TO`; `busto` e `comprimento`
+ganharam as variantes `_TO` apontando pro mesmo campo que já tinham em `_FROM` — cada peça é única,
+`_FROM`/`_TO` do mesmo atributo sempre mandam o mesmo valor (constituição, princípio X), nunca uma
+faixa de verdade. `garmentMeasureAttributes`/`GARMENT_MEASURE_BY_ATTRIBUTE` não precisaram de
+nenhuma mudança estrutural — só de entradas novas no mapa, a máquina genérica já existia desde o
+T053/T060. Os dois campos novos passaram pelos três lugares do contrato de IA (spec 006, seção
+5) — schema (`shared/schemas/ai-intake.schema.ts`), prompt (`RESPONSE_SCHEMA_TEMPLATE`) e
+mapeamento pra revisão (`aiSuggestionToFormValues`) — evitando repetir a divergência do T060.
+Ver [005/spec.md](../005-produtos-cadastro-manual/spec.md#2-modelo-de-dados) e seção 3.5 acima
+para o modelo de dados e a tabela `GARMENT_*` atualizados.

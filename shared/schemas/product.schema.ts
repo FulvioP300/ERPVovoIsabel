@@ -101,10 +101,15 @@ export const MedidasSchema = z.object({
   entrepasso: nullableNumber().default(null),
   // Partes de cima (camisas, blusas, jaquetas, casacos, vestidos) — busto é o primeiro atributo
   // GARMENT_* confirmado (T060, 23/09/2026, erro real do Mercado Livre num casaco:
-  // GARMENT_CHEST_WIDTH_FROM). A spec 012 (seção 3.5) já previa que partes de cima podem exigir
-  // mais medidas (ombro, manga) — essas ainda não têm atributo GARMENT_* confirmado, então não
-  // viram campo aqui até serem vistas contra a API real (nunca inventar o mapeamento).
+  // GARMENT_CHEST_WIDTH_FROM).
   busto: nullableNumber().default(null),
+  // Ombro e manga (spec 012, seção 3.5) confirmados em 24/09/2026 — erro real do Mercado Livre
+  // publicando uma jaqueta: a categoria exigia GARMENT_SHOULDER_WIDTH_FROM/TO e
+  // GARMENT_SLEEVE_LENGTH_FROM/TO, além de GARMENT_CHEST_WIDTH_TO e GARMENT_LENGTH_TO (até então
+  // só as variantes FROM de busto/comprimento tinham mapeamento — ver
+  // mercado-livre-item.mapper.ts, GARMENT_MEASURE_BY_ATTRIBUTE).
+  largura_ombro: nullableNumber().default(null),
+  comprimento_manga: nullableNumber().default(null),
 });
 
 /** Sempre em kg (spec, seção 19) — unidade fixa, ao contrário de `medidas` (cm/in), então um

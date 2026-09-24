@@ -93,6 +93,8 @@ function baseSuggestion(overrides: Record<string, unknown> = {}) {
       coxa: null,
       entrepasso: null,
       busto: null,
+      largura_ombro: null,
+      comprimento_manga: null,
     },
     condicao: {
       estado: "novo",
@@ -145,6 +147,16 @@ describe("ai-intake.service.analyzeProduct", () => {
     const [sentPrompt] = (provider.analyze as ReturnType<typeof vi.fn>).mock.calls[0] as [string, unknown];
     expect(sentPrompt).toContain('"genero"');
     expect(sentPrompt).toContain('"busto"');
+  });
+
+  it("o schema pedido no prompt inclui largura_ombro e comprimento_manga (24/09/2026 — mesma classe de regressão do T060)", async () => {
+    const provider = fakeProvider(baseSuggestion());
+    setAiProviderForTesting(provider);
+    await analyzeProduct({ prompt: "jaqueta de couro", images: [fakeImage()] });
+
+    const [sentPrompt] = (provider.analyze as ReturnType<typeof vi.fn>).mock.calls[0] as [string, unknown];
+    expect(sentPrompt).toContain('"largura_ombro"');
+    expect(sentPrompt).toContain('"comprimento_manga"');
   });
 
   it("rejeita payload com campo obrigatório ausente (Zod)", async () => {

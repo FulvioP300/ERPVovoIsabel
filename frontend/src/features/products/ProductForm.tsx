@@ -386,6 +386,18 @@ export function ProductForm({ mode, defaultValues, defaultImages = [], productId
           </div>
           <div>
             <label className={labelClass}>
+              Largura do ombro
+              <input className={inputClass} type="number" step="0.1" {...register("largura_ombro")} />
+            </label>
+          </div>
+          <div>
+            <label className={labelClass}>
+              Comprimento da manga
+              <input className={inputClass} type="number" step="0.1" {...register("comprimento_manga")} />
+            </label>
+          </div>
+          <div>
+            <label className={labelClass}>
               Peso (kg)
               <input className={inputClass} type="number" step="0.001" min="0" {...register("peso")} />
             </label>

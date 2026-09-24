@@ -76,6 +76,9 @@ const AiMedidasSchema = z
     // Busto (spec 005; T060, 23/09/2026) — mesmo padrão dos irmãos acima: chave obrigatória
     // (o prompt em ai-intake.service.ts sempre a inclui), valor `null` quando não determinável.
     busto: nullableNumber(),
+    // Ombro e manga (spec 005/012, 24/09/2026) — mesmo padrão.
+    largura_ombro: nullableNumber(),
+    comprimento_manga: nullableNumber(),
   })
   .strict();
 

@@ -442,28 +442,32 @@ por *warning* de validação (seção 3.6). O `GENDER` é validado ainda contra 
 
 **Medidas exigidas por roupa (`MedidasSchema`, spec 005) → atributo `GARMENT_*`.** Confirmado para
 domínios de parte de baixo (calças, shorts, saias — documentação "Gerenciar tabela de medidas",
-exemplo `PANTS_TEST`) e, desde o T060 (23/09/2026), o primeiro atributo de parte de cima:
+exemplo `PANTS_TEST`) e, desde o T060 (23/09/2026) e 24/09/2026 (erro real publicando uma
+jaqueta), para parte de cima:
 
-| Campo do ERP | Atributo `GARMENT_*` |
+| Campo do ERP | Atributo(s) `GARMENT_*` |
 |---|---|
-| `medidas.comprimento` | `GARMENT_LENGTH_FROM` |
+| `medidas.comprimento` | `GARMENT_LENGTH_FROM`, `GARMENT_LENGTH_TO` |
 | `medidas.cintura` | `GARMENT_WAIST_WIDTH_FROM` |
 | `medidas.quadril` | `GARMENT_HIP_WIDTH_FROM` |
-| `medidas.coxa` (novo, ADR-024) | `GARMENT_THIGH_WIDTH_FROM` |
-| `medidas.entrepasso` (novo, ADR-024) | `GARMENT_INSEAM_LENGTH_FROM` |
+| `medidas.coxa` (ADR-024) | `GARMENT_THIGH_WIDTH_FROM` |
+| `medidas.entrepasso` (ADR-024) | `GARMENT_INSEAM_LENGTH_FROM` |
 | `medidas.gancho` | `GARMENT_FRONT_RISE_FROM` |
-| `medidas.busto` (novo, T060) | `GARMENT_CHEST_WIDTH_FROM` |
+| `medidas.busto` (T060) | `GARMENT_CHEST_WIDTH_FROM`, `GARMENT_CHEST_WIDTH_TO` |
+| `medidas.largura_ombro` (novo, 24/09/2026) | `GARMENT_SHOULDER_WIDTH_FROM`, `GARMENT_SHOULDER_WIDTH_TO` |
+| `medidas.comprimento_manga` (novo, 24/09/2026) | `GARMENT_SLEEVE_LENGTH_FROM`, `GARMENT_SLEEVE_LENGTH_TO` |
 
-⚠ **Domínios de parte de cima** (camisas, blusas, jaquetas, vestidos) **podem exigir mais medidas
-que `busto`** — a documentação salva não cobre um exemplo completo de blusa/jaqueta, só o de calça
-mais o achado real do T060 (casaco → `GARMENT_CHEST_WIDTH_FROM`). A causa de `technical_specs`
-não revelar os atributos de uma peça (T060, 23/09/2026) era consultar sem o `GENDER` no corpo —
-corrigido (`getDomainSizeChartAttributes` virou `POST` com `GENDER` resolvido), então a consulta em
-si agora deve trazer o conjunto real e completo por domínio. A implementação consulta
-`technical_specs` do domínio antes de montar a linha; atributos que apareçam ali e que o ERP não
-capture ainda (ex.: ombro, manga) geram uma extensão nova de `MedidasSchema`, nunca um valor
-adivinhado — a mensagem de erro já inclui o nome real que o Mercado Livre devolveu para facilitar
-a extensão.
+Cada peça do brechó é uma peça única com uma medida real, não uma faixa de tamanho (constituição,
+princípio X) — por isso `_FROM` e `_TO` do mesmo atributo sempre mandam o mesmo valor, nunca dois
+valores diferentes formando um intervalo.
+
+A causa de `technical_specs` não revelar os atributos de uma peça (T060, 23/09/2026) era consultar
+sem o `GENDER` no corpo — corrigido (`getDomainSizeChartAttributes` virou `POST` com `GENDER`
+resolvido), então a consulta em si já traz o conjunto real e completo por domínio+gênero. A
+implementação consulta `technical_specs` do domínio antes de montar a linha; atributos que
+apareçam ali e que o ERP não capture ainda geram uma extensão nova de `MedidasSchema`, nunca um
+valor adivinhado — a mensagem de erro já inclui o nome real que o Mercado Livre devolveu para
+facilitar a extensão (foi assim que ombro/manga foram descobertos e confirmados).
 
 Consequências já certas:
 - **`SIZE` é obrigatório** e precisa ser igual ao da linha. No ERP de desenvolvimento, 7 de 9 produtos

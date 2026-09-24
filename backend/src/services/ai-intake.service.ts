@@ -91,7 +91,7 @@ const RESPONSE_SCHEMA_TEMPLATE = `{
   "classificacao": { "categoria_codigo": "um código da lista abaixo, ou null", "subcategoria": "string ou null", "estilo": ["string"], "ocasiao": ["string"], "estacao": ["string"] },
   "marca": { "nome": "string ou null", "original": true },
   "caracteristicas": { "tamanho_etiqueta": "string ou null", "tamanho_equivalente": "string ou null", "genero": "masculino | feminino | menino | menina | unissex | null (escolha um só, ou null se não der para determinar)", "cor_principal": "string ou null", "cores_secundarias": ["string"], "estampa": "string ou null", "material": ["string"], "composicao": "string ou null", "lavagem": "string ou null", "modelagem": "string ou null", "elasticidade": "string ou null", "fechamento": ["string"] },
-  "medidas": { "unidade": "cm", "cintura": 0, "quadril": 0, "gancho": 0, "comprimento": 0, "largura_barra": 0, "coxa": 0, "entrepasso": 0, "busto": 0 },
+  "medidas": { "unidade": "cm", "cintura": 0, "quadril": 0, "gancho": 0, "comprimento": 0, "largura_barra": 0, "coxa": 0, "entrepasso": 0, "busto": 0, "largura_ombro": 0, "comprimento_manga": 0 },
   "condicao": { "estado": "novo | seminovo | usado | null (escolha um só)", "nota": 0, "possui_etiqueta": true, "possui_defeitos": false, "defeitos": ["string"], "observacoes": "string ou null" },
   "ai_metadata": { "fields": { "caminho.do.campo": { "confidence": 0.0, "source": "image | prompt | image+prompt (escolha um só)" } } }
 }`;

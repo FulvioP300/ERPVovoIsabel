@@ -32,6 +32,8 @@ function baseSuggestion(overrides: Partial<AiSuggestedProduct> = {}): AiSuggeste
       coxa: null,
       entrepasso: null,
       busto: null,
+      largura_ombro: null,
+      comprimento_manga: null,
     },
     condicao: { estado: "novo", nota: null, possui_etiqueta: null, possui_defeitos: null, defeitos: [], observacoes: null },
     ai_metadata: { fields: {} },

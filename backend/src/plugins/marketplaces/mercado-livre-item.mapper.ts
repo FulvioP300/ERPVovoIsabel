@@ -204,17 +204,30 @@ export function sizeChartAttributes(size: string, chartId: string, rowId: string
 /**
  * Partes de baixo (calças/shorts/saias) confirmadas desde o T053/ADR-024. `GARMENT_CHEST_WIDTH_FROM`
  * (busto, partes de cima) confirmado ao vivo no T060 (23/09/2026, erro real do Mercado Livre num
- * casaco) — outras medidas de parte de cima (ombro, manga) que a spec 012 (seção 3.5) já previa
- * continuam sem mapeamento: `missingAttributeIds` as devolve como "não confirmadas", nunca inventa.
+ * casaco). Variantes `_TO` de busto/comprimento e as medidas de ombro/manga (previstas na spec 012,
+ * seção 3.5, mas sem mapeamento até então) confirmadas ao vivo em 24/09/2026, erro real publicando
+ * uma jaqueta: a categoria exigia `GARMENT_CHEST_WIDTH_TO`, `GARMENT_LENGTH_TO`,
+ * `GARMENT_SHOULDER_WIDTH_FROM/TO` e `GARMENT_SLEEVE_LENGTH_FROM/TO`. Cada peça do brechó é uma
+ * peça única com uma medida real, não uma faixa de tamanho (constituição, princípio X) — por isso
+ * `_FROM` e `_TO` do mesmo atributo sempre apontam para o mesmo campo de `medidas`
+ * (`garmentMeasureAttributes` manda o mesmo valor duas vezes, uma por id). Qualquer outra medida de
+ * parte de cima que a spec 012 ainda não tenha confirmado continua sem mapeamento aqui —
+ * `missingAttributeIds` a devolve como "não confirmada", nunca inventa.
  */
 const GARMENT_MEASURE_BY_ATTRIBUTE: Record<string, keyof Product["medidas"]> = {
   GARMENT_LENGTH_FROM: "comprimento",
+  GARMENT_LENGTH_TO: "comprimento",
   GARMENT_WAIST_WIDTH_FROM: "cintura",
   GARMENT_HIP_WIDTH_FROM: "quadril",
   GARMENT_THIGH_WIDTH_FROM: "coxa",
   GARMENT_INSEAM_LENGTH_FROM: "entrepasso",
   GARMENT_FRONT_RISE_FROM: "gancho",
   GARMENT_CHEST_WIDTH_FROM: "busto",
+  GARMENT_CHEST_WIDTH_TO: "busto",
+  GARMENT_SHOULDER_WIDTH_FROM: "largura_ombro",
+  GARMENT_SHOULDER_WIDTH_TO: "largura_ombro",
+  GARMENT_SLEEVE_LENGTH_FROM: "comprimento_manga",
+  GARMENT_SLEEVE_LENGTH_TO: "comprimento_manga",
 };
 
 export interface GarmentMeasureResult {

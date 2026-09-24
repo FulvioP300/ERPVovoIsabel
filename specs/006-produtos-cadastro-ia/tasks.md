@@ -244,6 +244,15 @@ Fixtures de teste atualizados em `shared/schemas/ai-intake.schema.test.ts`,
 `backend/src/services/ai-intake.service.test.ts` e `backend/tests/integration/ai-intake.spec.ts`
 (mesma classe de fixture desatualizada já corrigida uma vez nesta sessão para coxa/entrepasso).
 
+## Nota (24/09/2026) — `largura_ombro`/`comprimento_manga`: padrão seguido sem divergir desta vez
+
+Ao adicionar os dois campos novos de `medidas` (T063, spec 012 — ombro e manga, confirmados por
+um erro real do Mercado Livre publicando uma jaqueta), os três lugares do contrato de IA foram
+atualizados juntos, na mesma alteração: `shared/schemas/ai-intake.schema.ts` (`AiMedidasSchema`),
+`RESPONSE_SCHEMA_TEMPLATE` (`ai-intake.service.ts`) e `aiSuggestionToFormValues` (frontend) — mais
+um teste de regressão inspecionando o prompt real enviado ao provedor (mesmo padrão do teste do
+T060 logo acima), especificamente para não repetir a divergência documentada nesta nota.
+
 ## Fase 7 — Reavaliação de produto existente (24/09/2026, spec seção 9; plan.md seção 8)
 
 Pedido do usuário: um botão na tela de edição de produto (005) reavalia a peça pela mesma IA

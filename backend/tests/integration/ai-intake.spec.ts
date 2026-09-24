@@ -48,6 +48,8 @@ function validSuggestion(overrides: Record<string, unknown> = {}) {
       coxa: null,
       entrepasso: null,
       busto: null,
+      largura_ombro: null,
+      comprimento_manga: null,
     },
     condicao: {
       estado: "novo",

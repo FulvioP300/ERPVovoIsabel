@@ -30,6 +30,8 @@ function baseSuggestion() {
       coxa: null,
       entrepasso: null,
       busto: null,
+      largura_ombro: null,
+      comprimento_manga: null,
     },
     condicao: {
       estado: "novo",

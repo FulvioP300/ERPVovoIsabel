@@ -56,7 +56,8 @@ Collection `products`:
     "unidade": "cm",
     "cintura": null, "quadril": null, "gancho": null,
     "comprimento": null, "largura_barra": null,
-    "coxa": null, "entrepasso": null, "busto": null
+    "coxa": null, "entrepasso": null, "busto": null,
+    "largura_ombro": null, "comprimento_manga": null
   },
   "peso": { "valor": null, "unidade": "kg" },
   "condicao": {
@@ -107,8 +108,13 @@ não o objeto fixo do exemplo acima.
 unidade dos demais campos de `medidas`) foram acrescentados para calças, shorts e saias publicarem
 no Mercado Livre, que exige a tabela de medidas da peça nesses domínios (spec
 [012](../012-conector-mercado-livre/spec.md#35-moda-gênero-tamanho-e-tabela-de-medidas), seção
-3.5; ADR-024). Todos os campos de `medidas` continuam opcionais para a loja física — só a
-publicação no Mercado Livre exige os que o domínio pedir.
+3.5; ADR-024). Pelo mesmo motivo, `medidas.busto` (largura do busto/peito, T060, 23/09/2026) e
+`medidas.largura_ombro`/`medidas.comprimento_manga` (largura do ombro e comprimento da manga,
+24/09/2026) foram acrescentados para partes de cima (camisas, blusas, jaquetas, casacos,
+vestidos) — cada um confirmado ao vivo por um erro real do Mercado Livre pedindo o atributo
+`GARMENT_*` correspondente numa publicação, nunca adicionado por antecipação. Todos os campos
+de `medidas` continuam opcionais para a loja física — só a publicação no Mercado Livre exige os
+que o domínio pedir.
 
 ## 3. Status do produto
 

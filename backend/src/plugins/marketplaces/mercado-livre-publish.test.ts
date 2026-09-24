@@ -153,7 +153,7 @@ function makeProduct(overrides: Partial<Product> = {}): Product {
       elasticidade: null,
       fechamento: [],
     },
-    medidas: { unidade: "cm", cintura: 80, quadril: 100, gancho: 25, comprimento: 45, largura_barra: null, coxa: 60, entrepasso: 70, busto: null },
+    medidas: { unidade: "cm", cintura: 80, quadril: 100, gancho: 25, comprimento: 45, largura_barra: null, coxa: 60, entrepasso: 70, busto: null, largura_ombro: null, comprimento_manga: null },
     peso: { valor: 0.3, unidade: "kg" },
     condicao: { estado: "usado", nota: null, possui_etiqueta: false, possui_defeitos: false, defeitos: [], observacoes: null },
     preco: { preco_original_estimado: null, custo_aquisicao: null, preco_venda: 89.9, preco_promocional: null, moeda: "BRL" },
@@ -815,11 +815,11 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
       await expect(publishItem(ACCESS_TOKEN, makeInput({ product: pantsProduct() }))).rejects.toThrow(/Informe as medidas da peça \(busto\)/);
     });
 
-    it("atributo ainda não confirmado (ombro, manga): erro claro com o nome real do Mercado Livre, nunca adivinha", async () => {
-      apiMocks.getDomainSizeChartAttributes.mockResolvedValue([{ id: "GARMENT_SHOULDER_WIDTH_FROM", name: "Ombro", valueType: "number_unit", tags: [] }]);
+    it("atributo ainda não confirmado contra a API real: erro claro com o nome real do Mercado Livre, nunca adivinha", async () => {
+      apiMocks.getDomainSizeChartAttributes.mockResolvedValue([{ id: "GARMENT_NECK_WIDTH_FROM", name: "Gola", valueType: "number_unit", tags: [] }]);
 
       await expect(publishItem(ACCESS_TOKEN, makeInput({ product: pantsProduct() }))).rejects.toThrow(
-        /ainda não captura: Ombro \(GARMENT_SHOULDER_WIDTH_FROM\)/,
+        /ainda não captura: Gola \(GARMENT_NECK_WIDTH_FROM\)/,
       );
     });
 
