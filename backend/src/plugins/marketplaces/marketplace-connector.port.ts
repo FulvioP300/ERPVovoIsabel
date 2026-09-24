@@ -45,6 +45,15 @@ export interface PublishInput extends ConnectorContext {
    * fixa. Hoje só o Mercado Livre usa o campo (caixa de seleção na revisão, spec 012, seção 3.2).
    */
   listingTypeId?: string | null;
+  /**
+   * Tamanho de calçado escolhido pelo operador na revisão (spec 012, achado real 24/09/2026) —
+   * só quando o `tamanho_etiqueta` do cadastro não bate com nenhuma linha da tabela `BRAND`/
+   * `STANDARD` do Mercado Livre (tabela fixa, o ERP não pode criar linha nova nela, diferente da
+   * `SPECIFIC` de roupa). Tem prioridade sobre o cadastro só pra esta publicação; nunca é
+   * gravado de volta no produto. Hoje só o Mercado Livre usa o campo, mesmo espírito de
+   * `categoryId`/`listingTypeId`.
+   */
+  sizeOverride?: string | null;
 }
 
 export interface CloseInput extends ConnectorContext {

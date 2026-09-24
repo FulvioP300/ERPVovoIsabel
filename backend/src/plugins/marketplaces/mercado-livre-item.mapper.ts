@@ -284,6 +284,18 @@ export function pickChartRow(rows: SizeChartRow[], criteria: ChartRowMatchCriter
   );
 }
 
+/**
+ * Rótulos de `SIZE` de todas as linhas de uma tabela (calçado, `BRAND`/`STANDARD`) — pra
+ * mostrar ao operador quando o tamanho do cadastro não bate com nenhuma linha, em vez de só um
+ * erro sem saída (spec 012; achado real 24/09/2026). Sem duplicatas, ordem da tabela preservada.
+ */
+export function availableSizeLabels(rows: SizeChartRow[]): string[] {
+  const labels = rows
+    .map((row) => row.attributes.find((a) => a.id === "SIZE")?.values[0])
+    .filter((v): v is string => v !== undefined);
+  return [...new Set(labels)];
+}
+
 // ---------------------------------------------------------------------------------------------
 // Nome da tabela `SPECIFIC` (spec 012, seção 3.5)
 

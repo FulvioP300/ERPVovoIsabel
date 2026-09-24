@@ -32,6 +32,16 @@ const CategorySuggestionSchema = z.object({
 });
 export type CategorySuggestion = z.infer<typeof CategorySuggestionSchema>;
 
+/** Sugestão de tamanho de calçado pra revisão (spec 012; achado real 24/09/2026) — só quando a
+ * categoria escolhida usa tabela BRAND/STANDARD (`applicable`). */
+const FootwearSizeSuggestionSchema = z.object({
+  applicable: z.boolean(),
+  available: z.array(z.string()),
+  current: z.string().nullable(),
+  currentMatches: z.boolean(),
+});
+export type FootwearSizeSuggestion = z.infer<typeof FootwearSizeSuggestionSchema>;
+
 export const marketplaceListingService = {
   async publish(
     productId: string,
@@ -39,6 +49,7 @@ export const marketplaceListingService = {
     accountId: string,
     categoryId?: string,
     listingTypeId?: string,
+    sizeOverride?: string,
   ): Promise<Product> {
     const response = await fetch(`/api/products/${productId}/marketplace-listings`, {
       method: "POST",
@@ -49,6 +60,7 @@ export const marketplaceListingService = {
         accountId,
         ...(categoryId ? { categoryId } : {}),
         ...(listingTypeId ? { listingTypeId } : {}),
+        ...(sizeOverride ? { sizeOverride } : {}),
       }),
     });
     return ProductSchema.parse(await parseEnvelope<unknown>(response));
@@ -72,5 +84,16 @@ export const marketplaceListingService = {
       body: JSON.stringify({ marketplace, accountId }),
     });
     return CategorySuggestionSchema.parse(await parseEnvelope<unknown>(response));
+  },
+
+  /** Depende da categoria já escolhida/confirmada na revisão (spec 012, achado real 24/09/2026). */
+  async suggestSize(productId: string, marketplace: Marketplace, accountId: string, categoryId: string): Promise<FootwearSizeSuggestion> {
+    const response = await fetch(`/api/products/${productId}/marketplace-size-suggestion`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ marketplace, accountId, categoryId }),
+    });
+    return FootwearSizeSuggestionSchema.parse(await parseEnvelope<unknown>(response));
   },
 };

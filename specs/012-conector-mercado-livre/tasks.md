@@ -543,6 +543,30 @@ confirmação **humana ou empírica**. Cada uma termina removendo o ⚠ correspo
       lista enquanto o texto "Sugestão do Mercado Livre" seguia citando o valor errado. Corrigido: só
       pré-seleciona quando a sugestão está de fato na lista curada; fora disso, mostra um aviso âmbar
       pedindo escolha manual.
+- [x] T061 Tela de revisão de tamanho de calçado (spec 012, seção 4; achado real 24/09/2026) — pedido
+      do usuário depois de "muitas peças" ficarem de fora do Mercado Livre por erro cru de "tamanho não
+      encontrado na tabela". Mesmo painel de T059, novo passo depois da categoria confirmada: chama
+      `POST /marketplace-size-suggestion` (novo, com o `categoryId` já escolhido) e, só se `applicable`,
+      mostra um `<select>` com os tamanhos reais da tabela `BRAND`/`STANDARD` (pré-seleciona quando o
+      tamanho do cadastro já bate, `currentMatches`); sem tabela nenhuma, avisa e bloqueia "Confirmar e
+      publicar" (evita um erro que já se sabe que vai acontecer). Roupa nunca aciona isso — cria a
+      própria linha (seção 3.5), nunca "não encontra".
+      **Backend:** `mercado-livre-item.mapper.ts` ganhou `availableSizeLabels` (extrai os rótulos de
+      `SIZE` de uma tabela); `mercado-livre-publish.ts` ganhou `findFootwearChart` (extraído de
+      `resolveFootwearChart`, busca `BRAND` depois `STANDARD`, reaproveitado pelos dois fluxos) e
+      `resolveFootwearSizeSuggestion` (exportada, só consulta); `mercado-livre.connector.ts` ganhou
+      `suggestFootwearSizes` (mesmo padrão de `suggestCategory`, fora da `MarketplaceConnectorPort`);
+      novo `marketplace-size-suggestion.service.ts` — **diferente da sugestão de categoria, uma falha
+      real (rede, token) propaga, não vira "sem sugestão em silêncio"**: não é uma previsão dispensável,
+      é o dado que decide se a publicação vai falhar. Nova rota
+      `POST /:id/marketplace-size-suggestion`. `PublishInput`/`PublishListingInput`/
+      `PublishListingBodySchema` ganharam `sizeOverride` opcional — tem prioridade sobre
+      `tamanho_etiqueta`/`tamanho_equivalente` só pra aquela publicação, nunca gravado no cadastro.
+      Mensagem de erro de "tamanho não encontrado" (fallback, se a publicação for chamada sem passar
+      pela revisão) passou a listar os tamanhos disponíveis também.
+      **Frontend:** `useSizeSuggestion` (novo hook); `PublishToMarketplace.tsx` consulta a sugestão toda
+      vez que a categoria muda (pré-seleção inicial e troca manual) — imperativo, sem `useEffect`, mesmo
+      estilo do resto do arquivo.
 - [ ] T035 `features/products/ActiveListingsNotice.tsx` (novo): aviso "esta peça tem anúncio no ar" com
       "Encerrar anúncios e continuar" / "Continuar sem encerrar" / "Cancelar"; encerra em sequência e, se
       algum encerramento falhar, para, mostra o erro e **não** muda o status da peça — depende de T033.
@@ -796,3 +820,11 @@ técnica de medidas (`technical_specs`) é indexada por **gênero**, não só po
 Se confirmado, resolve o bloqueio de roupa com tabela de medidas por completo (exceto partes de cima, que
 ainda dependem de mapear `busto`/possivelmente ombro/manga em `MedidasSchema` — decisão de não investir
 nisso por ora continua de pé).
+
+24/09/2026: **T061 — revisão de tamanho de calçado**. Erro real e
+recorrente reportado pelo usuário ("A tabela de medidas do Mercado Livre não tem o tamanho 'BR 38' para
+'MLB-SNEAKERS'") virou uma pergunta direta: dá pra mostrar os tamanhos disponíveis pra escolher, em vez
+de só um erro sem saída? Resposta: sim, a tabela `BRAND`/`STANDARD` já é buscada antes de falhar — só
+faltava expor isso numa tela em vez de descartar depois de usar. Implementado como um passo a mais no
+mesmo painel de revisão de categoria/tipo de anúncio (T059/T010), proativo (decisão do usuário — mostra
+antes de tentar publicar, não só depois de falhar). Ver detalhes completos no T061 acima.

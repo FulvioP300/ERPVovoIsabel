@@ -24,6 +24,7 @@ import {
   normalizeFootwearSize,
   packageAttributes,
   pickAttributes,
+  availableSizeLabels,
   pickChartRow,
   sanitizePlainText,
   sizeChartAttributes,
@@ -364,6 +365,26 @@ describe("normalizeFootwearSize / pickChartRow (spec 012, seção 3.5)", () => {
       { id: "GARMENT_WAIST_WIDTH_FROM", value: "82 cm" },
     ]);
     expect(match).toEqual(clothingRows[1]);
+  });
+});
+
+describe("availableSizeLabels (spec 012; achado real 24/09/2026)", () => {
+  it("lista os rótulos de SIZE de cada linha, sem duplicatas", () => {
+    const chartRows: SizeChartRow[] = [
+      { id: "c1:1", attributes: [{ id: "SIZE", values: ["32,0 BR"] }] },
+      { id: "c1:2", attributes: [{ id: "SIZE", values: ["34,0 BR"] }] },
+      { id: "c1:3", attributes: [{ id: "SIZE", values: ["34,0 BR"] }] },
+    ];
+    expect(availableSizeLabels(chartRows)).toEqual(["32,0 BR", "34,0 BR"]);
+  });
+
+  it("linha sem atributo SIZE: ignorada, não quebra", () => {
+    const chartRows: SizeChartRow[] = [{ id: "c1:1", attributes: [{ id: "GENDER", values: ["Feminino"] }] }];
+    expect(availableSizeLabels(chartRows)).toEqual([]);
+  });
+
+  it("tabela vazia: lista vazia", () => {
+    expect(availableSizeLabels([])).toEqual([]);
   });
 });
 

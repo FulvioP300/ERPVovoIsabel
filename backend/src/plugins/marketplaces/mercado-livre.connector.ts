@@ -14,7 +14,10 @@ import {
   type PublishInput,
 } from "./marketplace-connector.port.js";
 import { parseMercadoLivreCredential, type MercadoLivreCredential } from "../../schemas/mercado-livre-credential.schema.js";
-import { publishItem } from "./mercado-livre-publish.js";
+import { publishItem, resolveFootwearSizeSuggestion, type FootwearSizeSuggestion } from "./mercado-livre-publish.js";
+import type { Product } from "../../schemas/product.schema.js";
+
+export type { FootwearSizeSuggestion };
 
 /**
  * Adaptador do Mercado Livre (spec 012) — implementa `MarketplaceConnectorPort` (011, seção 4.1).
@@ -164,6 +167,20 @@ export async function suggestCategory(credentialJson: string, productName: strin
     const prediction = await api.predictCategory(accessToken, productName);
     return prediction ? { categoryId: prediction.categoryId, categoryName: prediction.categoryName } : null;
   });
+}
+
+/**
+ * Sugestão de tamanho pra tela de revisão (spec 012; achado real 24/09/2026) — mesmo espírito
+ * de `suggestCategory`: fora da porta comum, só consulta, nunca publica. Chamado pelo serviço
+ * de sugestão (`marketplace-size-suggestion.service.ts`) depois que o operador escolhe/confirma
+ * a categoria, nunca pelo `publish()` em si.
+ */
+export async function suggestFootwearSizes(
+  credentialJson: string,
+  product: Product,
+  categoryId: string,
+): Promise<ConnectorOutcome<FootwearSizeSuggestion>> {
+  return callWithFreshToken(credentialJson, (accessToken) => resolveFootwearSizeSuggestion(accessToken, product, categoryId));
 }
 
 export const mercadoLivreConnector: MarketplaceConnectorPort = { publish, close };

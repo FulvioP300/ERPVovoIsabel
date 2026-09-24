@@ -7,6 +7,7 @@ import { resolvePackage } from "./mercado-livre-package.config.js";
 import {
   type MercadoLivreAttributeCandidate,
   assertPriceInRange,
+  availableSizeLabels,
   brandAttribute,
   buildChartName,
   buildChartPayload,
@@ -44,6 +45,7 @@ export async function publishItem(accessToken: string, input: PublishInput): Pro
   const { product, listing } = input;
   const categoryId = input.categoryId;
   const listingTypeId = input.listingTypeId;
+  const sizeOverride = input.sizeOverride;
   if (!categoryId) {
     throw new MarketplaceConnectorError("Nenhuma categoria confirmada — revise a categoria na tela de publicação antes de continuar.");
   }
@@ -71,7 +73,7 @@ export async function publishItem(accessToken: string, input: PublishInput): Pro
 
   // Republicar (spec 012, seção 3.1): só quando a entrada já tem id_anuncio e status = publicado.
   if (listing?.id_anuncio && listing.status === "publicado") {
-    return updateExistingItem(accessToken, listing.id_anuncio, product, categoryId, categoryAttributes, settings, useUserProducts, sellerId);
+    return updateExistingItem(accessToken, listing.id_anuncio, product, categoryId, categoryAttributes, settings, useUserProducts, sellerId, sizeOverride);
   }
 
   // Criar (entrada nova, ou recriar sobre um anúncio encerrado): resposta perdida — procura antes
@@ -81,11 +83,11 @@ export async function publishItem(accessToken: string, input: PublishInput): Pro
     const items = await api.getItemsByIds(accessToken, foundIds.slice(0, 20));
     const adopted = items.find((item) => item.status !== "closed");
     if (adopted) {
-      return updateExistingItem(accessToken, adopted.id, product, categoryId, categoryAttributes, settings, useUserProducts, sellerId);
+      return updateExistingItem(accessToken, adopted.id, product, categoryId, categoryAttributes, settings, useUserProducts, sellerId, sizeOverride);
     }
   }
 
-  return createNewItem(accessToken, product, categoryId, categoryAttributes, settings, useUserProducts, listingTypeId, sellerId);
+  return createNewItem(accessToken, product, categoryId, categoryAttributes, settings, useUserProducts, listingTypeId, sellerId, sizeOverride);
 }
 
 /**
@@ -117,8 +119,9 @@ async function createNewItem(
   useUserProducts: boolean,
   listingTypeId: string,
   sellerId: string,
+  sizeOverride: string | null | undefined,
 ): Promise<MarketplacePublishResult> {
-  const attributes = await buildAttributes(accessToken, product, categoryId, categoryAttributes, settings, sellerId);
+  const attributes = await buildAttributes(accessToken, product, categoryId, categoryAttributes, settings, sellerId, sizeOverride);
 
   const payload = buildCreatePayload({
     categoryId,
@@ -155,6 +158,7 @@ async function updateExistingItem(
   settings: api.CategorySettings,
   useUserProducts: boolean,
   sellerId: string,
+  sizeOverride: string | null | undefined,
 ): Promise<MarketplacePublishResult> {
   const currentItem = await api.getItem(accessToken, itemId);
   if (currentItem.status === "closed") {
@@ -163,7 +167,7 @@ async function updateExistingItem(
     );
   }
 
-  const attributes = await buildAttributes(accessToken, product, categoryId, categoryAttributes, settings, sellerId);
+  const attributes = await buildAttributes(accessToken, product, categoryId, categoryAttributes, settings, sellerId, sizeOverride);
 
   const payload = buildUpdatePayload({
     useUserProducts,
@@ -204,6 +208,7 @@ async function buildAttributes(
   categoryAttributes: CategoryAttribute[],
   settings: api.CategorySettings,
   sellerId: string,
+  sizeOverride: string | null | undefined,
 ): Promise<MercadoLivreAttributeCandidate[]> {
   const itemConditionDef = categoryAttributes.find((a) => a.id === "ITEM_CONDITION");
   const candidates: MercadoLivreAttributeCandidate[] = [
@@ -237,7 +242,7 @@ async function buildAttributes(
   // tabela nenhuma envolvida (confirmado ao vivo, T043: categoria "Cintos" exige os dois sem
   // fazer parte de active_domains).
   const chartAttributes = settings.catalogDomain
-    ? await resolveSizeChartAttributes(accessToken, product, settings.catalogDomain, categoryAttributes, sellerId)
+    ? await resolveSizeChartAttributes(accessToken, product, settings.catalogDomain, categoryAttributes, sellerId, sizeOverride)
     : [];
   if (chartAttributes.length > 0) {
     candidates.push(...chartAttributes);
@@ -291,6 +296,7 @@ async function resolveSizeChartAttributes(
   domain: string,
   categoryAttributes: CategoryAttribute[],
   sellerId: string,
+  sizeOverride: string | null | undefined,
 ): Promise<MercadoLivreAttributeCandidate[]> {
   const activeDomains = await api.getActiveSizeChartDomains(accessToken);
   if (!activeDomains.includes(domain)) return [];
@@ -305,7 +311,11 @@ async function resolveSizeChartAttributes(
     );
   }
 
-  const size = product.caracteristicas.tamanho_etiqueta ?? product.caracteristicas.tamanho_equivalente;
+  // `sizeOverride`: tamanho escolhido pelo operador na revisão (spec 012, tela de tamanhos de
+  // calçado, achado real 24/09/2026) — quando o `tamanho_etiqueta` do cadastro não bate com
+  // nenhuma linha da tabela do Mercado Livre. Tem prioridade sobre o cadastro só pra esta
+  // publicação; nunca é gravado de volta no produto.
+  const size = sizeOverride ?? product.caracteristicas.tamanho_etiqueta ?? product.caracteristicas.tamanho_equivalente;
   if (!size) {
     throw new MarketplaceConnectorError("Informe o tamanho da peça (tamanho da etiqueta) para publicar esta categoria no Mercado Livre.");
   }
@@ -347,17 +357,15 @@ async function resolveSizeChartAttributes(
   return [gender, ...chartAttributes];
 }
 
-async function resolveFootwearChart(
+/** Acha a tabela `BRAND` (se a marca da peça tiver uma) ou, senão, `STANDARD` — mesma ordem de
+ * preferência do fluxo de publicação e da sugestão de tamanhos pra revisão (spec 012, seção 3.5). */
+async function findFootwearChart(
   accessToken: string,
   domain: string,
   sellerId: string,
-  size: string,
   genderValueName: string,
   brandName: string | null,
-): Promise<MercadoLivreAttributeCandidate[]> {
-  const normalizedSize = normalizeFootwearSize(size);
-  let chart: SizeChartSummary | undefined;
-
+): Promise<SizeChartSummary | undefined> {
   if (brandName) {
     const brandCharts = await api.searchSizeCharts(accessToken, {
       domainId: stripSitePrefix(domain),
@@ -368,17 +376,27 @@ async function resolveFootwearChart(
         { id: "BRAND", values: [brandName] },
       ],
     });
-    chart = brandCharts[0];
+    if (brandCharts[0]) return brandCharts[0];
   }
-  if (!chart) {
-    const standardCharts = await api.searchSizeCharts(accessToken, {
-      domainId: stripSitePrefix(domain),
-      sellerId,
-      type: "STANDARD",
-      attributes: [{ id: "GENDER", values: [genderValueName] }],
-    });
-    chart = standardCharts[0];
-  }
+  const standardCharts = await api.searchSizeCharts(accessToken, {
+    domainId: stripSitePrefix(domain),
+    sellerId,
+    type: "STANDARD",
+    attributes: [{ id: "GENDER", values: [genderValueName] }],
+  });
+  return standardCharts[0];
+}
+
+async function resolveFootwearChart(
+  accessToken: string,
+  domain: string,
+  sellerId: string,
+  size: string,
+  genderValueName: string,
+  brandName: string | null,
+): Promise<MercadoLivreAttributeCandidate[]> {
+  const normalizedSize = normalizeFootwearSize(size);
+  const chart = await findFootwearChart(accessToken, domain, sellerId, genderValueName, brandName);
   if (!chart) {
     throw new MarketplaceConnectorError(
       `Não há tabela de medidas (da marca ou padrão) para "${domain}" no Mercado Livre — não é possível publicar este calçado.`,
@@ -388,9 +406,67 @@ async function resolveFootwearChart(
   const detail = await api.getSizeChart(accessToken, chart.id);
   const row = pickChartRow(detail.rows, [{ id: "SIZE", value: normalizedSize }]);
   if (!row) {
-    throw new MarketplaceConnectorError(`A tabela de medidas do Mercado Livre não tem o tamanho "${normalizedSize}" para "${domain}".`);
+    // Lista os tamanhos reais da tabela — mesmo dado que a tela de revisão já mostra antes de
+    // chegar aqui (achado real 24/09/2026); mantido também aqui como rede de segurança caso a
+    // publicação seja chamada sem passar pela revisão.
+    const available = availableSizeLabels(detail.rows);
+    const suffix = available.length > 0 ? ` Tamanhos disponíveis: ${available.join(", ")}.` : "";
+    throw new MarketplaceConnectorError(`A tabela de medidas do Mercado Livre não tem o tamanho "${normalizedSize}" para "${domain}".${suffix}`);
   }
   return sizeChartAttributes(normalizedSize, chart.id, row.id);
+}
+
+export interface FootwearSizeSuggestion {
+  /** `false`: categoria não é calçado, ou o domínio não usa tabela de medidas — a tela de
+   * revisão não precisa mostrar seletor de tamanho nenhum. */
+  applicable: boolean;
+  /** Tamanhos da tabela `BRAND`/`STANDARD`, no vocabulário do Mercado Livre (ex.: "38,0 BR").
+   * Vazio quando não existe tabela pra essa marca/gênero — mesmo caso que hoje bloqueia a
+   * publicação (`resolveFootwearChart`), só que descoberto na revisão, não depois de tentar. */
+  available: string[];
+  /** Tamanho do cadastro (`tamanho_etiqueta`/`tamanho_equivalente`), já convertido pro
+   * vocabulário do Mercado Livre — `null` se a peça não tem tamanho cadastrado. */
+  current: string | null;
+  /** `true` quando `current` já está em `available` — a tela pode pré-selecionar e pular a
+   * escolha manual. */
+  currentMatches: boolean;
+}
+
+/**
+ * Sugestão de tamanho pra tela de revisão (spec 012; achado real 24/09/2026) — mesmo espírito
+ * de `suggestCategory`: só consulta, nunca publica nada. Só se aplica a calçado (`SAPT`) com
+ * tabela `BRAND`/`STANDARD` — roupa cria a própria linha (`resolveClothingChart`) e nunca cai
+ * neste "tamanho não encontrado".
+ */
+export async function resolveFootwearSizeSuggestion(accessToken: string, product: Product, categoryId: string): Promise<FootwearSizeSuggestion> {
+  const notApplicable: FootwearSizeSuggestion = { applicable: false, available: [], current: null, currentMatches: false };
+  if (product.classificacao.categoria_codigo !== "SAPT") return notApplicable;
+
+  const settings = await api.getCategory(accessToken, categoryId);
+  if (!settings.catalogDomain) return notApplicable;
+
+  const activeDomains = await api.getActiveSizeChartDomains(accessToken);
+  if (!activeDomains.includes(settings.catalogDomain)) return notApplicable;
+
+  const categoryAttributes = await api.getCategoryAttributes(accessToken, categoryId);
+  const genderDef = categoryAttributes.find((a) => a.id === "GENDER");
+  const gender = genderAttribute(product.caracteristicas.genero, product.classificacao.departamento, genderDef);
+  // Sem gênero resolvido não dá pra buscar a tabela (mesma trava de `resolveSizeChartAttributes`)
+  // — a revisão de gênero (cadastro) resolve isso antes de chegar aqui; não é responsabilidade
+  // desta função duplicar aquele erro.
+  if (!gender?.value_name) return notApplicable;
+
+  const rawSize = product.caracteristicas.tamanho_etiqueta ?? product.caracteristicas.tamanho_equivalente;
+  const current = rawSize ? normalizeFootwearSize(rawSize) : null;
+
+  const currentUser = await mercadoLivreOAuthClient.fetchCurrentUser(accessToken);
+  const sellerId = String(currentUser.id);
+  const chart = await findFootwearChart(accessToken, settings.catalogDomain, sellerId, gender.value_name, product.marca.nome);
+  if (!chart) return { applicable: true, available: [], current, currentMatches: false };
+
+  const detail = await api.getSizeChart(accessToken, chart.id);
+  const available = availableSizeLabels(detail.rows);
+  return { applicable: true, available, current, currentMatches: current !== null && available.includes(current) };
 }
 
 async function resolveClothingChart(
