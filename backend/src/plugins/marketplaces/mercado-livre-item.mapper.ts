@@ -207,10 +207,7 @@ export function sizeChartAttributes(size: string, chartId: string, rowId: string
  * casaco). Variantes `_TO` de busto/comprimento e as medidas de ombro/manga (previstas na spec 012,
  * seção 3.5, mas sem mapeamento até então) confirmadas ao vivo em 24/09/2026, erro real publicando
  * uma jaqueta: a categoria exigia `GARMENT_CHEST_WIDTH_TO`, `GARMENT_LENGTH_TO`,
- * `GARMENT_SHOULDER_WIDTH_FROM/TO` e `GARMENT_SLEEVE_LENGTH_FROM/TO`. Cada peça do brechó é uma
- * peça única com uma medida real, não uma faixa de tamanho (constituição, princípio X) — por isso
- * `_FROM` e `_TO` do mesmo atributo sempre apontam para o mesmo campo de `medidas`
- * (`garmentMeasureAttributes` manda o mesmo valor duas vezes, uma por id). Qualquer outra medida de
+ * `GARMENT_SHOULDER_WIDTH_FROM/TO` e `GARMENT_SLEEVE_LENGTH_FROM/TO`. Qualquer outra medida de
  * parte de cima que a spec 012 ainda não tenha confirmado continua sem mapeamento aqui —
  * `missingAttributeIds` a devolve como "não confirmada", nunca inventa.
  */
@@ -241,6 +238,24 @@ export interface GarmentMeasureResult {
 }
 
 /**
+ * Tolerância (cm) usada só para satisfazer o par `_FROM`/`_TO` que o Mercado Livre exige por
+ * atributo de medida — achado real ao vivo, 25/09/2026 (ADR-030): enviar o mesmo valor para
+ * `_FROM` e `_TO` (a medida real única da peça, princípio X) é recusado como
+ * `duplicated_measure_value` ("Duplicated measure in attribute ... was found in row ...") —
+ * confirmado na documentação oficial do Mercado Livre (`size-guide-validations`) como um valor
+ * de medida igual a outro já usado na mesma linha. `medidas` no cadastro do produto não muda —
+ * continua com o valor real único da peça; só o par enviado ao Mercado Livre abre uma faixa
+ * estreita em torno dele, pela exigência do schema deles, não por incerteza da medida.
+ */
+const MEASURE_RANGE_TOLERANCE_CM = 1;
+
+function garmentMeasureValueName(attributeId: string, value: number, unidade: string): string {
+  if (attributeId.endsWith("_FROM")) return `${value - MEASURE_RANGE_TOLERANCE_CM} ${unidade}`;
+  if (attributeId.endsWith("_TO")) return `${value + MEASURE_RANGE_TOLERANCE_CM} ${unidade}`;
+  return `${value} ${unidade}`;
+}
+
+/**
  * Monta os atributos `GARMENT_*` que o domínio exige (`requiredAttributeIds`, de
  * `technical_specs`), a partir de `medidas`. **Formato do valor**: mesma convenção do pacote
  * padrão (`"{n} {unidade}"`) — não documentado explicitamente para `GARMENT_*` nas fontes salvas;
@@ -257,7 +272,7 @@ export function garmentMeasureAttributes(requiredAttributeIds: string[], medidas
       missingAttributeIds.push(attributeId);
       continue;
     }
-    attributes.push({ id: attributeId, value_name: `${value} ${medidas.unidade}` });
+    attributes.push({ id: attributeId, value_name: garmentMeasureValueName(attributeId, value, medidas.unidade) });
   }
 
   return { attributes, missingAttributeIds };

@@ -410,10 +410,17 @@ uma segunda fonte "genérica" só para o marketplace. Fluxo completo, unindo cal
    [{ name }] }, { id: "BRAND", values: [{ name }] }] }` → `{ paging, charts: [{ id, type,
    main_attribute_id, … }] }`.
    - **Calçado:** ordem de preferência **`BRAND`** (se a marca da peça tiver tabela), depois
-     **`STANDARD`**. Domínio sem tabela ativa responde `400 domain_not_active`.
-   - **Roupa:** busca com `type: "SPECIFIC"` e `seller_id` da própria conta. Sem resultado
-     (`charts: []`), o conector **cria** a tabela (passo 3a); com resultado, reaproveita a
-     existente e segue para o passo 4.
+     **`STANDARD`**. Domínio sem tabela ativa responde `400 domain_not_active`. Sem `BRAND` nem
+     `STANDARD`, bloqueia (calçado nunca cria/estende tabela própria).
+   - **Roupa (ADR-030):** tenta **`BRAND`** (marca da peça) e depois **`STANDARD`** primeiro, mesma
+     ordem do calçado — quando existe uma tabela oficial e ela já tem uma linha com o `SIZE` da
+     peça, reaproveita direto, **sem exigir nenhuma medida** (`GARMENT_*`) do cadastro. Só quando
+     não existe tabela oficial (`BRAND`/`STANDARD`) para o domínio+gênero, ou existe mas não tem o
+     `SIZE` da peça, o conector cai para a tabela **`SPECIFIC`** própria: busca com
+     `type: "SPECIFIC"` e `seller_id` da própria conta — sem resultado (`charts: []`), **cria** a
+     tabela (passo 3a); com resultado, reaproveita a existente e segue para o passo 4. Diferente do
+     calçado, roupa sem tabela oficial nunca bloqueia — sempre pode criar/estender a própria
+     `SPECIFIC`.
 3a. **Criar a tabela `SPECIFIC` (só roupa, só na primeira peça de um domínio+gênero)** —
    `GET /domains/{domain_id}/technical_specs?section=grids` para obter os atributos
    `CLOTHING_MEASURE` daquele domínio, depois `POST /catalog/charts` com `measure_type:
@@ -463,8 +470,12 @@ jaqueta), para parte de cima:
 | `medidas.comprimento_manga` (novo, 24/09/2026) | `GARMENT_SLEEVE_LENGTH_FROM`, `GARMENT_SLEEVE_LENGTH_TO` |
 
 Cada peça do brechó é uma peça única com uma medida real, não uma faixa de tamanho (constituição,
-princípio X) — por isso `_FROM` e `_TO` do mesmo atributo sempre mandam o mesmo valor, nunca dois
-valores diferentes formando um intervalo.
+princípio X). ⚠ Decisão original: `_FROM` e `_TO` do mesmo atributo mandavam o mesmo valor.
+**Revertida pela ADR-030** (erro real ao vivo, 25/09/2026, `duplicated_measure_value`): o Mercado
+Livre recusa `_FROM` igual a `_TO` na mesma linha. `_FROM` e `_TO` passam a abrir uma faixa
+estreita de ±1cm em torno do valor real (`_FROM = valor - 1`, `_TO = valor + 1`) — só para
+satisfazer o schema deles; `medidas` no cadastro do produto continua com o valor real único,
+inalterado.
 
 A causa de `technical_specs` não revelar os atributos de uma peça (T060, 23/09/2026) era consultar
 sem o `GENDER` no corpo — corrigido (`getDomainSizeChartAttributes` virou `POST` com `GENDER`

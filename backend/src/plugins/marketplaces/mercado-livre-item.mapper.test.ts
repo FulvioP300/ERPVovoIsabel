@@ -320,30 +320,30 @@ describe("garmentMeasureFieldName (spec 012, seção 3.5)", () => {
   });
 });
 
-describe("garmentMeasureAttributes (spec 012, seção 3.5; ADR-024)", () => {
+describe("garmentMeasureAttributes (spec 012, seção 3.5; ADR-024/ADR-030)", () => {
   const medidas = makeProduct().medidas;
 
-  it("mapeia os atributos confirmados de parte de baixo", () => {
+  it("mapeia os atributos confirmados de parte de baixo, com faixa de ±1cm nos _FROM (ADR-030)", () => {
     const result = garmentMeasureAttributes(
       ["GARMENT_WAIST_WIDTH_FROM", "GARMENT_HIP_WIDTH_FROM", "GARMENT_THIGH_WIDTH_FROM", "GARMENT_INSEAM_LENGTH_FROM"],
       medidas,
     );
     expect(result.missingAttributeIds).toEqual([]);
     expect(result.attributes).toEqual([
-      { id: "GARMENT_WAIST_WIDTH_FROM", value_name: "80 cm" },
-      { id: "GARMENT_HIP_WIDTH_FROM", value_name: "100 cm" },
-      { id: "GARMENT_THIGH_WIDTH_FROM", value_name: "60 cm" },
-      { id: "GARMENT_INSEAM_LENGTH_FROM", value_name: "70 cm" },
+      { id: "GARMENT_WAIST_WIDTH_FROM", value_name: "79 cm" },
+      { id: "GARMENT_HIP_WIDTH_FROM", value_name: "99 cm" },
+      { id: "GARMENT_THIGH_WIDTH_FROM", value_name: "59 cm" },
+      { id: "GARMENT_INSEAM_LENGTH_FROM", value_name: "69 cm" },
     ]);
   });
 
-  it("mapeia busto (parte de cima, T060 — GARMENT_CHEST_WIDTH_FROM)", () => {
+  it("mapeia busto (parte de cima, T060 — GARMENT_CHEST_WIDTH_FROM), com faixa de ±1cm (ADR-030)", () => {
     const result = garmentMeasureAttributes(["GARMENT_CHEST_WIDTH_FROM"], { ...medidas, busto: 92 });
     expect(result.missingAttributeIds).toEqual([]);
-    expect(result.attributes).toEqual([{ id: "GARMENT_CHEST_WIDTH_FROM", value_name: "92 cm" }]);
+    expect(result.attributes).toEqual([{ id: "GARMENT_CHEST_WIDTH_FROM", value_name: "91 cm" }]);
   });
 
-  it("mapeia ombro, manga e as variantes _TO de busto/comprimento (24/09/2026 — erro real publicando jaqueta): mesmo valor de FROM, peça é única, nunca uma faixa (princípio X)", () => {
+  it("mapeia ombro, manga e as variantes _TO de busto/comprimento: _FROM e _TO abrem uma faixa de ±1cm em torno do valor real (24/09/2026 erro real publicando jaqueta + 25/09/2026 erro real 'duplicated_measure_value' — ADR-030, o Mercado Livre recusa _FROM == _TO)", () => {
     const result = garmentMeasureAttributes(
       [
         "GARMENT_CHEST_WIDTH_FROM",
@@ -359,14 +359,14 @@ describe("garmentMeasureAttributes (spec 012, seção 3.5; ADR-024)", () => {
     );
     expect(result.missingAttributeIds).toEqual([]);
     expect(result.attributes).toEqual([
-      { id: "GARMENT_CHEST_WIDTH_FROM", value_name: "92 cm" },
-      { id: "GARMENT_CHEST_WIDTH_TO", value_name: "92 cm" },
-      { id: "GARMENT_LENGTH_FROM", value_name: "70 cm" },
-      { id: "GARMENT_LENGTH_TO", value_name: "70 cm" },
-      { id: "GARMENT_SHOULDER_WIDTH_FROM", value_name: "45 cm" },
-      { id: "GARMENT_SHOULDER_WIDTH_TO", value_name: "45 cm" },
-      { id: "GARMENT_SLEEVE_LENGTH_FROM", value_name: "60 cm" },
-      { id: "GARMENT_SLEEVE_LENGTH_TO", value_name: "60 cm" },
+      { id: "GARMENT_CHEST_WIDTH_FROM", value_name: "91 cm" },
+      { id: "GARMENT_CHEST_WIDTH_TO", value_name: "93 cm" },
+      { id: "GARMENT_LENGTH_FROM", value_name: "69 cm" },
+      { id: "GARMENT_LENGTH_TO", value_name: "71 cm" },
+      { id: "GARMENT_SHOULDER_WIDTH_FROM", value_name: "44 cm" },
+      { id: "GARMENT_SHOULDER_WIDTH_TO", value_name: "46 cm" },
+      { id: "GARMENT_SLEEVE_LENGTH_FROM", value_name: "59 cm" },
+      { id: "GARMENT_SLEEVE_LENGTH_TO", value_name: "61 cm" },
     ]);
   });
 

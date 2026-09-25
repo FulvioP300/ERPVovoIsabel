@@ -774,6 +774,48 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
         { id: "GARMENT_WAIST_WIDTH_FROM", name: "Cintura", valueType: "number_unit", tags: [] },
         { id: "GARMENT_HIP_WIDTH_FROM", name: "Quadril", valueType: "number_unit", tags: [] },
       ]);
+      // Sem tabela BRAND/STANDARD oficial por padrão (ADR-030) — cada teste que precisa de uma
+      // tabela SPECIFIC sobrescreve com mockImplementation filtrando por `type`.
+      apiMocks.searchSizeCharts.mockResolvedValue([]);
+    });
+
+    it("domínio tem tabela BRAND/STANDARD oficial com o tamanho da peça (ADR-030): reaproveita, sem medir a peça nem criar/estender a SPECIFIC", async () => {
+      apiMocks.searchSizeCharts.mockImplementation(async (_token: string, input: { type?: string }) =>
+        input.type === "STANDARD" ? [{ id: "chart-std", type: "STANDARD", mainAttributeId: "SIZE" }] : [],
+      );
+      apiMocks.getSizeChart.mockResolvedValue({
+        id: "chart-std",
+        type: "STANDARD",
+        rows: [{ id: "chart-std:1", attributes: [{ id: "SIZE", values: ["42"] }] }],
+      });
+
+      await publishItem(ACCESS_TOKEN, makeInput({ product: pantsProduct({ marca: { nome: null, original: true } }) }));
+
+      expect(apiMocks.getDomainSizeChartAttributes).not.toHaveBeenCalled();
+      expect(apiMocks.createSizeChart).not.toHaveBeenCalled();
+      expect(apiMocks.addSizeChartRow).not.toHaveBeenCalled();
+      const payload = apiMocks.createItem.mock.calls[0]![1] as { attributes: { id: string; value_name?: string }[] };
+      expect(payload.attributes).toEqual(expect.arrayContaining([{ id: "SIZE_GRID_ID", value_name: "chart-std" }]));
+    });
+
+    it("domínio tem tabela BRAND/STANDARD oficial mas sem o tamanho da peça (ADR-030): cai pra SPECIFIC do vendedor, não bloqueia", async () => {
+      apiMocks.searchSizeCharts.mockImplementation(async (_token: string, input: { type?: string }) =>
+        input.type === "STANDARD"
+          ? [{ id: "chart-std", type: "STANDARD", mainAttributeId: "SIZE" }]
+          : input.type === "SPECIFIC"
+            ? []
+            : [],
+      );
+      apiMocks.getSizeChart.mockImplementation(async (_token: string, chartId: string) =>
+        chartId === "chart-std"
+          ? { id: "chart-std", type: "STANDARD", rows: [{ id: "chart-std:1", attributes: [{ id: "SIZE", values: ["44"] }] }] }
+          : { id: "chart-new", type: "SPECIFIC", rows: [{ id: "chart-new:1", attributes: [{ id: "SIZE", values: ["42"] }] }] },
+      );
+      apiMocks.createSizeChart.mockResolvedValue({ id: "chart-new" });
+
+      await publishItem(ACCESS_TOKEN, makeInput({ product: pantsProduct({ marca: { nome: null, original: true } }) }));
+
+      expect(apiMocks.createSizeChart).toHaveBeenCalled();
     });
 
     it("consulta a ficha técnica do domínio com o GENDER já resolvido no corpo (T060 — sem isso a resposta não traz GARMENT_*)", async () => {
@@ -797,7 +839,9 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
 
     it("busto (parte de cima, T060) exigido e preenchido: envia normalmente", async () => {
       apiMocks.getDomainSizeChartAttributes.mockResolvedValue([{ id: "GARMENT_CHEST_WIDTH_FROM", name: "Busto", valueType: "number_unit", tags: [] }]);
-      apiMocks.searchSizeCharts.mockResolvedValue([{ id: "chart-top", type: "SPECIFIC", mainAttributeId: "SIZE" }]);
+      apiMocks.searchSizeCharts.mockImplementation(async (_token: string, input: { type?: string }) =>
+        input.type === "SPECIFIC" ? [{ id: "chart-top", type: "SPECIFIC", mainAttributeId: "SIZE" }] : [],
+      );
       apiMocks.getSizeChart.mockResolvedValue({
         id: "chart-top",
         type: "SPECIFIC",
@@ -842,7 +886,9 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
     });
 
     it("tabela existe com linha idêntica: reaproveita, não adiciona linha nova", async () => {
-      apiMocks.searchSizeCharts.mockResolvedValue([{ id: "chart-1", type: "SPECIFIC", mainAttributeId: "SIZE" }]);
+      apiMocks.searchSizeCharts.mockImplementation(async (_token: string, input: { type?: string }) =>
+        input.type === "SPECIFIC" ? [{ id: "chart-1", type: "SPECIFIC", mainAttributeId: "SIZE" }] : [],
+      );
       apiMocks.getSizeChart.mockResolvedValue({
         id: "chart-1",
         type: "SPECIFIC",
@@ -858,7 +904,9 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
     });
 
     it("tabela existe mas sem linha idêntica: adiciona uma linha nova", async () => {
-      apiMocks.searchSizeCharts.mockResolvedValue([{ id: "chart-1", type: "SPECIFIC", mainAttributeId: "SIZE" }]);
+      apiMocks.searchSizeCharts.mockImplementation(async (_token: string, input: { type?: string }) =>
+        input.type === "SPECIFIC" ? [{ id: "chart-1", type: "SPECIFIC", mainAttributeId: "SIZE" }] : [],
+      );
       apiMocks.getSizeChart
         .mockResolvedValueOnce({
           id: "chart-1",

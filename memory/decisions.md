@@ -1700,3 +1700,74 @@ primeira peça publicada daquele tamanho.
   antiga (ADR-024) marcada como revertida nesse ponto específico — o restante da ADR-024
   (extensão de `MedidasSchema`, criação de tabela, nunca editar linha existente) continua
   valendo.
+
+## ADR-030 — Tabela de medidas de roupas do Mercado Livre: tenta BRAND/STANDARD oficial antes de medir, e abre faixa de ±1cm em `_FROM`/`_TO` quando cria a própria SPECIFIC
+
+**Status:** Aceita
+**Data:** 2026-09-25
+**Specs afetadas:** [012-conector-mercado-livre](../specs/012-conector-mercado-livre/spec.md)
+(seção 3.5)
+
+### Contexto
+
+A ADR-029 (mesmo dia, poucas horas antes) resolveu um caso do erro real
+`"Value 14 in attribute FILTRABLE_SIZE is incorrect — Duplicated measure in attribute
+GARMENT_CHEST_WIDTH_FROM was found in row SIZE 14"` — mas o mesmo erro voltou a acontecer
+publicando uma peça completamente diferente (camisa Hugo Boss, tamanho 39), o que descartou a
+causa original (linha SIZE já existente com medida diferente): tamanho 39 nunca tinha sido
+publicado antes nesse domínio, então a linha era **nova**, e o erro persistiu mesmo assim.
+
+Consultando a documentação oficial do Mercado Livre (`size-guide-validations`), o erro
+`duplicated_measure_value` é descrito, pela própria estrutura do payload de erro (`cell` com um
+único `attribute_id` e uma única `row`, sem referência a nenhuma outra linha), como um valor de
+medida que duplica outro valor **já usado na mesma linha** — não duas linhas conflitando entre
+si. Isso aponta direto para `garmentMeasureAttributes`
+(`backend/src/plugins/marketplaces/mercado-livre-item.mapper.ts`): por decisão da ADR-024,
+`_FROM` e `_TO` do mesmo atributo (ex.: `GARMENT_CHEST_WIDTH_FROM`/`_TO`) sempre recebiam o
+**mesmo valor** (a medida real única da peça) — o Mercado Livre rejeita isso como duplicado.
+
+Ao investigar, o usuário perguntou se dava pra indicar tamanhos padrão sem depender de medidas —
+o calçado (`SAPT`) já faz exatamente isso (tabela `BRAND`/`STANDARD` do próprio Mercado Livre,
+sem nenhuma medida do ERP), mas a ADR-024 nunca tinha testado se domínios de roupa também têm
+tabelas oficiais — só confirmou que `STANDARD` não tinha resultado pra roupa (T050); `BRAND`
+nunca foi checado para roupa.
+
+### Decisão
+
+Duas mudanças, uma reduz quando a outra é necessária:
+
+1. **Roupa tenta tabela oficial (`BRAND` da marca, depois `STANDARD`) antes de qualquer medida**
+   — mesma ordem de preferência e mesma busca já usada por calçado
+   (`findBrandOrStandardChart`, generalizada a partir de `findFootwearChart`). Achando uma
+   tabela oficial com uma linha do `SIZE` da peça, reaproveita direto — **sem consultar
+   `technical_specs`, sem `medidas`, sem tocar na `SPECIFIC` do vendedor**. Diferente de
+   calçado, se a tabela oficial não tiver o `SIZE` (ou não existir nenhuma), roupa **não
+   bloqueia** — cai pro fluxo de `SPECIFIC` (ADR-024/ADR-029), porque só roupa pode
+   criar/estender sua própria tabela.
+2. **Quando cai pra `SPECIFIC` (nenhuma tabela oficial serviu), `_FROM`/`_TO` do mesmo atributo
+   abrem uma faixa de ±1cm em torno do valor real** (`_FROM = valor - 1`, `_TO = valor + 1`),
+   em vez do mesmo valor duas vezes — resolve o `duplicated_measure_value` na origem, não só no
+   caso específico que a ADR-029 cobriu. `product.medidas` no cadastro do ERP **não muda** —
+   continua com o valor real único da peça (princípio X intacto); a faixa existe só no payload
+   enviado ao Mercado Livre, para satisfazer o schema deles.
+
+Alternativa descartada para o item 2: enviar só um dos dois atributos (`_FROM` OU `_TO`) —
+rejeitada porque o T060/24-09 já confirmou ao vivo que, quando o domínio lista os dois como
+exigidos, o Mercado Livre recusa a linha por atributo obrigatório faltando
+(`required_row_attribute_not_found`) se só um for enviado.
+
+### Consequências
+
+- Peças de marca/tamanho já cobertos por uma tabela oficial do Mercado Livre publicam **sem
+  exigir nenhuma medida no cadastro** — reduz o atrito do cadastro manual e o número de vezes
+  que a `SPECIFIC` do vendedor precisa ser criada/estendida.
+- Quando a `SPECIFIC` do vendedor é usada, o valor de medida mostrado ao comprador no atributo
+  do Mercado Livre passa a ser uma faixa de ±1cm em torno do valor real, não mais o valor exato
+  — mesmo espírito de risco aceito da ADR-029 (representação no marketplace por tamanho/faixa,
+  não por peça exata); a medida exata continua disponível na descrição do anúncio quando
+  relevante.
+- `findFootwearChart` renomeada para `findBrandOrStandardChart` (mesma função, agora
+  compartilhada entre calçado e roupa) — sem mudança de comportamento para calçado.
+- Testes de unidade de `garmentMeasureAttributes` (mapper) e de integração de
+  `resolveSizeChartAttributes`/`publishItem` (roupa — tabela SPECIFIC) atualizados para a nova
+  faixa de valores e para o novo passo de busca `BRAND`/`STANDARD` antes da `SPECIFIC`.

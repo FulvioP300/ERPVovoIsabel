@@ -326,11 +326,24 @@ async function resolveSizeChartAttributes(
     throw new MarketplaceConnectorError("Informe o tamanho da peça (tamanho da etiqueta) para publicar esta categoria no Mercado Livre.");
   }
 
-  // Calçado (T050): domínio SAPT — tabela BRAND/STANDARD. Demais domínios de moda: tabela SPECIFIC
-  // do vendedor (ADR-024), com as medidas reais da peça.
+  // Calçado (T050): domínio SAPT — tabela BRAND/STANDARD, sempre (calçado não tem tabela própria
+  // do vendedor). Demais domínios de moda: tenta reaproveitar uma tabela BRAND/STANDARD oficial
+  // antes de medir a peça (ADR-030) — só cria/estende a SPECIFIC do vendedor (ADR-024), que exige
+  // as medidas reais, quando nenhuma tabela oficial existir ou o tamanho da peça não estiver nela.
   if (product.classificacao.categoria_codigo === "SAPT") {
     const chartAttributes = await resolveFootwearChart(accessToken, domain, sellerId, size, gender.value_name, product.marca.nome);
     return [gender, ...chartAttributes];
+  }
+
+  const officialChart = await findBrandOrStandardChart(accessToken, domain, sellerId, gender.value_name, product.marca.nome);
+  if (officialChart) {
+    const officialDetail = await api.getSizeChart(accessToken, officialChart.id);
+    const officialRow = pickChartRow(officialDetail.rows, [{ id: "SIZE", value: size }]);
+    if (officialRow) {
+      return [gender, ...sizeChartAttributes(size, officialChart.id, officialRow.id)];
+    }
+    // Tamanho não está na tabela oficial (marca/padrão) — ao contrário do calçado, roupa pode
+    // criar/estender a própria tabela SPECIFIC (abaixo), então isso não bloqueia a publicação.
   }
 
   // T060: a ficha técnica de medidas é por gênero (CHILD_DEPENDENT) — sem o GENDER já resolvido no
@@ -364,8 +377,10 @@ async function resolveSizeChartAttributes(
 }
 
 /** Acha a tabela `BRAND` (se a marca da peça tiver uma) ou, senão, `STANDARD` — mesma ordem de
- * preferência do fluxo de publicação e da sugestão de tamanhos pra revisão (spec 012, seção 3.5). */
-async function findFootwearChart(
+ * preferência do fluxo de publicação e da sugestão de tamanhos pra revisão (spec 012, seção 3.5).
+ * Usada tanto por calçado quanto por roupa (ADR-030) — a busca em si não é específica de calçado,
+ * só a normalização de `SIZE` (`normalizeFootwearSize`) é feita por quem chama. */
+async function findBrandOrStandardChart(
   accessToken: string,
   domain: string,
   sellerId: string,
@@ -402,7 +417,7 @@ async function resolveFootwearChart(
   brandName: string | null,
 ): Promise<MercadoLivreAttributeCandidate[]> {
   const normalizedSize = normalizeFootwearSize(size);
-  const chart = await findFootwearChart(accessToken, domain, sellerId, genderValueName, brandName);
+  const chart = await findBrandOrStandardChart(accessToken, domain, sellerId, genderValueName, brandName);
   if (!chart) {
     throw new MarketplaceConnectorError(
       `Não há tabela de medidas (da marca ou padrão) para "${domain}" no Mercado Livre — não é possível publicar este calçado.`,
@@ -467,7 +482,7 @@ export async function resolveFootwearSizeSuggestion(accessToken: string, product
 
   const currentUser = await mercadoLivreOAuthClient.fetchCurrentUser(accessToken);
   const sellerId = String(currentUser.id);
-  const chart = await findFootwearChart(accessToken, settings.catalogDomain, sellerId, gender.value_name, product.marca.nome);
+  const chart = await findBrandOrStandardChart(accessToken, settings.catalogDomain, sellerId, gender.value_name, product.marca.nome);
   if (!chart) return { applicable: true, available: [], current, currentMatches: false };
 
   const detail = await api.getSizeChart(accessToken, chart.id);
