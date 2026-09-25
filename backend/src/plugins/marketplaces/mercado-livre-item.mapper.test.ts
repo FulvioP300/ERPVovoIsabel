@@ -272,6 +272,18 @@ describe("brandAttribute / colorAttributes (spec 012, seção 3 — melhor esfor
       { id: "MAIN_COLOR", value_name: "Marrom" },
     ]);
   });
+
+  it("resolve value_id quando a cor bate com um valor da lista da categoria (achado real 25/09/2026 — 'Attribute [MAIN_COLOR] is not valid, item values [(null:azul claro)]')", () => {
+    expect(
+      colorAttributes("azul claro", [attr({ id: "MAIN_COLOR", values: [{ id: "V1", name: "Azul claro" }, { id: "V2", name: "Azul" }] })]),
+    ).toEqual([{ id: "MAIN_COLOR", value_id: "V1", value_name: "Azul claro" }]);
+  });
+
+  it("sem correspondência na lista: manda só value_name como antes, nunca aproxima pra um valor diferente (princípio I)", () => {
+    expect(colorAttributes("Bege rosado", [attr({ id: "MAIN_COLOR", values: [{ id: "V1", name: "Azul" }] })])).toEqual([
+      { id: "MAIN_COLOR", value_name: "Bege rosado" },
+    ]);
+  });
 });
 
 describe("materialAttributes (spec 012, seção 3 — melhor esforço; achado real 25/09/2026, categoria Camisas exigindo SHIRT_MATERIAL)", () => {

@@ -182,11 +182,24 @@ export function modelAttribute(nome: string, hasModelAttribute: boolean): Mercad
  * Envia os dois quando a categoria tem os dois: confirmado ao vivo (T043) que algumas categorias
  * têm `COLOR` como `required` e `MAIN_COLOR` como opcional ao mesmo tempo — usar só um dos dois
  * (a escolha antiga priorizava `MAIN_COLOR`) deixava de enviar o que era exigido.
+ *
+ * `COLOR`/`MAIN_COLOR` são lista fechada da categoria, não texto livre — achado real ao vivo,
+ * 25/09/2026: `"Attribute [MAIN_COLOR] is not valid, item values [(null:azul claro)]"`, mesmo
+ * padrão do `FILTRABLE_SIZE` (ADR-033): mandar só `value_name` sem `value_id` é recusado.
+ * Resolve o `value_id` achando, na lista de valores já presente em `CategoryAttribute` (mesma
+ * chamada que já busca os atributos da categoria, sem requisição nova), o item cuja `name` bate
+ * com `cor` (sem diferenciar maiúsculas/espaços nas pontas). Sem correspondência exata, continua
+ * mandando só `value_name` como antes (melhor esforço, nunca aproxima pra um valor diferente —
+ * princípio I) — a categoria pode recusar nesse caso, mesmo comportamento de hoje.
  */
 export function colorAttributes(cor: string | null, categoryAttributes: CategoryAttribute[]): MercadoLivreAttributeCandidate[] {
   if (!cor) return [];
-  const ids = categoryAttributes.filter((a) => a.id === "COLOR" || a.id === "MAIN_COLOR").map((a) => a.id);
-  return ids.map((id) => ({ id, value_name: cor }));
+  const defs = categoryAttributes.filter((a) => a.id === "COLOR" || a.id === "MAIN_COLOR");
+  const normalized = cor.trim().toLowerCase();
+  return defs.map((def) => {
+    const match = def.values.find((v) => v.name.trim().toLowerCase() === normalized);
+    return match ? { id: def.id, value_id: match.id, value_name: match.name } : { id: def.id, value_name: cor };
+  });
 }
 
 /**
