@@ -20,6 +20,7 @@ import {
   immediateTag,
   isKnownGarmentMeasureAttribute,
   mapCondition,
+  materialAttributes,
   modelAttribute,
   normalizeFootwearSize,
   packageAttributes,
@@ -270,6 +271,30 @@ describe("brandAttribute / colorAttributes (spec 012, seção 3 — melhor esfor
       { id: "COLOR", value_name: "Marrom" },
       { id: "MAIN_COLOR", value_name: "Marrom" },
     ]);
+  });
+});
+
+describe("materialAttributes (spec 012, seção 3 — melhor esforço; achado real 25/09/2026, categoria Camisas exigindo SHIRT_MATERIAL)", () => {
+  it("acha o id específico da categoria terminado em _MATERIAL, nunca um MATERIAL genérico fixo", () => {
+    expect(materialAttributes(["Algodão"], [attr({ id: "SHIRT_MATERIAL" })])).toEqual([{ id: "SHIRT_MATERIAL", value_name: "Algodão" }]);
+  });
+
+  it("também aceita um atributo chamado exatamente MATERIAL", () => {
+    expect(materialAttributes(["Algodão"], [attr({ id: "MATERIAL" })])).toEqual([{ id: "MATERIAL", value_name: "Algodão" }]);
+  });
+
+  it("junta múltiplos materiais com vírgula", () => {
+    expect(materialAttributes(["Algodão", "Elastano"], [attr({ id: "SHIRT_MATERIAL" })])).toEqual([
+      { id: "SHIRT_MATERIAL", value_name: "Algodão, Elastano" },
+    ]);
+  });
+
+  it("categoria sem nenhum atributo de material: lista vazia", () => {
+    expect(materialAttributes(["Algodão"], [attr({ id: "COLOR" })])).toEqual([]);
+  });
+
+  it("peça sem material cadastrado: lista vazia, mesmo com a categoria exigindo", () => {
+    expect(materialAttributes([], [attr({ id: "SHIRT_MATERIAL" })])).toEqual([]);
   });
 });
 

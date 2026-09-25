@@ -189,6 +189,22 @@ export function colorAttributes(cor: string | null, categoryAttributes: Category
   return ids.map((id) => ({ id, value_name: cor }));
 }
 
+/**
+ * Material/composição — melhor esforço, mesmo espírito de `colorAttributes`. Cada categoria de
+ * moda tem seu próprio id específico pra isso em vez de um `MATERIAL` genérico — achado real ao
+ * vivo, 25/09/2026: `"The attributes [SHIRT_MATERIAL] are required for category ..."` (Camisas).
+ * Acha, entre os atributos da categoria, qualquer um chamado exatamente `MATERIAL` ou terminado
+ * em `_MATERIAL` (`SHIRT_MATERIAL`, `PANTS_MATERIAL` etc.) — nunca assume um id fixo. Envia
+ * `caracteristicas.material` (spec 005) como texto livre, junto — nunca tenta casar contra uma
+ * lista fechada do Mercado Livre (diferente de `FILTRABLE_SIZE`, ADR-033, onde isso é exigido).
+ */
+export function materialAttributes(material: string[], categoryAttributes: CategoryAttribute[]): MercadoLivreAttributeCandidate[] {
+  if (material.length === 0) return [];
+  const ids = categoryAttributes.filter((a) => a.id === "MATERIAL" || a.id.endsWith("_MATERIAL")).map((a) => a.id);
+  const text = material.join(", ");
+  return ids.map((id) => ({ id, value_name: text }));
+}
+
 /** `SIZE`, `SIZE_GRID_ID` e `SIZE_GRID_ROW_ID` — moda com tabela de medidas (spec 012, seção 3.5). */
 export function sizeChartAttributes(size: string, chartId: string, rowId: string): MercadoLivreAttributeCandidate[] {
   return [

@@ -23,6 +23,7 @@ import {
   immediateTag,
   isKnownGarmentMeasureAttribute,
   mapCondition,
+  materialAttributes,
   modelAttribute,
   normalizeFootwearSize,
   packageAttributes,
@@ -231,6 +232,7 @@ async function buildAttributes(
   if (brand) candidates.push(brand);
 
   candidates.push(...colorAttributes(product.caracteristicas.cor_principal, categoryAttributes));
+  candidates.push(...materialAttributes(product.caracteristicas.material, categoryAttributes));
 
   const model = modelAttribute(
     product.identificacao.nome,

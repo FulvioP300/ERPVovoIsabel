@@ -272,6 +272,15 @@ describe("publishItem — criar (spec 012, seção 3.1)", () => {
     expect(payload.attributes).toEqual(expect.arrayContaining([{ id: "MODEL", value_name: "Bermuda Jeans" }]));
   });
 
+  it("categoria com SHIRT_MATERIAL: envia caracteristicas.material (achado real 25/09/2026 — 'The attributes [SHIRT_MATERIAL] are required for category Camisas')", async () => {
+    apiMocks.getCategoryAttributes.mockResolvedValue([...CATEGORY_ATTRIBUTES, attr({ id: "SHIRT_MATERIAL" })]);
+
+    await publishItem(ACCESS_TOKEN, makeInput({ product: makeProduct({ caracteristicas: { ...makeProduct().caracteristicas, material: ["Algodão"] } }) }));
+
+    const payload = apiMocks.createItem.mock.calls[0]![1] as { attributes: { id: string; value_name?: string }[] };
+    expect(payload.attributes).toEqual(expect.arrayContaining([{ id: "SHIRT_MATERIAL", value_name: "Algodão" }]));
+  });
+
   it("sucesso: devolve id_anuncio e url_anuncio, pendencia null", async () => {
     const result = await publishItem(ACCESS_TOKEN, makeInput());
     expect(result).toEqual({ id_anuncio: "MLB999", url_anuncio: "https://produto.mercadolivre.com.br/MLB-999", pendencia: null });
