@@ -60,6 +60,21 @@ export class AiSettingsNotConfiguredError extends Error {
   }
 }
 
+/** Achado real ao vivo (25/09/2026, troca de modelo pra Gemma): uma falha na chamada ao
+ * provedor (`OpenAI.APIError` do SDK, ou qualquer outra) não caía em nenhum dos `instanceof`
+ * de `ai-intake.routes.ts` — subia crua até o error handler padrão do Fastify, que devolve
+ * `{ statusCode, error: "Bad Request", message }`, um formato que `parseEnvelope` (frontend)
+ * não lê (só lê `body.error`, aqui só a frase genérica do status HTTP, nunca `message`, onde
+ * estava o detalhe real do provedor). Essa classe garante que qualquer falha do provedor vira
+ * a mensagem amigável de sempre (`{ success: false, error }`), com o detalhe real preservado. */
+export class AiProviderRequestError extends Error {
+  constructor(cause: unknown) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    super(`O provedor de IA configurado recusou a requisição: ${detail}`);
+    this.name = "AiProviderRequestError";
+  }
+}
+
 let testProvider: AiProviderPort | undefined;
 
 /**
@@ -163,7 +178,12 @@ export async function analyzeProduct(input: AnalyzeProductInput): Promise<AiSugg
   }));
 
   const provider = await getProvider();
-  const raw = await provider.analyze(prompt, images);
+  let raw: unknown;
+  try {
+    raw = await provider.analyze(prompt, images);
+  } catch (err) {
+    throw new AiProviderRequestError(err);
+  }
   const parseResult = AiSuggestedProductSchema.safeParse(raw);
   if (!parseResult.success) {
     const details = parseResult.error.issues.map((issue) => issue.path.join(".")).join(", ");

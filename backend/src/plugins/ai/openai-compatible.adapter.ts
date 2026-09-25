@@ -141,11 +141,17 @@ export class OpenAiCompatibleAdapter implements AiProviderPort {
       ...(this.useJsonObjectResponseFormat
         ? { response_format: { type: "json_object" as const } }
         : {}),
+      // Prompt de sistema embutido na mensagem `user`, nunca numa mensagem `role: "system"` —
+      // achado real ao vivo, 25/09/2026: o template de chat oficial dos modelos Gemma lança um
+      // erro ("System role not supported") quando a mensagem 0 tem essa role, e o gateway
+      // devolve 400 sem corpo nenhum. Embutir no `user` funciona em qualquer provedor (os que
+      // aceitam `system` continuam recebendo as mesmas instruções, só que por outra role) — o
+      // próprio texto já declara sua prioridade sobre o resto da conversa, então os guardrails
+      // da spec 006 não dependem do privilégio de role da API.
       messages: [
-        { role: "system", content: this.systemPrompt },
         {
           role: "user",
-          content: [{ type: "text", text: prompt }, ...imageParts],
+          content: [{ type: "text", text: `${this.systemPrompt}\n\n${prompt}` }, ...imageParts],
         },
       ],
     });

@@ -3,6 +3,7 @@ import { authorize } from "../middleware/authorize.middleware.js";
 import { AiAnalysisInputSchema } from "../schemas/ai-intake.schema.js";
 import { CreateProductSchema, ProductSchema } from "../schemas/product.schema.js";
 import {
+  AiProviderRequestError,
   AiSettingsNotConfiguredError,
   ImageDownloadFailedError,
   InvalidAiResponseError,
@@ -63,6 +64,9 @@ export default async function aiIntakeRoutes(fastify: FastifyInstance) {
         ) {
           return reply.code(400).send({ success: false, error: err.message });
         }
+        if (err instanceof AiProviderRequestError) {
+          return reply.code(502).send({ success: false, error: err.message });
+        }
         throw err;
       }
     },
@@ -107,7 +111,7 @@ export default async function aiIntakeRoutes(fastify: FastifyInstance) {
         if (err instanceof NoSavedImagesError || err instanceof InvalidAiResponseError || err instanceof AiSettingsNotConfiguredError) {
           return reply.code(400).send({ success: false, error: err.message });
         }
-        if (err instanceof ImageDownloadFailedError) {
+        if (err instanceof ImageDownloadFailedError || err instanceof AiProviderRequestError) {
           return reply.code(502).send({ success: false, error: err.message });
         }
         throw err;

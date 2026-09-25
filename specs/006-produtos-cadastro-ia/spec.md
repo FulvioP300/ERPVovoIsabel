@@ -284,6 +284,15 @@ Este é o prompt de sistema canônico desta spec — a implementação (`ai-inta
 para as chamadas de `/analyze`. Mudanças de redação são aceitáveis desde que preservem
 integralmente as 9 regras numeradas.
 
+⚠ **Entrega ao modelo, não role de API (ADR-031).** O adapter nunca manda este texto numa
+mensagem `role: "system"` da API — embute no início da mensagem `role: "user"` (junto com o
+prompt da requisição e as fotos). Achado real ao vivo, 25/09/2026: o template de chat oficial
+dos modelos Gemma lança um erro (`"System role not supported"`) quando a primeira mensagem tem
+essa role, e o gateway devolve 400. Embutir no `user` funciona em qualquer provedor — os que
+suportam `system` continuam recebendo as mesmas instruções, só que por outra role; o texto já
+declara sua própria prioridade sobre o resto da conversa, então as defesas da seção 8.2 não
+dependem do privilégio de role da API.
+
 ```text
 Você é um extrator de dados estruturados para o sistema de cadastro de peças do brechó
 "Vovó Isabel". Sua única função é analisar as fotos e a descrição curta de UMA peça de roupa

@@ -34,6 +34,7 @@ const {
   analyzeProduct,
   reanalyzeProduct,
   setAiProviderForTesting,
+  AiProviderRequestError,
   ImageDownloadFailedError,
   InvalidAiResponseError,
   NoImagesProvidedError,
@@ -157,6 +158,12 @@ describe("ai-intake.service.analyzeProduct", () => {
     const [sentPrompt] = (provider.analyze as ReturnType<typeof vi.fn>).mock.calls[0] as [string, unknown];
     expect(sentPrompt).toContain('"largura_ombro"');
     expect(sentPrompt).toContain('"comprimento_manga"');
+  });
+
+  it("provedor de IA rejeita a requisição (ex.: 400 do gateway): erro amigável com o detalhe real, não some cru (achado real 25/09/2026, troca pra Gemma)", async () => {
+    setAiProviderForTesting({ analyze: vi.fn().mockRejectedValue(new Error("400 status code (no body)")) });
+    await expect(analyzeProduct({ prompt: "bermuda", images: [fakeImage()] })).rejects.toBeInstanceOf(AiProviderRequestError);
+    await expect(analyzeProduct({ prompt: "bermuda", images: [fakeImage()] })).rejects.toThrow(/400 status code \(no body\)/);
   });
 
   it("rejeita payload com campo obrigatório ausente (Zod)", async () => {
