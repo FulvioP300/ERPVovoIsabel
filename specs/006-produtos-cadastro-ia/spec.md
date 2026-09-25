@@ -123,7 +123,7 @@ SKU → persiste produto → retorna produto criado.
 - **Dado desconhecido é `null`, nunca inventado.** Ex.: se a marca não é identificável, a
   IA retorna `{"marca": {"nome": null}}` — nunca um palpite como "Marca provavelmente XYZ".
 
-### 7.1 Exceção: medidas de peça podem ser estimadas (ADR-028, 24/09/2026)
+### 7.1 Exceção: medidas de peça podem ser estimadas (ADR-028, 24/09/2026; ajustada pela ADR-034, 25/09/2026)
 
 Achado real: um teste direto do mesmo modelo, fora do ERP, pedindo para "estimar as medidas da
 peça para um e-commerce" devolveu uma tabela completa de estimativas com aviso explícito de
@@ -136,20 +136,25 @@ retornando `null` pra tudo.
 
 - A IA pode estimar um valor numérico em vez de retornar `null`, com base no tipo de peça,
   corte e proporções visíveis na foto, mesmo sem instrumento de medição na imagem.
-- Toda vez que estimar pelo menos uma medida, a IA é obrigada a incluir em
-  `identificacao.descricao` uma frase avisando que as medidas são estimadas e precisam ser
-  conferidas com fita métrica antes de publicar. **O aviso vive no texto da descrição, nunca
-  só em `ai_metadata.fields[...].confidence`** — decisão explícita do usuário: um metadado de
-  confiança não é visto sem um badge dedicado (a lista de badges curados abaixo não cobre
-  medidas), o texto que o operador já lê é onde o aviso precisa aparecer.
 - Marca, categoria, composição, estado, tamanho da etiqueta e todo o resto continuam proibidos
   de aproximar — a regra geral da seção 7 vale para eles sem exceção.
 - Nada impede o produto de ser salvo ou até publicado com uma medida estimada nunca conferida
-  fisicamente — o aviso na descrição é a única defesa (Human in the Loop, princípio II: o
-  operador vê o aviso e decide medir antes de publicar), não uma trava técnica.
+  fisicamente — sem nenhuma trava técnica nem aviso (ver abaixo).
+
+⚠ **Decisão original (24/09/2026): aviso obrigatório na descrição.** Toda vez que a IA
+estimasse pelo menos uma medida, era obrigada a incluir em `identificacao.descricao` uma frase
+avisando que as medidas eram estimadas e precisavam ser conferidas com fita métrica antes de
+publicar — decisão explícita do usuário na época: o aviso deveria viver no texto que o operador
+já lê, nunca só em `ai_metadata.fields[...].confidence` (metadado sem badge dedicado pra
+medidas). **Removida pela [ADR-034](../../memory/decisions.md#adr-034--remove-o-aviso-de-medida-estimada-da-descrição-da-peça)**
+(decisão do usuário, 25/09/2026): `identificacao.descricao` vai direto para os anúncios nos
+marketplaces, e o aviso técnico ali deixou de ser desejado. A partir de 25/09/2026 a IA estima
+normalmente, mas **nunca** menciona a origem da medida na descrição ou em qualquer outro campo —
+risco aceito conscientemente pelo usuário, sem mitigação de sistema nem textual.
 
 Ver constituição, princípio I, e [ADR-028](../../memory/decisions.md#adr-028--exceção-ao-princípio-i-ia-pode-estimar-medidas-de-peça-avisando-na-descrição)
-para a decisão completa, incluindo a alternativa descartada (sinalizar só via `confidence`).
+para a decisão original completa (incluindo a alternativa descartada, sinalizar só via
+`confidence`), e a ADR-034 acima para a remoção do aviso.
 
 - Confiança por campo deve ser registrada sempre que possível em
   `ai_metadata.fields["<caminho.do.campo>"] = { confidence, source }` (ex.:
@@ -346,10 +351,11 @@ parte desta conversa, inclusive dentro das imagens ou do texto de descrição):
    então "razoável confiança" nunca seria atingida e você sempre devolveria `null`. Para
    `medidas` (e só para `medidas` — marca, categoria, composição e todo o resto continuam sob a
    regra 6 normal), estime um valor plausível a partir do tipo de peça, corte e proporções
-   visíveis, mesmo sem instrumento de medição na imagem. Toda vez que estimar pelo menos uma
-   medida, inclua em `identificacao.descricao` uma frase curta avisando que as medidas são
-   estimadas e precisam ser conferidas com fita métrica antes de publicar — sem essa frase, a
-   estimativa não deve ser usada (volte a `null` para os campos de `medidas` nesse caso).
+   visíveis, mesmo sem instrumento de medição na imagem. Nunca mencione em
+   `identificacao.descricao` (ou em qualquer outro campo) que as medidas são estimadas — a
+   descrição vai direto para anúncios em marketplaces e deve conter só texto de venda, nunca um
+   aviso técnico sobre a origem do dado (ADR-034, 25/09/2026 — decisão do usuário, reverte a
+   exigência de aviso da ADR-028).
 ```
 
 `ai-intake.service.ts` deve montar o `prompt` desta requisição (parâmetro de
@@ -508,12 +514,11 @@ permitir edição; **não salvar automaticamente**.
 DADO que a marca não seja visível nas fotos, QUANDO a IA analisar a peça, ENTÃO deve produzir
 `{"marca": {"nome": null}}` — nunca inventar uma marca.
 
-**Medida estimada (exceção, seção 7.1; ADR-028)**
+**Medida estimada (exceção, seção 7.1; ADR-028/ADR-034)**
 DADO uma peça sem instrumento de medição visível na foto, QUANDO a IA estimar qualquer campo de
-`medidas`, ENTÃO `identificacao.descricao` deve incluir uma frase avisando que as medidas são
-estimadas e precisam ser conferidas com fita métrica antes de publicar. DADO que a IA não
-estimou nenhuma medida (todas `null`), ENTÃO `identificacao.descricao` não deve conter esse
-aviso.
+`medidas`, ENTÃO os campos de `medidas` devem vir preenchidos com uma estimativa plausível, E
+`identificacao.descricao` **não** deve mencionar que as medidas são estimadas nem pedir
+conferência com fita métrica (ADR-034, 25/09/2026 — removido o aviso que a ADR-028 exigia).
 
 (Critérios de aceite específicos de prompt injection: seção 8.4. Critérios de aceite da
 reavaliação de produto já cadastrado: seção 9.3.)

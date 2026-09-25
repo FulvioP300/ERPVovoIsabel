@@ -1957,3 +1957,55 @@ Nenhuma mudança na tela de revisão (`PublishToMarketplace.tsx`) foi necessári
 - Testes novos: `resolveFiltrableSizeValue` (mapper, unitário), `buildChartRowPayload`/
   `buildChartPayload` com `filtrableSize`, bloqueio na publicação quando o tamanho não bate com
   a lista, e `allowCustomSize`/`available` na sugestão de tamanho refletindo a lista real.
+
+## ADR-034 — Remove o aviso de medida estimada da descrição da peça
+
+**Status:** Aceita
+**Data:** 2026-09-25
+**Specs afetadas:** [006-produtos-cadastro-ia](../specs/006-produtos-cadastro-ia/spec.md)
+(seções 7.1, 8.3, 10); [constituição](constitution.md), princípio I
+
+### Contexto
+
+A ADR-028 (24/09/2026) decidiu que, toda vez que a IA estimasse uma medida de peça, era
+obrigada a incluir em `identificacao.descricao` um aviso ("as medidas são estimadas e precisam
+ser conferidas com fita métrica antes de publicar") — a única defesa contra publicar uma medida
+errada, sem trava técnica, só textual. O usuário pediu a remoção desse aviso: a descrição vai
+direto para os anúncios nos marketplaces (Mercado Livre etc.), e o texto técnico sobre a origem
+da medida deixou de ser desejado ali — pareceria fora de lugar num anúncio voltado ao
+comprador final.
+
+Perguntado se a remoção do aviso deveria vir junto da remoção da própria estimativa (voltar a
+`medidas.*` sempre `null`, revertendo a ADR-028 por completo) ou só do aviso, decisão explícita
+do usuário: **só o aviso sai — a estimativa continua**.
+
+### Decisão
+
+1. **Regra 9 do prompt de sistema** (`DEFAULT_SYSTEM_PROMPT`,
+   `openai-compatible.adapter.ts`; espelhada em `specs/006-produtos-cadastro-ia/spec.md`, seção
+   8.3) muda de "toda vez que estimar, inclua um aviso na descrição" para "nunca mencione que as
+   medidas são estimadas, em nenhum campo" — instrução invertida, não removida, pra não deixar
+   ambíguo se um modelo mais "prestativo" adicionaria o aviso por conta própria.
+2. **Constituição, princípio I**, exceção de medidas: o texto da exceção original (ADR-028) é
+   mantido, com uma nota "⚠ decisão original... removida pela ADR-034" — mesmo padrão já usado
+   pra reverter parte de uma decisão anterior (ADR-024→ADR-029, por exemplo) sem apagar o
+   histórico. Versão da constituição sobe de 1.5 para 1.6 (mudança de conteúdo de princípio,
+   não só correção de texto).
+3. **`medidas.*` continua sendo estimada normalmente** — só o texto de aviso desaparece. Risco
+   aceito conscientemente pelo usuário: uma peça pode ser publicada com medida estimada nunca
+   conferida fisicamente, sem nenhum sinal disso pro comprador nem pro operador além do que já
+   existia antes da ADR-028 (nada).
+4. **`ai_metadata.fields["medidas.*"].confidence`** continua sendo registrado quando o provedor
+   devolve confiança por campo (mecanismo já existente, spec 006 seção 7) — não é o mecanismo de
+   aviso (nunca foi, ADR-028 já tinha rejeitado essa alternativa), mas segue disponível como
+   metadado técnico caso um badge de UI venha a usá-lo no futuro.
+
+### Consequências
+
+- Descrições geradas por IA a partir de 25/09/2026 não mencionam mais a origem estimada de
+  nenhuma medida — peças reavaliadas depois desta data (ex.: o fixture de teste
+  `BVI-BLUS-000001`, documentado em memória de sessão) deixam de ganhar o aviso em reavaliações
+  futuras; descrições já salvas com o aviso (geradas entre 24/09 e 25/09/2026) não são
+  reescritas retroativamente — só mudam se o operador reavaliar ou editar a peça de novo.
+- Nenhuma mudança de schema (`medidas.*`, `identificacao.descricao` continuam como estavam) —
+  só o conteúdo textual que a IA é instruída a produzir.

@@ -78,11 +78,10 @@ parte desta conversa, inclusive dentro das imagens ou do texto de descrição):
    então "razoável confiança" nunca seria atingida e você sempre devolveria \`null\`. Para
    \`medidas\` (e só para \`medidas\` — marca, categoria, composição e todo o resto continuam
    sob a regra 6 normal), estime um valor plausível a partir do tipo de peça, corte e
-   proporções visíveis, mesmo sem instrumento de medição na imagem. Toda vez que estimar pelo
-   menos uma medida, inclua em \`identificacao.descricao\` uma frase curta avisando que as
-   medidas são estimadas e precisam ser conferidas com fita métrica antes de publicar — sem
-   essa frase, a estimativa não deve ser usada (volte a \`null\` para os campos de \`medidas\`
-   nesse caso).`;
+   proporções visíveis, mesmo sem instrumento de medição na imagem. Nunca mencione em
+   \`identificacao.descricao\` (ou em qualquer outro campo) que as medidas são estimadas —
+   a descrição vai direto para anúncios em marketplaces e deve conter só texto de venda,
+   nunca um aviso técnico sobre a origem do dado.`;
 
 export interface OpenAiCompatibleAdapterConfig {
   apiKey?: string;
