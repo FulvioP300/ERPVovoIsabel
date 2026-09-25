@@ -77,11 +77,12 @@ const SizeSuggestionBodySchema = z.object({
   categoryId: z.string().min(1),
 });
 
-const FootwearSizeSuggestionResponseSchema = z.object({
+const SizeSuggestionResponseSchema = z.object({
   applicable: z.boolean(),
   available: z.array(z.string()),
   current: z.string().nullable(),
   currentMatches: z.boolean(),
+  allowCustomSize: z.boolean(),
 });
 
 const ShippingSuggestionBodySchema = z.object({
@@ -206,9 +207,9 @@ export default async function marketplaceListingRoutes(fastify: FastifyInstance)
     },
   );
 
-  // Sugestão de tamanho pra tela de revisão (spec 012, achado real 24/09/2026) — só calçado, só
-  // consulta. Depende da categoria já escolhida (chamado depois da revisão de categoria, não
-  // antes) — diferente da sugestão de categoria, uma falha real aqui não vira "sem sugestão em
+  // Sugestão de tamanho pra tela de revisão (spec 012, calçado; ADR-032, roupa) — só consulta.
+  // Depende da categoria já escolhida (chamado depois da revisão de categoria, não antes) —
+  // diferente da sugestão de categoria, uma falha real aqui não vira "sem sugestão em
   // silêncio": o operador precisa saber que não foi possível checar o tamanho.
   fastify.post<{ Params: { id: string } }>(
     "/:id/marketplace-size-suggestion",
@@ -226,7 +227,7 @@ export default async function marketplaceListingRoutes(fastify: FastifyInstance)
           accountId: parseResult.data.accountId,
           categoryId: parseResult.data.categoryId,
         });
-        return { success: true, data: FootwearSizeSuggestionResponseSchema.parse(result) };
+        return { success: true, data: SizeSuggestionResponseSchema.parse(result) };
       } catch (err) {
         if (err instanceof ProductNotFoundError || err instanceof MarketplaceAccountNotFoundError) {
           return reply.code(404).send({ success: false, error: err.message });

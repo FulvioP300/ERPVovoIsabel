@@ -4,14 +4,14 @@ import { getProductById } from "./product.service.js";
 import { runAccountOperation } from "./account-operation.service.js";
 import { MarketplaceAccountNotFoundError } from "./marketplace-account.service.js";
 import { MarketplaceAccountMismatchError } from "./marketplace-listing.service.js";
-import { suggestFootwearSizes, type FootwearSizeSuggestion } from "../plugins/marketplaces/mercado-livre.connector.js";
+import { suggestSizes, type MarketplaceSizeSuggestion } from "../plugins/marketplaces/mercado-livre.connector.js";
 import type { Marketplace } from "../schemas/marketplace-account.schema.js";
 
 /**
- * Sugestão de tamanho de calçado pra tela de revisão (spec 012; achado real 24/09/2026) —
- * mesmo espírito de `marketplace-category-suggestion.service.ts`, mas **depende** da categoria
- * já escolhida (o tamanho é resolvido contra a tabela `BRAND`/`STANDARD` daquela categoria
- * específica), então o operador chama isto depois de escolher/confirmar a categoria, não antes.
+ * Sugestão de tamanho (calçado, spec 012; roupa, ADR-032) pra tela de revisão — mesmo espírito
+ * de `marketplace-category-suggestion.service.ts`, mas **depende** da categoria já escolhida (o
+ * tamanho é resolvido contra as tabelas daquela categoria específica), então o operador chama
+ * isto depois de escolher/confirmar a categoria, não antes.
  *
  * Diferente da sugestão de categoria (preditor, best-effort, `suggested: null` em qualquer
  * falha): aqui uma falha real (rede, token, Mercado Livre fora do ar) propaga — não é uma
@@ -33,7 +33,7 @@ export class MarketplaceSizeSuggestionUnsupportedError extends Error {
   }
 }
 
-export async function suggestSize(input: SizeSuggestionInput): Promise<FootwearSizeSuggestion> {
+export async function suggestSize(input: SizeSuggestionInput): Promise<MarketplaceSizeSuggestion> {
   if (input.marketplace !== "mercado_livre") {
     throw new MarketplaceSizeSuggestionUnsupportedError(input.marketplace);
   }
@@ -45,5 +45,5 @@ export async function suggestSize(input: SizeSuggestionInput): Promise<FootwearS
   if (!account || !account.active) throw new MarketplaceAccountNotFoundError();
   if (account.marketplace !== input.marketplace) throw new MarketplaceAccountMismatchError();
 
-  return runAccountOperation(input.accountId, ({ credential }) => suggestFootwearSizes(credential, product, input.categoryId));
+  return runAccountOperation(input.accountId, ({ credential }) => suggestSizes(credential, product, input.categoryId));
 }

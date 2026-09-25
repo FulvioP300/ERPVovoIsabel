@@ -5,6 +5,8 @@ import type { MarketplaceListing } from "../../../../shared/dist/schemas/marketp
 const refreshTokenMock = vi.fn();
 const closeItemMock = vi.fn();
 const predictCategoryMock = vi.fn();
+const getCategoryMock = vi.fn();
+const getActiveSizeChartDomainsMock = vi.fn();
 
 vi.mock("./mercado-livre-oauth.client.js", async () => {
   const actual = await vi.importActual<typeof import("./mercado-livre-oauth.client.js")>("./mercado-livre-oauth.client.js");
@@ -20,10 +22,12 @@ vi.mock("./mercado-livre-api.client.js", async () => {
     ...actual,
     closeItem: (...args: unknown[]) => closeItemMock(...args),
     predictCategory: (...args: unknown[]) => predictCategoryMock(...args),
+    getCategory: (...args: unknown[]) => getCategoryMock(...args),
+    getActiveSizeChartDomains: (...args: unknown[]) => getActiveSizeChartDomainsMock(...args),
   };
 });
 
-const { mercadoLivreConnector, suggestCategory, suggestFootwearSizes, suggestShipping } = await import("./mercado-livre.connector.js");
+const { mercadoLivreConnector, suggestCategory, suggestSizes, suggestShipping } = await import("./mercado-livre.connector.js");
 const { MercadoLivreInvalidGrantError, MercadoLivreOAuthError } = await import("./mercado-livre-oauth.client.js");
 const { MercadoLivreApiError } = await import("./mercado-livre-api.client.js");
 const { MarketplaceConnectorError } = await import("./marketplace-connector.port.js");
@@ -74,6 +78,10 @@ beforeEach(() => {
   refreshTokenMock.mockReset();
   closeItemMock.mockReset();
   predictCategoryMock.mockReset();
+  // Sem catalogDomain por padrão: applicable false sem precisar mockar toda a cadeia de chamadas
+  // — testes que exercitam a sugestão de tamanho de verdade ficam em mercado-livre-publish.test.ts.
+  getCategoryMock.mockReset().mockResolvedValue({ catalogDomain: undefined });
+  getActiveSizeChartDomainsMock.mockReset().mockResolvedValue([]);
 });
 
 describe("token (spec 012, seção 2.3)", () => {
@@ -297,16 +305,16 @@ describe("suggestCategory (spec 012, seção 4; ADR-025; T058) — fora da Marke
   });
 });
 
-describe("suggestFootwearSizes (spec 012; achado real 24/09/2026) — delega para mercado-livre-publish.ts", () => {
-  it("produto não é calçado: applicable false, sem chamar rede nenhuma (a orquestração completa é testada em mercado-livre-publish.test.ts)", async () => {
-    const result = await suggestFootwearSizes(credentialJson(), { classificacao: { categoria_codigo: "BERM" } } as never, "MLB188064");
-    expect(result.value).toEqual({ applicable: false, available: [], current: null, currentMatches: false });
+describe("suggestSizes (spec 012, calçado; ADR-032, roupa) — delega para mercado-livre-publish.ts", () => {
+  it("categoria sem catalogDomain: applicable false (a orquestração completa, calçado e roupa, é testada em mercado-livre-publish.test.ts)", async () => {
+    const result = await suggestSizes(credentialJson(), { classificacao: { categoria_codigo: "BERM" } } as never, "MLB188064");
+    expect(result.value).toEqual({ applicable: false, available: [], current: null, currentMatches: false, allowCustomSize: false });
   });
 
   it("renova o token quando necessário, como publish/close/suggestCategory", async () => {
     refreshTokenMock.mockResolvedValue({ accessToken: "ACESSO-NOVO", refreshToken: "REFRESH-NOVO", expiresIn: 21600, userId: 987654 });
 
-    const result = await suggestFootwearSizes(
+    const result = await suggestSizes(
       credentialJson({ expires_at: new Date(Date.now() + 1000).toISOString() }),
       { classificacao: { categoria_codigo: "BERM" } } as never,
       "MLB188064",
@@ -323,7 +331,7 @@ describe("suggestShipping (spec 012; achado real 24/09/2026) — delega para mer
     expect(result.value).toEqual([]);
   });
 
-  it("renova o token quando necessário, como publish/close/suggestCategory/suggestFootwearSizes", async () => {
+  it("renova o token quando necessário, como publish/close/suggestCategory/suggestSizes", async () => {
     refreshTokenMock.mockResolvedValue({ accessToken: "ACESSO-NOVO", refreshToken: "REFRESH-NOVO", expiresIn: 21600, userId: 987654 });
 
     const result = await suggestShipping(

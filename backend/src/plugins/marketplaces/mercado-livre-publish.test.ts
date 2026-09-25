@@ -44,7 +44,7 @@ vi.mock("./mercado-livre-api.client.js", async () => {
   return { ...actual, ...apiMocks };
 });
 
-const { publishItem, resolveFootwearSizeSuggestion, resolveShippingSuggestion } = await import("./mercado-livre-publish.js");
+const { publishItem, resolveSizeSuggestion, resolveShippingSuggestion } = await import("./mercado-livre-publish.js");
 const { PriceOutOfRangeError } = await import("./mercado-livre-item.mapper.js");
 const { MercadoLivreApiError } = await import("./mercado-livre-api.client.js");
 
@@ -611,7 +611,7 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
     });
   });
 
-  describe("resolveFootwearSizeSuggestion (spec 012; achado real 24/09/2026)", () => {
+  describe("resolveSizeSuggestion (spec 012, calçado; ADR-032, roupa)", () => {
     function sapProduct(overrides: Partial<Product> = {}): Product {
       return makeProduct({
         classificacao: { ...makeProduct().classificacao, categoria_codigo: "SAPT" },
@@ -625,19 +625,14 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
       apiMocks.getActiveSizeChartDomains.mockResolvedValue(["MLB-SNEAKERS"]);
     });
 
-    it("categoria não é calçado: applicable false, sem chamar a API de tabelas", async () => {
-      const result = await resolveFootwearSizeSuggestion(ACCESS_TOKEN, makeProduct(), "MLB188064");
-      expect(result).toEqual({ applicable: false, available: [], current: null, currentMatches: false });
+    it("domínio fora de active_domains (roupa ou calçado): applicable false, sem chamar a API de tabelas", async () => {
+      apiMocks.getActiveSizeChartDomains.mockResolvedValue([]);
+      const result = await resolveSizeSuggestion(ACCESS_TOKEN, makeProduct(), "MLB188064");
+      expect(result).toEqual({ applicable: false, available: [], current: null, currentMatches: false, allowCustomSize: false });
       expect(apiMocks.searchSizeCharts).not.toHaveBeenCalled();
     });
 
-    it("domínio fora de active_domains: applicable false", async () => {
-      apiMocks.getActiveSizeChartDomains.mockResolvedValue([]);
-      const result = await resolveFootwearSizeSuggestion(ACCESS_TOKEN, sapProduct(), "MLB188064");
-      expect(result.applicable).toBe(false);
-    });
-
-    it("tamanho do cadastro já bate com a tabela: currentMatches true", async () => {
+    it("calçado: tamanho do cadastro já bate com a tabela: currentMatches true, allowCustomSize false", async () => {
       apiMocks.searchSizeCharts.mockResolvedValue([{ id: "chart-std", type: "STANDARD", mainAttributeId: "SIZE" }]);
       apiMocks.getSizeChart.mockResolvedValue({
         id: "chart-std",
@@ -648,16 +643,17 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
         ],
       });
 
-      const result = await resolveFootwearSizeSuggestion(ACCESS_TOKEN, sapProduct(), "MLB188064");
+      const result = await resolveSizeSuggestion(ACCESS_TOKEN, sapProduct(), "MLB188064");
       expect(result).toEqual({
         applicable: true,
         available: ["38,0 BR", "40,0 BR"],
         current: "38,0 BR",
         currentMatches: true,
+        allowCustomSize: false,
       });
     });
 
-    it("tamanho do cadastro não bate: currentMatches false, lista disponível pra escolher", async () => {
+    it("calçado: tamanho do cadastro não bate: currentMatches false, lista disponível pra escolher", async () => {
       apiMocks.searchSizeCharts.mockResolvedValue([{ id: "chart-std", type: "STANDARD", mainAttributeId: "SIZE" }]);
       apiMocks.getSizeChart.mockResolvedValue({
         id: "chart-std",
@@ -665,17 +661,17 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
         rows: [{ id: "chart-std:1", attributes: [{ id: "SIZE", values: ["40,0 BR"] }] }],
       });
 
-      const result = await resolveFootwearSizeSuggestion(ACCESS_TOKEN, sapProduct(), "MLB188064");
-      expect(result).toEqual({ applicable: true, available: ["40,0 BR"], current: "38,0 BR", currentMatches: false });
+      const result = await resolveSizeSuggestion(ACCESS_TOKEN, sapProduct(), "MLB188064");
+      expect(result).toEqual({ applicable: true, available: ["40,0 BR"], current: "38,0 BR", currentMatches: false, allowCustomSize: false });
     });
 
-    it("sem tabela nenhuma: applicable true, available vazio — nunca falha, a tela mostra o estado real", async () => {
+    it("calçado: sem tabela nenhuma: applicable true, available vazio, allowCustomSize false — nunca falha, a tela mostra o estado real", async () => {
       apiMocks.searchSizeCharts.mockResolvedValue([]);
-      const result = await resolveFootwearSizeSuggestion(ACCESS_TOKEN, sapProduct(), "MLB188064");
-      expect(result).toEqual({ applicable: true, available: [], current: "38,0 BR", currentMatches: false });
+      const result = await resolveSizeSuggestion(ACCESS_TOKEN, sapProduct(), "MLB188064");
+      expect(result).toEqual({ applicable: true, available: [], current: "38,0 BR", currentMatches: false, allowCustomSize: false });
     });
 
-    it("peça sem tamanho no cadastro: current null", async () => {
+    it("calçado: peça sem tamanho no cadastro: current null", async () => {
       apiMocks.searchSizeCharts.mockResolvedValue([{ id: "chart-std", type: "STANDARD", mainAttributeId: "SIZE" }]);
       apiMocks.getSizeChart.mockResolvedValue({
         id: "chart-std",
@@ -684,12 +680,12 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
       });
 
       const product = sapProduct({ caracteristicas: { ...makeProduct().caracteristicas, tamanho_etiqueta: null, tamanho_equivalente: null } });
-      const result = await resolveFootwearSizeSuggestion(ACCESS_TOKEN, product, "MLB188064");
+      const result = await resolveSizeSuggestion(ACCESS_TOKEN, product, "MLB188064");
       expect(result.current).toBeNull();
       expect(result.currentMatches).toBe(false);
     });
 
-    it("marca com tabela BRAND tem prioridade sobre STANDARD, mesma ordem da publicação", async () => {
+    it("calçado: marca com tabela BRAND tem prioridade sobre STANDARD, mesma ordem da publicação", async () => {
       apiMocks.searchSizeCharts.mockImplementation(async (_token: string, input: { type?: string }) =>
         input.type === "BRAND" ? [{ id: "chart-brand", type: "BRAND", mainAttributeId: "SIZE" }] : [],
       );
@@ -699,10 +695,76 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
         rows: [{ id: "chart-brand:1", attributes: [{ id: "SIZE", values: ["38,0 BR"] }] }],
       });
 
-      await resolveFootwearSizeSuggestion(ACCESS_TOKEN, sapProduct({ marca: { nome: "Nike", original: true } }), "MLB188064");
+      await resolveSizeSuggestion(ACCESS_TOKEN, sapProduct({ marca: { nome: "Nike", original: true } }), "MLB188064");
 
       const calls = apiMocks.searchSizeCharts.mock.calls.map((c) => (c[1] as { type?: string }).type);
       expect(calls[0]).toBe("BRAND");
+    });
+
+    describe("roupa (ADR-032, achado real 25/09/2026 — 'FR 48 / US 19' recusado como SIZE)", () => {
+      beforeEach(() => {
+        apiMocks.getCategory.mockResolvedValue({ ...CATEGORY_SETTINGS, catalogDomain: "MLB-SHIRTS" });
+        apiMocks.getActiveSizeChartDomains.mockResolvedValue(["MLB-SHIRTS"]);
+      });
+
+      it("sem tabela oficial nem SPECIFIC própria ainda: applicable true, available vazio, allowCustomSize true — nunca bloqueia (roupa cria a própria tabela)", async () => {
+        apiMocks.searchSizeCharts.mockResolvedValue([]);
+        const result = await resolveSizeSuggestion(ACCESS_TOKEN, makeProduct(), "MLB188064");
+        expect(result).toEqual({ applicable: true, available: [], current: "42", currentMatches: false, allowCustomSize: true });
+      });
+
+      it("current é o tamanho cru do cadastro, sem normalização de calçado", async () => {
+        apiMocks.searchSizeCharts.mockResolvedValue([]);
+        const product = makeProduct({ caracteristicas: { ...makeProduct().caracteristicas, tamanho_etiqueta: "FR 48 / US 19" } });
+        const result = await resolveSizeSuggestion(ACCESS_TOKEN, product, "MLB188064");
+        expect(result.current).toBe("FR 48 / US 19");
+        expect(result.currentMatches).toBe(false);
+      });
+
+      it("tabela STANDARD/BRAND oficial existe: available vem dela, allowCustomSize continua true", async () => {
+        apiMocks.searchSizeCharts.mockImplementation(async (_token: string, input: { type?: string }) =>
+          input.type === "STANDARD" ? [{ id: "chart-std", type: "STANDARD", mainAttributeId: "SIZE" }] : [],
+        );
+        apiMocks.getSizeChart.mockResolvedValue({
+          id: "chart-std",
+          type: "STANDARD",
+          rows: [{ id: "chart-std:1", attributes: [{ id: "SIZE", values: ["42"] }] }],
+        });
+
+        const result = await resolveSizeSuggestion(ACCESS_TOKEN, makeProduct(), "MLB188064");
+        expect(result).toEqual({ applicable: true, available: ["42"], current: "42", currentMatches: true, allowCustomSize: true });
+      });
+
+      it("SPECIFIC própria já existe (sem tabela oficial): available vem dela", async () => {
+        apiMocks.searchSizeCharts.mockImplementation(async (_token: string, input: { type?: string }) =>
+          input.type === "SPECIFIC" ? [{ id: "chart-own", type: "SPECIFIC", mainAttributeId: "SIZE" }] : [],
+        );
+        apiMocks.getSizeChart.mockResolvedValue({
+          id: "chart-own",
+          type: "SPECIFIC",
+          rows: [{ id: "chart-own:1", attributes: [{ id: "SIZE", values: ["44"] }] }],
+        });
+
+        const result = await resolveSizeSuggestion(ACCESS_TOKEN, makeProduct(), "MLB188064");
+        expect(result.available).toEqual(["44"]);
+        expect(result.allowCustomSize).toBe(true);
+      });
+
+      it("tabela oficial e SPECIFIC própria existem: available junta as duas, sem duplicar", async () => {
+        apiMocks.searchSizeCharts.mockImplementation(async (_token: string, input: { type?: string }) => {
+          if (input.type === "STANDARD") return [{ id: "chart-std", type: "STANDARD", mainAttributeId: "SIZE" }];
+          if (input.type === "SPECIFIC") return [{ id: "chart-own", type: "SPECIFIC", mainAttributeId: "SIZE" }];
+          return [];
+        });
+        apiMocks.getSizeChart.mockImplementation(async (_token: string, chartId: string) =>
+          chartId === "chart-std"
+            ? { id: "chart-std", type: "STANDARD", rows: [{ id: "chart-std:1", attributes: [{ id: "SIZE", values: ["42"] }] }] }
+            : { id: "chart-own", type: "SPECIFIC", rows: [{ id: "chart-own:1", attributes: [{ id: "SIZE", values: ["44"] }] }] },
+        );
+
+        const result = await resolveSizeSuggestion(ACCESS_TOKEN, makeProduct(), "MLB188064");
+        expect(result.available).toEqual(["42", "44"]);
+      });
     });
   });
 

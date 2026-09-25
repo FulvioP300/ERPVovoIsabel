@@ -4,7 +4,7 @@ import type { MarketplaceAccountRecord } from "../repositories/marketplace-accou
 const getProductByIdMock = vi.fn();
 const findByIdMock = vi.fn();
 const runAccountOperationMock = vi.fn();
-const suggestFootwearSizesMock = vi.fn();
+const suggestSizesMock = vi.fn();
 
 vi.mock("./product.service.js", () => ({
   getProductById: (...args: unknown[]) => getProductByIdMock(...args),
@@ -19,7 +19,7 @@ vi.mock("../database/mongo.client.js", () => ({
 }));
 
 vi.mock("../plugins/marketplaces/mercado-livre.connector.js", () => ({
-  suggestFootwearSizes: (...args: unknown[]) => suggestFootwearSizesMock(...args),
+  suggestSizes: (...args: unknown[]) => suggestSizesMock(...args),
 }));
 
 // `runAccountOperation` fica mockado, mas as demais exportações (AccountBusyError) são as reais.
@@ -52,13 +52,13 @@ function makeAccount(overrides: Partial<MarketplaceAccountRecord> = {}): Marketp
   };
 }
 
-const SUGGESTION = { applicable: true, available: ["40,0 BR"], current: "38,0 BR", currentMatches: false };
+const SUGGESTION = { applicable: true, available: ["40,0 BR"], current: "38,0 BR", currentMatches: false, allowCustomSize: false };
 
 beforeEach(() => {
   getProductByIdMock.mockReset().mockResolvedValue({ classificacao: { categoria_codigo: "SAPT" } });
   findByIdMock.mockReset().mockResolvedValue(makeAccount());
   runAccountOperationMock.mockReset();
-  suggestFootwearSizesMock.mockReset();
+  suggestSizesMock.mockReset();
 });
 
 describe("marketplace-size-suggestion.service.suggestSize (spec 012; achado real 24/09/2026)", () => {
@@ -96,11 +96,11 @@ describe("marketplace-size-suggestion.service.suggestSize (spec 012; achado real
         return outcome.value;
       },
     );
-    suggestFootwearSizesMock.mockResolvedValue({ value: SUGGESTION });
+    suggestSizesMock.mockResolvedValue({ value: SUGGESTION });
 
     const result = await suggestSize({ productId: "p1", marketplace: "mercado_livre", accountId: "acc-1", categoryId: "MLB188064" });
 
-    expect(suggestFootwearSizesMock).toHaveBeenCalledWith("plain-credential", { classificacao: { categoria_codigo: "SAPT" } }, "MLB188064");
+    expect(suggestSizesMock).toHaveBeenCalledWith("plain-credential", { classificacao: { categoria_codigo: "SAPT" } }, "MLB188064");
     expect(result).toEqual(SUGGESTION);
   });
 

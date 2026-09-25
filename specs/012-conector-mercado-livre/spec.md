@@ -579,25 +579,33 @@ corpo de `POST /api/products/:id/marketplace-listings` (`categoryId`, spec 011 s
 conector **não** chama mais o preditor por dentro de `publish()`; recebe o `category_id` já
 resolvido.
 
-**Revisão de tamanho de calçado (achado real 24/09/2026), na mesma tela.** Categorias de calçado
-usam tabela `BRAND`/`STANDARD`, fixa — o ERP não pode criar uma linha nova nela (diferente da
-`SPECIFIC` de roupa, seção 3.5). Publicar direto com o `tamanho_etiqueta` do cadastro, sem checar
-antes, gerava um erro cru e sem saída ("a tabela não tem o tamanho X") sempre que o vocabulário do
-cadastro não batia exatamente com o da tabela. Depois de o operador confirmar a categoria, o
-sistema consulta os tamanhos reais daquela tabela (`POST
-/api/products/:id/marketplace-size-suggestion`, com o `categoryId` já escolhido) e:
+**Revisão de tamanho (achado real 24/09/2026, calçado; ADR-032, 25/09/2026, roupa), na mesma
+tela.** Calçado usa tabela `BRAND`/`STANDARD`, fixa — o ERP não pode criar uma linha nova nela
+(diferente da `SPECIFIC` de roupa, seção 3.5). Publicar direto com o `tamanho_etiqueta` do
+cadastro, sem checar antes, gerava um erro cru e sem saída ("a tabela não tem o tamanho X")
+sempre que o vocabulário do cadastro não batia exatamente com o da tabela — e, para roupa
+(achado real 25/09/2026), o próprio `tamanho_etiqueta` podia nem ser um `SIZE` válido pro
+Mercado Livre (ex.: `"FR 48 / US 19"`, recusado como `invalid_row_attribute_value`, ainda que
+sem nenhuma linha conflitante existir). Depois de o operador confirmar a categoria, o sistema
+consulta os tamanhos já aceitos naquela categoria (`POST
+/api/products/:id/marketplace-size-suggestion`, com o `categoryId` já escolhido — calçado e
+roupa, ambos) e:
 
 - se o tamanho do cadastro já bate (`currentMatches`), não mostra nada — segue direto;
-- se não bate, mostra um `<select>` com os tamanhos reais da tabela pra escolher (mesmo espírito
-  da revisão de categoria: nunca finge que bate quando não bate);
-- se a categoria não tem tabela nenhuma (nem `BRAND` nem `STANDARD`), avisa que não é possível
-  publicar esse calçado nessa categoria — sem tentar, sem erro cru do Mercado Livre.
+- se não bate, mostra um `<select>` com os tamanhos já aceitos pra escolher (mesmo espírito da
+  revisão de categoria: nunca finge que bate quando não bate);
+- **calçado**: sem tabela nenhuma (nem `BRAND` nem `STANDARD`), avisa que não é possível
+  publicar esse calçado nessa categoria — sem tentar, sem erro cru do Mercado Livre
+  (`allowCustomSize: false` — calçado nunca cria tabela própria, ADR-024).
+- **roupa** (ADR-032): a lista junta a tabela `BRAND`/`STANDARD` oficial (se existir, ADR-030)
+  com os tamanhos já usados na `SPECIFIC` do próprio vendedor (se já existir uma pra esse
+  domínio+gênero) — nunca bloqueia mesmo com a lista vazia (`allowCustomSize: true`): a tela
+  também aceita um tamanho digitado, que vira uma linha nova na `SPECIFIC` (seção 3.5).
 
-O tamanho escolhido (`sizeOverride`) viaja junto de `categoryId`/`listingTypeId` no corpo de
-`POST /api/products/:id/marketplace-listings`; tem prioridade sobre `tamanho_etiqueta` só pra
-essa publicação — nunca é gravado de volta no cadastro (o cadastro continua sendo a fonte de
-verdade da peça; o Mercado Livre só recebe o valor mais próximo que ele aceita). Roupa nunca
-passa por isso — cria a própria linha (seção 3.5), nunca "não encontra".
+O tamanho escolhido/digitado (`sizeOverride`) viaja junto de `categoryId`/`listingTypeId` no
+corpo de `POST /api/products/:id/marketplace-listings`; tem prioridade sobre `tamanho_etiqueta`
+só pra essa publicação — nunca é gravado de volta no cadastro (o cadastro continua sendo a
+fonte de verdade da peça; o Mercado Livre só recebe o valor mais próximo que ele aceita).
 
 **Revisão de frete (achado real 24/09/2026), depois de categoria/tamanho/tipo de anúncio.**
 Publicar sem declarar `shipping` no `POST /items` deixa o Mercado Livre aplicar um padrão

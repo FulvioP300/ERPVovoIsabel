@@ -1835,3 +1835,63 @@ provedores que suportam `system` (princípio V — não abstrair o que não prec
   em vez de um "Bad Request" genérico — mais fácil de diagnosticar sem precisar abrir o
   DevTools do navegador.
 - `DEFAULT_SYSTEM_PROMPT` (o texto em si) não muda — só como ele é transportado na API.
+
+## ADR-032 — Sugestão de tamanho do Mercado Livre estendida de calçado pra roupa: lista o que já é aceito, com opção de digitar quando a peça pode criar a própria tabela
+
+**Status:** Aceita
+**Data:** 2026-09-25
+**Specs afetadas:** [012-conector-mercado-livre](../specs/012-conector-mercado-livre/spec.md)
+(seção 4)
+
+### Contexto
+
+Mesmo depois da ADR-030 (tenta tabela `BRAND`/`STANDARD` oficial antes de medir) e da ADR-029
+(linha casada só por `SIZE`), publicar uma camisa Lacoste (tamanho de etiqueta `"FR 48 / US
+19"`) falhou com `"Value FR 48 / US 19 in attribute FILTRABLE_SIZE is incorrect"` — sem menção
+de linha duplicada dessa vez: o próprio valor, um rótulo composto de dois sistemas de tamanho
+com "/", não é aceito como `SIZE` pelo Mercado Livre, mesmo numa linha nova.
+
+O usuário perguntou se dava pra aplicar, em todos os casos, o mesmo tratamento já usado pra
+calçado (spec 012, achado real 24/09/2026): antes de publicar, consultar os tamanhos já aceitos
+e deixar o operador escolher um da lista, em vez de mandar o valor cru do cadastro e descobrir
+o erro só depois de tentar.
+
+### Decisão
+
+`resolveFootwearSizeSuggestion` (`mercado-livre-publish.ts`) generalizada para
+`resolveSizeSuggestion`, aplicável a qualquer categoria de moda com tabela de medidas ativa —
+não só `SAPT`:
+
+1. **Calçado**: sem mudança de comportamento — tabela `BRAND`/`STANDARD` fixa,
+   `allowCustomSize: false` (sem tabela, bloqueia — ADR-024, calçado nunca cria tabela própria).
+2. **Roupa** (novo): `available` junta os tamanhos da tabela `BRAND`/`STANDARD` oficial (se
+   existir, ADR-030) com os já usados na `SPECIFIC` do próprio vendedor (se já existir uma pra
+   esse domínio+gênero) — **nunca bloqueia**, mesmo com a lista vazia
+   (`allowCustomSize: true`): a tela de revisão (`PublishToMarketplace.tsx`) passa a aceitar um
+   tamanho **digitado**, além de escolhido, quando `allowCustomSize` é `true` — cobre o caso
+   deste achado (nenhuma tabela tinha "48" nem "FR 48 / US 19", mas o operador pode digitar
+   "48", um `SIZE` válido, sem editar o cadastro da peça).
+3. `current` deixa de ser normalizado como calçado (`"N,0 BR"`) pra roupa — é o valor cru de
+   `tamanho_etiqueta`/`tamanho_equivalente`, comparado direto contra `available`.
+
+Schema de resposta (`SizeSuggestionResponseSchema`, backend e frontend) ganha
+`allowCustomSize: boolean`. Contrato de `sizeOverride` (publicação) não muda — mesmo campo já
+usado por calçado desde a spec 012, só passa a valer pra roupa também.
+
+Alternativa descartada: continuar deixando roupa publicar direto com o `tamanho_etiqueta` cru e
+só reagir a erros do Mercado Livre — rejeitada porque é exatamente o padrão que gerou os três
+achados reais consecutivos (ADR-029, ADR-030, este) — mostrar antes o que já é aceito evita a
+categoria inteira de erro, em vez de corrigir um formato de valor de cada vez conforme aparece.
+
+### Consequências
+
+- Toda publicação de roupa numa categoria com tabela de medidas ativa (a maioria, T050) passa a
+  mostrar a seção de tamanho na revisão — antes, só calçado mostrava. Quando o tamanho do
+  cadastro já bate com algo conhecido, a seção fica invisível (`currentMatches`), sem mudança
+  perceptível pro operador.
+- `findFootwearChart`/`resolveFootwearSizeSuggestion`/`suggestFootwearSizes` renomeadas
+  (`findBrandOrStandardChart` já pela ADR-030; agora `resolveSizeSuggestion`/`suggestSizes`) —
+  nomes deixam de sugerir "só calçado".
+- Testes de unidade (`mercado-livre-publish.test.ts`, `mercado-livre.connector.test.ts`,
+  `marketplace-size-suggestion.service.test.ts`) atualizados para o novo nome e para os cenários
+  de roupa (sem tabela nenhuma, tabela oficial, `SPECIFIC` própria, as duas juntas).

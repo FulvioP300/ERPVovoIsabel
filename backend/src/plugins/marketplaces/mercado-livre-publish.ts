@@ -437,37 +437,51 @@ async function resolveFootwearChart(
   return sizeChartAttributes(normalizedSize, chart.id, row.id);
 }
 
-export interface FootwearSizeSuggestion {
-  /** `false`: categoria não é calçado, ou o domínio não usa tabela de medidas — a tela de
-   * revisão não precisa mostrar seletor de tamanho nenhum. */
+export interface MarketplaceSizeSuggestion {
+  /** `false`: o domínio não usa tabela de medidas — a tela de revisão não precisa mostrar
+   * seletor de tamanho nenhum. */
   applicable: boolean;
-  /** Tamanhos da tabela `BRAND`/`STANDARD`, no vocabulário do Mercado Livre (ex.: "38,0 BR").
-   * Vazio quando não existe tabela pra essa marca/gênero — mesmo caso que hoje bloqueia a
-   * publicação (`resolveFootwearChart`), só que descoberto na revisão, não depois de tentar. */
+  /** Tamanhos já conhecidos do Mercado Livre pra essa marca/gênero: tabela `BRAND`/`STANDARD`
+   * oficial, mais (só roupa, ADR-032) os tamanhos já usados na `SPECIFIC` do próprio vendedor,
+   * se existir. Vazio quando nada disso existe ainda. */
   available: string[];
-  /** Tamanho do cadastro (`tamanho_etiqueta`/`tamanho_equivalente`), já convertido pro
-   * vocabulário do Mercado Livre — `null` se a peça não tem tamanho cadastrado. */
+  /** Tamanho do cadastro (`tamanho_etiqueta`/`tamanho_equivalente`) — em calçado, já convertido
+   * pro vocabulário do Mercado Livre; em roupa, o valor cru do cadastro. `null` se a peça não
+   * tem tamanho cadastrado. */
   current: string | null;
   /** `true` quando `current` já está em `available` — a tela pode pré-selecionar e pular a
    * escolha manual. */
   currentMatches: boolean;
+  /** `true` só pra roupa (ADR-024/ADR-032): sem nenhum tamanho em `available`, a tela não
+   * bloqueia — deixa o operador digitar um tamanho, que vira uma linha nova na `SPECIFIC` do
+   * vendedor. Calçado nunca cria tabela própria (ADR-024) — `available` vazio bloqueia mesmo. */
+  allowCustomSize: boolean;
 }
 
-/**
- * Sugestão de tamanho pra tela de revisão (spec 012; achado real 24/09/2026) — mesmo espírito
- * de `suggestCategory`: só consulta, nunca publica nada. Só se aplica a calçado (`SAPT`) com
- * tabela `BRAND`/`STANDARD` — roupa cria a própria linha (`resolveClothingChart`) e nunca cai
- * neste "tamanho não encontrado".
- */
-export async function resolveFootwearSizeSuggestion(accessToken: string, product: Product, categoryId: string): Promise<FootwearSizeSuggestion> {
-  const notApplicable: FootwearSizeSuggestion = { applicable: false, available: [], current: null, currentMatches: false };
-  if (product.classificacao.categoria_codigo !== "SAPT") return notApplicable;
+const NOT_APPLICABLE_SIZE_SUGGESTION: MarketplaceSizeSuggestion = {
+  applicable: false,
+  available: [],
+  current: null,
+  currentMatches: false,
+  allowCustomSize: false,
+};
 
+/**
+ * Sugestão de tamanho pra tela de revisão (spec 012; achado real 24/09/2026, calçado; e
+ * 25/09/2026, roupa — ADR-032) — mesmo espírito de `suggestCategory`: só consulta, nunca
+ * publica nada. Aplica a qualquer categoria de moda com tabela de medidas ativa, calçado ou
+ * roupa — para roupa, existe mesmo quando a peça pode publicar sem escolher nada
+ * (`allowCustomSize`), porque o valor cru do cadastro (`tamanho_etiqueta`) pode não ser um
+ * `SIZE` válido pro Mercado Livre (achado real: `"FR 48 / US 19"` recusado como
+ * `invalid_row_attribute_value`) — melhor a tela oferecer tamanhos já aceitos do que descobrir
+ * o formato errado só depois de tentar publicar.
+ */
+export async function resolveSizeSuggestion(accessToken: string, product: Product, categoryId: string): Promise<MarketplaceSizeSuggestion> {
   const settings = await api.getCategory(accessToken, categoryId);
-  if (!settings.catalogDomain) return notApplicable;
+  if (!settings.catalogDomain) return NOT_APPLICABLE_SIZE_SUGGESTION;
 
   const activeDomains = await api.getActiveSizeChartDomains(accessToken);
-  if (!activeDomains.includes(settings.catalogDomain)) return notApplicable;
+  if (!activeDomains.includes(settings.catalogDomain)) return NOT_APPLICABLE_SIZE_SUGGESTION;
 
   const categoryAttributes = await api.getCategoryAttributes(accessToken, categoryId);
   const genderDef = categoryAttributes.find((a) => a.id === "GENDER");
@@ -475,19 +489,41 @@ export async function resolveFootwearSizeSuggestion(accessToken: string, product
   // Sem gênero resolvido não dá pra buscar a tabela (mesma trava de `resolveSizeChartAttributes`)
   // — a revisão de gênero (cadastro) resolve isso antes de chegar aqui; não é responsabilidade
   // desta função duplicar aquele erro.
-  if (!gender?.value_name) return notApplicable;
-
-  const rawSize = product.caracteristicas.tamanho_etiqueta ?? product.caracteristicas.tamanho_equivalente;
-  const current = rawSize ? normalizeFootwearSize(rawSize) : null;
+  if (!gender?.value_name) return NOT_APPLICABLE_SIZE_SUGGESTION;
 
   const currentUser = await mercadoLivreOAuthClient.fetchCurrentUser(accessToken);
   const sellerId = String(currentUser.id);
-  const chart = await findBrandOrStandardChart(accessToken, settings.catalogDomain, sellerId, gender.value_name, product.marca.nome);
-  if (!chart) return { applicable: true, available: [], current, currentMatches: false };
 
-  const detail = await api.getSizeChart(accessToken, chart.id);
-  const available = availableSizeLabels(detail.rows);
-  return { applicable: true, available, current, currentMatches: current !== null && available.includes(current) };
+  if (product.classificacao.categoria_codigo === "SAPT") {
+    const rawSize = product.caracteristicas.tamanho_etiqueta ?? product.caracteristicas.tamanho_equivalente;
+    const current = rawSize ? normalizeFootwearSize(rawSize) : null;
+    const chart = await findBrandOrStandardChart(accessToken, settings.catalogDomain, sellerId, gender.value_name, product.marca.nome);
+    if (!chart) return { applicable: true, available: [], current, currentMatches: false, allowCustomSize: false };
+
+    const detail = await api.getSizeChart(accessToken, chart.id);
+    const available = availableSizeLabels(detail.rows);
+    return { applicable: true, available, current, currentMatches: current !== null && available.includes(current), allowCustomSize: false };
+  }
+
+  // Roupa (ADR-032): junta tamanhos de uma tabela BRAND/STANDARD oficial (se existir, ADR-030)
+  // com os já usados na SPECIFIC do próprio vendedor (se já existir uma pra esse domínio+gênero)
+  // — nenhuma das duas bloqueia publicar, é só o que já se sabe que o Mercado Livre aceita.
+  const rawSize = product.caracteristicas.tamanho_etiqueta ?? product.caracteristicas.tamanho_equivalente;
+  const current = rawSize ?? null;
+
+  const officialChart = await findBrandOrStandardChart(accessToken, settings.catalogDomain, sellerId, gender.value_name, product.marca.nome);
+  const specificCharts = await api.searchSizeCharts(accessToken, {
+    domainId: stripSitePrefix(settings.catalogDomain),
+    sellerId,
+    type: "SPECIFIC",
+    attributes: [{ id: "GENDER", values: [gender.value_name] }],
+  });
+
+  const charts = [officialChart, specificCharts[0]].filter((c): c is SizeChartSummary => c !== undefined);
+  const rows = await Promise.all(charts.map((chart) => api.getSizeChart(accessToken, chart.id)));
+  const available = [...new Set(rows.flatMap((detail) => availableSizeLabels(detail.rows)))];
+
+  return { applicable: true, available, current, currentMatches: current !== null && available.includes(current), allowCustomSize: true };
 }
 
 export interface ShippingSuggestionOption {

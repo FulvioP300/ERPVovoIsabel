@@ -32,15 +32,17 @@ const CategorySuggestionSchema = z.object({
 });
 export type CategorySuggestion = z.infer<typeof CategorySuggestionSchema>;
 
-/** Sugestão de tamanho de calçado pra revisão (spec 012; achado real 24/09/2026) — só quando a
- * categoria escolhida usa tabela BRAND/STANDARD (`applicable`). */
-const FootwearSizeSuggestionSchema = z.object({
+/** Sugestão de tamanho pra revisão (calçado, spec 012; roupa, ADR-032) — só quando a categoria
+ * escolhida usa tabela de medidas (`applicable`). `allowCustomSize`: roupa pode publicar mesmo
+ * sem nenhum tamanho em `available` (digitando um), calçado não (ADR-024). */
+const MarketplaceSizeSuggestionSchema = z.object({
   applicable: z.boolean(),
   available: z.array(z.string()),
   current: z.string().nullable(),
   currentMatches: z.boolean(),
+  allowCustomSize: z.boolean(),
 });
-export type FootwearSizeSuggestion = z.infer<typeof FootwearSizeSuggestionSchema>;
+export type MarketplaceSizeSuggestion = z.infer<typeof MarketplaceSizeSuggestionSchema>;
 
 /** Opção de frete pra revisão (spec 012, achado real 24/09/2026) — combinação de modo + tipo de
  * logística realmente válida pra esta peça/categoria/tipo de anúncio. */
@@ -107,14 +109,14 @@ export const marketplaceListingService = {
   },
 
   /** Depende da categoria já escolhida/confirmada na revisão (spec 012, achado real 24/09/2026). */
-  async suggestSize(productId: string, marketplace: Marketplace, accountId: string, categoryId: string): Promise<FootwearSizeSuggestion> {
+  async suggestSize(productId: string, marketplace: Marketplace, accountId: string, categoryId: string): Promise<MarketplaceSizeSuggestion> {
     const response = await fetch(`/api/products/${productId}/marketplace-size-suggestion`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ marketplace, accountId, categoryId }),
     });
-    return FootwearSizeSuggestionSchema.parse(await parseEnvelope<unknown>(response));
+    return MarketplaceSizeSuggestionSchema.parse(await parseEnvelope<unknown>(response));
   },
 
   /** Depende da categoria e do tipo de anúncio já escolhidos na revisão (spec 012, achado real 24/09/2026). */

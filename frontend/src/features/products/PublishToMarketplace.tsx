@@ -170,11 +170,13 @@ export function PublishToMarketplace({ product }: { product: Product }) {
     await refreshShipping(selectedCategoryId, listingTypeId);
   }
 
-  // Tamanho de calçado (spec 012, achado real 24/09/2026): `applicable` só quando a categoria usa
-  // tabela BRAND/STANDARD; sem tabela nenhuma não dá pra publicar (mesmo bloqueio que o Mercado
-  // Livre já faria, só que antes de tentar); com tabela, precisa de uma escolha antes de publicar.
+  // Tamanho (spec 012, calçado; ADR-032, roupa): `applicable` só quando a categoria usa tabela de
+  // medidas. Calçado sem tabela nenhuma não dá pra publicar (mesmo bloqueio que o Mercado Livre já
+  // faria, só que antes de tentar) — roupa sempre pode criar/estender a própria tabela
+  // (`allowCustomSize`), então tamanho vazio nunca bloqueia, só falta escolher/digitar um.
   const sizeIsApplicable = sizeSuggestion.data?.applicable === true;
-  const sizeHasNoOptions = sizeIsApplicable && sizeSuggestion.data!.available.length === 0;
+  const sizeAllowsCustom = sizeSuggestion.data?.allowCustomSize === true;
+  const sizeHasNoOptions = sizeIsApplicable && !sizeAllowsCustom && sizeSuggestion.data!.available.length === 0;
   const sizeNeedsChoice = sizeIsApplicable && !sizeHasNoOptions && !selectedSize;
 
   // Frete nunca bloqueia "Confirmar e publicar" — só complementa quando resolvido; se a consulta
@@ -378,18 +380,29 @@ export function PublishToMarketplace({ product }: { product: Product }) {
               {!sizeSuggestion.data!.currentMatches && (
                 <p className="mb-1 text-sm text-amber-700">
                   {sizeSuggestion.data!.current
-                    ? `O tamanho do cadastro ("${sizeSuggestion.data!.current}") não está na tabela do Mercado Livre — escolha um tamanho real abaixo.`
-                    : "A peça não tem tamanho cadastrado — escolha um tamanho real da tabela do Mercado Livre abaixo."}
+                    ? `O tamanho do cadastro ("${sizeSuggestion.data!.current}") não está entre os tamanhos já aceitos pelo Mercado Livre — ${sizeAllowsCustom ? "escolha um abaixo ou digite um tamanho válido." : "escolha um tamanho real abaixo."}`
+                    : `A peça não tem tamanho cadastrado — ${sizeAllowsCustom ? "escolha ou digite um tamanho." : "escolha um tamanho real da tabela do Mercado Livre abaixo."}`}
                 </p>
               )}
-              <select className={`${inputClass} w-full`} value={selectedSize} onChange={(e) => setSelectedSize(e.target.value)}>
-                <option value="">Selecione...</option>
-                {sizeSuggestion.data!.available.map((size) => (
-                  <option key={size} value={size}>
-                    {size}
-                  </option>
-                ))}
-              </select>
+              {sizeSuggestion.data!.available.length > 0 && (
+                <select className={`${inputClass} w-full`} value={selectedSize} onChange={(e) => setSelectedSize(e.target.value)}>
+                  <option value="">Selecione...</option>
+                  {sizeSuggestion.data!.available.map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {sizeAllowsCustom && (
+                <input
+                  type="text"
+                  className={`${inputClass} mt-1 w-full`}
+                  placeholder="Ou digite um tamanho (ex.: 48)"
+                  value={selectedSize}
+                  onChange={(e) => setSelectedSize(e.target.value)}
+                />
+              )}
             </div>
           )}
 

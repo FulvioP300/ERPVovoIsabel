@@ -16,14 +16,14 @@ import {
 import { parseMercadoLivreCredential, type MercadoLivreCredential } from "../../schemas/mercado-livre-credential.schema.js";
 import {
   publishItem,
-  resolveFootwearSizeSuggestion,
+  resolveSizeSuggestion,
   resolveShippingSuggestion,
-  type FootwearSizeSuggestion,
+  type MarketplaceSizeSuggestion,
   type ShippingSuggestionOption,
 } from "./mercado-livre-publish.js";
 import type { Product } from "../../schemas/product.schema.js";
 
-export type { FootwearSizeSuggestion, ShippingSuggestionOption };
+export type { MarketplaceSizeSuggestion, ShippingSuggestionOption };
 
 /**
  * Adaptador do Mercado Livre (spec 012) — implementa `MarketplaceConnectorPort` (011, seção 4.1).
@@ -176,22 +176,22 @@ export async function suggestCategory(credentialJson: string, productName: strin
 }
 
 /**
- * Sugestão de tamanho pra tela de revisão (spec 012; achado real 24/09/2026) — mesmo espírito
+ * Sugestão de tamanho pra tela de revisão (spec 012, calçado; ADR-032, roupa) — mesmo espírito
  * de `suggestCategory`: fora da porta comum, só consulta, nunca publica. Chamado pelo serviço
  * de sugestão (`marketplace-size-suggestion.service.ts`) depois que o operador escolhe/confirma
  * a categoria, nunca pelo `publish()` em si.
  */
-export async function suggestFootwearSizes(
+export async function suggestSizes(
   credentialJson: string,
   product: Product,
   categoryId: string,
-): Promise<ConnectorOutcome<FootwearSizeSuggestion>> {
-  return callWithFreshToken(credentialJson, (accessToken) => resolveFootwearSizeSuggestion(accessToken, product, categoryId));
+): Promise<ConnectorOutcome<MarketplaceSizeSuggestion>> {
+  return callWithFreshToken(credentialJson, (accessToken) => resolveSizeSuggestion(accessToken, product, categoryId));
 }
 
 /**
  * Sugestão de frete pra tela de revisão (spec 012, achado real 24/09/2026) — mesmo espírito de
- * `suggestFootwearSizes`/`suggestCategory`: fora da porta comum, só consulta, nunca publica.
+ * `suggestSizes`/`suggestCategory`: fora da porta comum, só consulta, nunca publica.
  * Chamado depois que o operador já escolheu categoria, tamanho (se aplicável) e tipo de anúncio.
  */
 export async function suggestShipping(
