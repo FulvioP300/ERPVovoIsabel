@@ -444,6 +444,15 @@ uma segunda fonte "genérica" só para o marketplace. Fluxo completo, unindo cal
      diferente (`"Duplicated measure in attribute ... was found in row SIZE ..."`) — `SIZE` é,
      na prática, a chave única de linha da tabela `SPECIFIC` para medidas, não uma combinação.
    - Em ambos os casos, o `GENDER` do item e o da tabela precisam ser idênticos.
+4a. **`FILTRABLE_SIZE` é lista fechada, não texto livre (ADR-033).** Ao criar/adicionar uma linha
+   na `SPECIFIC` (passo 3a/4), `FILTRABLE_SIZE` "espelha" `SIZE` (T043), mas **exige o `id` do
+   valor**, obtido de `technical_specs?section=grids` (mesma consulta do passo 3a) — achado real
+   ao vivo, 25/09/2026: `"Value 48 in attribute FILTRABLE_SIZE is incorrect"`, mesmo com um valor
+   "limpo" (`"48"`) e sem nenhuma linha conflitante. Mandar `{ id, name }` resolvido (achando o
+   `size` na lista de valores do atributo `FILTRABLE_SIZE`) em vez de só `{ name }` resolve; sem
+   correspondência na lista, a publicação falha **antes** do `POST`, com os valores aceitos do
+   domínio na mensagem — mesmo padrão de "erro claro antes de tentar" de medida em branco e
+   calçado sem tamanho. `SIZE` continua texto livre, sem essa exigência.
 5. **Enviar no item:** `attributes[GENDER]`, `attributes[SIZE]`, `attributes[SIZE_GRID_ID]`
    (`value_name` = id da tabela) e `attributes[SIZE_GRID_ROW_ID]` (`value_name` = `id` da linha, no
    formato `"{chart_id}:{n}"`).
@@ -579,15 +588,16 @@ corpo de `POST /api/products/:id/marketplace-listings` (`categoryId`, spec 011 s
 conector **não** chama mais o preditor por dentro de `publish()`; recebe o `category_id` já
 resolvido.
 
-**Revisão de tamanho (achado real 24/09/2026, calçado; ADR-032, 25/09/2026, roupa), na mesma
-tela.** Calçado usa tabela `BRAND`/`STANDARD`, fixa — o ERP não pode criar uma linha nova nela
-(diferente da `SPECIFIC` de roupa, seção 3.5). Publicar direto com o `tamanho_etiqueta` do
+**Revisão de tamanho (achado real 24/09/2026, calçado; ADR-032/033, 25/09/2026, roupa), na
+mesma tela.** Calçado usa tabela `BRAND`/`STANDARD`, fixa — o ERP não pode criar uma linha nova
+nela (diferente da `SPECIFIC` de roupa, seção 3.5). Publicar direto com o `tamanho_etiqueta` do
 cadastro, sem checar antes, gerava um erro cru e sem saída ("a tabela não tem o tamanho X")
 sempre que o vocabulário do cadastro não batia exatamente com o da tabela — e, para roupa
-(achado real 25/09/2026), o próprio `tamanho_etiqueta` podia nem ser um `SIZE` válido pro
-Mercado Livre (ex.: `"FR 48 / US 19"`, recusado como `invalid_row_attribute_value`, ainda que
-sem nenhuma linha conflitante existir). Depois de o operador confirmar a categoria, o sistema
-consulta os tamanhos já aceitos naquela categoria (`POST
+(achados reais 25/09/2026), o próprio `tamanho_etiqueta` podia nem ser um valor aceito pelo
+Mercado Livre: primeiro um rótulo composto (`"FR 48 / US 19"`, `invalid_row_attribute_value`),
+depois — mesmo um valor "limpo" como `"48"` — porque `FILTRABLE_SIZE` é lista fechada do
+domínio (ADR-033, seção 3.5, passo 4a), não texto livre. Depois de o operador confirmar a
+categoria, o sistema consulta os tamanhos já aceitos naquela categoria (`POST
 /api/products/:id/marketplace-size-suggestion`, com o `categoryId` já escolhido — calçado e
 roupa, ambos) e:
 
@@ -597,10 +607,13 @@ roupa, ambos) e:
 - **calçado**: sem tabela nenhuma (nem `BRAND` nem `STANDARD`), avisa que não é possível
   publicar esse calçado nessa categoria — sem tentar, sem erro cru do Mercado Livre
   (`allowCustomSize: false` — calçado nunca cria tabela própria, ADR-024).
-- **roupa** (ADR-032): a lista junta a tabela `BRAND`/`STANDARD` oficial (se existir, ADR-030)
-  com os tamanhos já usados na `SPECIFIC` do próprio vendedor (se já existir uma pra esse
-  domínio+gênero) — nunca bloqueia mesmo com a lista vazia (`allowCustomSize: true`): a tela
-  também aceita um tamanho digitado, que vira uma linha nova na `SPECIFIC` (seção 3.5).
+- **roupa**: a lista junta a lista fechada de `FILTRABLE_SIZE` do domínio (ADR-033 — a fonte
+  mais confiável, existe mesmo sem nenhuma tabela criada ainda) com a tabela `BRAND`/`STANDARD`
+  oficial (se existir, ADR-030) e os tamanhos já usados na `SPECIFIC` do próprio vendedor (se já
+  existir uma pra esse domínio+gênero). Quando o domínio declara `FILTRABLE_SIZE` como lista
+  fechada — o caso comum — só um valor dela funciona, então a tela **não** oferece texto livre
+  (`allowCustomSize: false`); só nos domínios raros sem essa lista declarada é que a tela aceita
+  um tamanho digitado, que vira uma linha nova na `SPECIFIC` (ADR-032, seção 3.5).
 
 O tamanho escolhido/digitado (`sizeOverride`) viaja junto de `categoryId`/`listingTypeId` no
 corpo de `POST /api/products/:id/marketplace-listings`; tem prioridade sobre `tamanho_etiqueta`

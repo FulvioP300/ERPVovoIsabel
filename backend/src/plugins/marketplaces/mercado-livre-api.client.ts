@@ -424,6 +424,9 @@ export interface TechnicalSpecAttribute {
   name: string;
   valueType: string | undefined;
   tags: string[];
+  /** Valores aceitos pra atributos de lista fechada (ex.: `FILTRABLE_SIZE`) — vazio pra
+   * atributos de texto livre (`SIZE`, `GARMENT_*`), que não têm essa restrição. */
+  values: { id: string; name: string }[];
 }
 
 /**
@@ -479,6 +482,9 @@ export async function getDomainSizeChartAttributes(
             name: typeof a.name === "string" ? a.name : String(a.id),
             valueType: typeof a.value_type === "string" ? a.value_type : undefined,
             tags: Array.isArray(a.tags) ? a.tags.filter((t): t is string => typeof t === "string") : [],
+            values: Array.isArray(a.values)
+              ? (a.values as Record<string, unknown>[]).map((v) => ({ id: String(v.id ?? ""), name: String(v.name ?? v.id ?? "") }))
+              : [],
           });
         }
       }
@@ -551,8 +557,23 @@ export async function getSizeChart(accessToken: string, chartId: string): Promis
   return { id: String(body.id), type: typeof body.type === "string" ? body.type : "", rows: rows.map(parseChartRow) };
 }
 
+/**
+ * Valor de um atributo de linha — string pra atributos de texto livre (`SIZE`, `GARMENT_*`), ou
+ * `{ id, name }` pra atributos de lista fechada como `FILTRABLE_SIZE` (achado real ao vivo,
+ * 25/09/2026: `"Value 48 in attribute FILTRABLE_SIZE is incorrect"`, mesmo com um valor "limpo"
+ * — a doc oficial de `size-guide-validations` confirma que atributos de lista exigem o `id` do
+ * valor, obtido de `technical_specs?section=grids`; mandar só `{ name }` é o que causava o erro
+ * — nunca funcionou pra `FILTRABLE_SIZE`, só "por acaso" não dava erro quando o `id` não era
+ * checado por algum domínio específico).
+ */
+export type SizeChartRowValue = string | { id: string; name: string };
+
+function serializeRowValue(value: SizeChartRowValue): { id?: string; name: string } {
+  return typeof value === "string" ? { name: value } : { id: value.id, name: value.name };
+}
+
 export interface CreateSizeChartRowInput {
-  attributes: { id: string; values: string[] }[];
+  attributes: { id: string; values: SizeChartRowValue[] }[];
 }
 
 export interface CreateSizeChartInput {
@@ -576,7 +597,7 @@ export async function createSizeChart(accessToken: string, input: CreateSizeChar
       measure_type: input.measureType,
       attributes: input.attributes.map((a) => ({ id: a.id, values: a.values.map((name) => ({ name })) })),
       main_attribute: { attributes: [{ site_id: SITE_ID, id: input.mainAttributeId }] },
-      rows: [{ attributes: input.firstRow.attributes.map((a) => ({ id: a.id, values: a.values.map((name) => ({ name })) })) }],
+      rows: [{ attributes: input.firstRow.attributes.map((a) => ({ id: a.id, values: a.values.map(serializeRowValue) })) }],
     },
   });
   return { id: String(body.id) };
@@ -586,7 +607,7 @@ export async function createSizeChart(accessToken: string, input: CreateSizeChar
 export async function addSizeChartRow(accessToken: string, chartId: string, row: CreateSizeChartRowInput): Promise<void> {
   await request(`/catalog/charts/${chartId}/rows`, accessToken, {
     method: "POST",
-    body: { attributes: row.attributes.map((a) => ({ id: a.id, values: a.values.map((name) => ({ name })) })) },
+    body: { attributes: row.attributes.map((a) => ({ id: a.id, values: a.values.map(serializeRowValue) })) },
   });
 }
 

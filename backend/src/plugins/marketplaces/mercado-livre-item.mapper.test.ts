@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Product } from "../../schemas/product.schema.js";
-import type { CategoryAttribute, SizeChartRow } from "./mercado-livre-api.client.js";
+import type { CategoryAttribute, SizeChartRow, TechnicalSpecAttribute } from "./mercado-livre-api.client.js";
 import {
   MercadoLivreMappingError,
   PriceOutOfRangeError,
@@ -26,6 +26,7 @@ import {
   pickAttributes,
   availableSizeLabels,
   pickChartRow,
+  resolveFiltrableSizeValue,
   sanitizePlainText,
   sizeChartAttributes,
   skuAttribute,
@@ -470,6 +471,62 @@ describe("buildChartName / buildChartRowPayload / buildChartPayload (spec 012, s
       attributes: [{ id: "GENDER", values: ["Masculino"] }],
     });
     expect(payload.firstRow.attributes[0]).toEqual({ id: "SIZE", values: ["42"] });
+  });
+
+  it("com filtrableSize resolvido (ADR-033): FILTRABLE_SIZE manda { id, name }, não o texto solto — achado real 25/09/2026, 'Value 48 in attribute FILTRABLE_SIZE is incorrect' mesmo com valor limpo", () => {
+    const row = buildChartRowPayload("48", [{ id: "GARMENT_WAIST_WIDTH_FROM", value_name: "80 cm" }], { id: "V123", name: "48" });
+    expect(row.attributes).toEqual([
+      { id: "SIZE", values: ["48"] },
+      { id: "FILTRABLE_SIZE", values: [{ id: "V123", name: "48" }] },
+      { id: "GARMENT_WAIST_WIDTH_FROM", values: ["80 cm"] },
+    ]);
+  });
+
+  it("filtrableSize viaja de buildChartPayload até a primeira linha", () => {
+    const payload = buildChartPayload({
+      name: "Tabela Vovó Isabel — Camisas Masculino",
+      domainId: "SHIRTS",
+      genderValueName: "Masculino",
+      sizeLabel: "48",
+      garmentAttributes: [],
+      filtrableSize: { id: "V123", name: "48" },
+    });
+    expect(payload.firstRow.attributes).toContainEqual({ id: "FILTRABLE_SIZE", values: [{ id: "V123", name: "48" }] });
+  });
+});
+
+describe("resolveFiltrableSizeValue (ADR-033, achado real 25/09/2026 — FILTRABLE_SIZE é lista fechada, não texto livre)", () => {
+  function filtrableSizeSpec(values: { id: string; name: string }[]): TechnicalSpecAttribute[] {
+    return [{ id: "FILTRABLE_SIZE", name: "Tamanho filtrável", valueType: "list", tags: [], values }];
+  }
+
+  it("acha o valor cuja name bate com size", () => {
+    const result = resolveFiltrableSizeValue(
+      filtrableSizeSpec([
+        { id: "V1", name: "38" },
+        { id: "V2", name: "40" },
+      ]),
+      "40",
+    );
+    expect(result).toEqual({ id: "V2", name: "40" });
+  });
+
+  it("ignora maiúsculas/espaços nas pontas ao comparar", () => {
+    const result = resolveFiltrableSizeValue(filtrableSizeSpec([{ id: "V1", name: "GG" }]), " gg ");
+    expect(result).toEqual({ id: "V1", name: "GG" });
+  });
+
+  it("sem correspondência na lista: undefined — o chamador decide bloquear", () => {
+    const result = resolveFiltrableSizeValue(filtrableSizeSpec([{ id: "V1", name: "38" }]), "FR 48 / US 19");
+    expect(result).toBeUndefined();
+  });
+
+  it("domínio sem FILTRABLE_SIZE declarado (spec ausente): undefined, nunca lança", () => {
+    expect(resolveFiltrableSizeValue([], "42")).toBeUndefined();
+  });
+
+  it("FILTRABLE_SIZE declarado mas sem values (não é lista fechada nesse domínio): undefined", () => {
+    expect(resolveFiltrableSizeValue(filtrableSizeSpec([]), "42")).toBeUndefined();
   });
 });
 

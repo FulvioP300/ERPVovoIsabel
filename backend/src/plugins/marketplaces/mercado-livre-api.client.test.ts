@@ -436,8 +436,55 @@ describe("tabela de medidas (spec 012, seção 3.5; ADR-024)", () => {
     const attributes = await getDomainSizeChartAttributes(TOKEN, "MLB-SHORTS", { valueId: "339665", valueName: "Feminino" });
 
     expect(attributes).toEqual([
-      { id: "GENDER", name: "Gênero", valueType: "string", tags: ["grid_template_required", "required"] },
-      { id: "BRAND", name: "Marca", valueType: "string", tags: ["grid_filter", "required"] },
+      { id: "GENDER", name: "Gênero", valueType: "string", tags: ["grid_template_required", "required"], values: [] },
+      { id: "BRAND", name: "Marca", valueType: "string", tags: ["grid_filter", "required"], values: [] },
+    ]);
+  });
+
+  it("getDomainSizeChartAttributes: extrai a lista de valores de atributos de lista fechada (FILTRABLE_SIZE — achado real 25/09/2026, 'Value 48 in attribute FILTRABLE_SIZE is incorrect')", async () => {
+    stubFetch(200, {
+      input: {
+        groups: [
+          {
+            components: [
+              {
+                component: "GRID",
+                components: [
+                  {
+                    attributes: [
+                      {
+                        id: "FILTRABLE_SIZE",
+                        name: "Tamanho filtrável",
+                        value_type: "list",
+                        tags: ["grid_template_required"],
+                        values: [
+                          { id: "V1", name: "38" },
+                          { id: "V2", name: "40" },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const attributes = await getDomainSizeChartAttributes(TOKEN, "MLB-SHIRTS", { valueId: "339665", valueName: "Masculino" });
+
+    expect(attributes).toEqual([
+      {
+        id: "FILTRABLE_SIZE",
+        name: "Tamanho filtrável",
+        valueType: "list",
+        tags: ["grid_template_required"],
+        values: [
+          { id: "V1", name: "38" },
+          { id: "V2", name: "40" },
+        ],
+      },
     ]);
   });
 

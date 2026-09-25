@@ -705,6 +705,9 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
       beforeEach(() => {
         apiMocks.getCategory.mockResolvedValue({ ...CATEGORY_SETTINGS, catalogDomain: "MLB-SHIRTS" });
         apiMocks.getActiveSizeChartDomains.mockResolvedValue(["MLB-SHIRTS"]);
+        // Sem FILTRABLE_SIZE como lista fechada por padrão (ADR-033) — testes específicos do
+        // atributo de lista sobrescrevem isso.
+        apiMocks.getDomainSizeChartAttributes.mockResolvedValue([]);
       });
 
       it("sem tabela oficial nem SPECIFIC própria ainda: applicable true, available vazio, allowCustomSize true — nunca bloqueia (roupa cria a própria tabela)", async () => {
@@ -764,6 +767,34 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
 
         const result = await resolveSizeSuggestion(ACCESS_TOKEN, makeProduct(), "MLB188064");
         expect(result.available).toEqual(["42", "44"]);
+      });
+
+      it("domínio declara FILTRABLE_SIZE como lista fechada (ADR-033): available inclui a lista real, allowCustomSize vira false — texto livre fora dela sempre falharia", async () => {
+        apiMocks.searchSizeCharts.mockResolvedValue([]);
+        apiMocks.getDomainSizeChartAttributes.mockResolvedValue([
+          {
+            id: "FILTRABLE_SIZE",
+            name: "Tamanho filtrável",
+            valueType: "list",
+            tags: [],
+            values: [
+              { id: "V1", name: "38" },
+              { id: "V2", name: "40" },
+            ],
+          },
+        ]);
+
+        const result = await resolveSizeSuggestion(ACCESS_TOKEN, makeProduct(), "MLB188064");
+        expect(result.available).toEqual(["38", "40"]);
+        expect(result.allowCustomSize).toBe(false);
+      });
+
+      it("sem FILTRABLE_SIZE como lista fechada: allowCustomSize continua true (comportamento da ADR-032)", async () => {
+        apiMocks.searchSizeCharts.mockResolvedValue([]);
+        apiMocks.getDomainSizeChartAttributes.mockResolvedValue([]);
+
+        const result = await resolveSizeSuggestion(ACCESS_TOKEN, makeProduct(), "MLB188064");
+        expect(result.allowCustomSize).toBe(true);
       });
     });
   });
@@ -926,6 +957,52 @@ describe("publishItem — moda: tabela de medidas (spec 012, seção 3.5; ADR-02
 
       await expect(publishItem(ACCESS_TOKEN, makeInput({ product: pantsProduct() }))).rejects.toThrow(
         /ainda não captura: Gola \(GARMENT_NECK_WIDTH_FROM\)/,
+      );
+    });
+
+    it("FILTRABLE_SIZE é lista fechada e o tamanho da peça não está nela: erro claro com os valores aceitos, sem tentar publicar (ADR-033, achado real 25/09/2026 — 'Value 48 in attribute FILTRABLE_SIZE is incorrect')", async () => {
+      apiMocks.getDomainSizeChartAttributes.mockResolvedValue([
+        {
+          id: "FILTRABLE_SIZE",
+          name: "Tamanho filtrável",
+          valueType: "list",
+          tags: [],
+          values: [
+            { id: "V1", name: "38" },
+            { id: "V2", name: "40" },
+          ],
+        },
+      ]);
+
+      await expect(publishItem(ACCESS_TOKEN, makeInput({ product: pantsProduct() }))).rejects.toThrow(
+        /O tamanho "42" não é aceito pelo Mercado Livre.*Tamanhos aceitos: 38, 40/,
+      );
+      expect(apiMocks.createItem).not.toHaveBeenCalled();
+      expect(apiMocks.createSizeChart).not.toHaveBeenCalled();
+      expect(apiMocks.addSizeChartRow).not.toHaveBeenCalled();
+    });
+
+    it("FILTRABLE_SIZE é lista fechada e o tamanho bate: manda { id, name } resolvido, não o texto solto", async () => {
+      apiMocks.getDomainSizeChartAttributes.mockResolvedValue([
+        { id: "FILTRABLE_SIZE", name: "Tamanho filtrável", valueType: "list", tags: [], values: [{ id: "V42", name: "42" }] },
+      ]);
+      apiMocks.searchSizeCharts.mockResolvedValue([]);
+      apiMocks.createSizeChart.mockResolvedValue({ id: "chart-new" });
+      apiMocks.getSizeChart.mockResolvedValue({
+        id: "chart-new",
+        type: "SPECIFIC",
+        rows: [{ id: "chart-new:1", attributes: [{ id: "SIZE", values: ["42"] }] }],
+      });
+
+      await publishItem(ACCESS_TOKEN, makeInput({ product: pantsProduct() }));
+
+      expect(apiMocks.createSizeChart).toHaveBeenCalledWith(
+        ACCESS_TOKEN,
+        expect.objectContaining({
+          firstRow: expect.objectContaining({
+            attributes: expect.arrayContaining([{ id: "FILTRABLE_SIZE", values: [{ id: "V42", name: "42" }] }]),
+          }),
+        }),
       );
     });
 

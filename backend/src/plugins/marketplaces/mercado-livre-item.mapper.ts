@@ -1,6 +1,6 @@
 import type { Product } from "../../schemas/product.schema.js";
 import type { CondicaoEstado } from "../../../../shared/dist/schemas/product.schema.js";
-import type { CategoryAttribute, CreateSizeChartInput, CreateSizeChartRowInput, SizeChartRow } from "./mercado-livre-api.client.js";
+import type { CategoryAttribute, CreateSizeChartInput, CreateSizeChartRowInput, SizeChartRow, TechnicalSpecAttribute } from "./mercado-livre-api.client.js";
 import type { ResolvedPackage } from "./mercado-livre-package.config.js";
 
 /**
@@ -350,15 +350,42 @@ export function buildChartName(domainName: string, genderName: string): string {
 }
 
 /**
+ * `FILTRABLE_SIZE` é um atributo de **lista fechada** do domínio (ao contrário de `SIZE`, texto
+ * livre) — achado real ao vivo, 25/09/2026: `"Value 48 in attribute FILTRABLE_SIZE is
+ * incorrect"`, mesmo com um valor "limpo" enviado só como `{ name }`. A doc oficial de
+ * `size-guide-validations` confirma que atributos de lista exigem o `id` do valor, obtido de
+ * `technical_specs?section=grids` (`TechnicalSpecAttribute.values`). Acha o valor cuja `name`
+ * bate com `size` (sem diferenciar maiúsculas/espaços nas pontas) — `undefined` se o domínio não
+ * declarar `FILTRABLE_SIZE` como lista (alguns domínios podem não ter essa restrição) ou se
+ * `size` não estiver entre os valores aceitos (o chamador decide se isso bloqueia ou não).
+ */
+export function resolveFiltrableSizeValue(
+  requiredSpecs: TechnicalSpecAttribute[],
+  size: string,
+): { id: string; name: string } | undefined {
+  const spec = requiredSpecs.find((s) => s.id === "FILTRABLE_SIZE");
+  if (!spec || spec.values.length === 0) return undefined;
+  const normalized = size.trim().toLowerCase();
+  return spec.values.find((v) => v.name.trim().toLowerCase() === normalized);
+}
+
+/**
  * Corpo de `POST /catalog/charts/{id}/rows` — `SIZE` + todos os `GARMENT_*` da peça, mais
  * `FILTRABLE_SIZE` (espelha `SIZE`) — exigido pelo Mercado Livre e não documentado nas fontes
- * salvas; confirmado ao vivo no T043 (`required_row_attribute_not_found`).
+ * salvas; confirmado ao vivo no T043 (`required_row_attribute_not_found`). `filtrableSize`
+ * (achado real 25/09/2026): quando o domínio declara `FILTRABLE_SIZE` como lista fechada, manda
+ * o par `{ id, name }` resolvido (`resolveFiltrableSizeValue`) em vez do texto solto — sem isso,
+ * o Mercado Livre recusa mesmo um valor "limpo" como `"48"`.
  */
-export function buildChartRowPayload(sizeLabel: string, garmentAttributes: MercadoLivreAttributeCandidate[]): CreateSizeChartRowInput {
+export function buildChartRowPayload(
+  sizeLabel: string,
+  garmentAttributes: MercadoLivreAttributeCandidate[],
+  filtrableSize?: { id: string; name: string },
+): CreateSizeChartRowInput {
   return {
     attributes: [
       { id: "SIZE", values: [sizeLabel] },
-      { id: "FILTRABLE_SIZE", values: [sizeLabel] },
+      { id: "FILTRABLE_SIZE", values: [filtrableSize ?? sizeLabel] },
       ...garmentAttributes.map((a) => ({ id: a.id, values: [a.value_name ?? ""] })),
     ],
   };
@@ -371,6 +398,7 @@ export function buildChartPayload(input: {
   genderValueName: string;
   sizeLabel: string;
   garmentAttributes: MercadoLivreAttributeCandidate[];
+  filtrableSize?: { id: string; name: string };
 }): CreateSizeChartInput {
   return {
     name: input.name,
@@ -378,7 +406,7 @@ export function buildChartPayload(input: {
     measureType: "CLOTHING_MEASURE",
     attributes: [{ id: "GENDER", values: [input.genderValueName] }],
     mainAttributeId: "SIZE",
-    firstRow: buildChartRowPayload(input.sizeLabel, input.garmentAttributes),
+    firstRow: buildChartRowPayload(input.sizeLabel, input.garmentAttributes, input.filtrableSize),
   };
 }
 

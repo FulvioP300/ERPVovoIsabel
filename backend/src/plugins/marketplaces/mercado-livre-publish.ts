@@ -28,6 +28,7 @@ import {
   packageAttributes,
   pickAttributes,
   pickChartRow,
+  resolveFiltrableSizeValue,
   sanitizePlainText,
   sizeChartAttributes,
   skuAttribute,
@@ -349,6 +350,20 @@ async function resolveSizeChartAttributes(
   // T060: a ficha técnica de medidas é por gênero (CHILD_DEPENDENT) — sem o GENDER já resolvido no
   // corpo do POST, a resposta nunca traz os atributos GARMENT_*.
   const requiredSpecs = await api.getDomainSizeChartAttributes(accessToken, domain, { valueId: gender.value_id, valueName: gender.value_name });
+
+  // FILTRABLE_SIZE (achado real 25/09/2026): atributo de lista fechada — um valor fora da lista
+  // do domínio é recusado mesmo "limpo" (ex.: "48"), mesmo numa linha nova sem conflito nenhum.
+  // Falha aqui, antes de qualquer escrita, com a lista real de valores aceitos — mesmo padrão de
+  // "erro claro antes de tentar" já usado pra calçado (tamanho não encontrado) e medida em branco.
+  const filtrableSizeSpec = requiredSpecs.find((spec) => spec.id === "FILTRABLE_SIZE");
+  const filtrableSize = filtrableSizeSpec ? resolveFiltrableSizeValue(requiredSpecs, size) : undefined;
+  if (filtrableSizeSpec && filtrableSizeSpec.values.length > 0 && !filtrableSize) {
+    const acceptedValues = filtrableSizeSpec.values.map((v) => v.name);
+    throw new MarketplaceConnectorError(
+      `O tamanho "${size}" não é aceito pelo Mercado Livre para esta categoria. Tamanhos aceitos: ${acceptedValues.join(", ")}.`,
+    );
+  }
+
   const garmentAttributeIds = requiredSpecs.filter((spec) => spec.id.startsWith("GARMENT_")).map((spec) => spec.id);
   const { attributes: garmentAttributes, missingAttributeIds } = garmentMeasureAttributes(garmentAttributeIds, product.medidas);
 
@@ -372,7 +387,7 @@ async function resolveSizeChartAttributes(
     );
   }
 
-  const chartAttributes = await resolveClothingChart(accessToken, domain, sellerId, size, gender.value_name, garmentAttributes);
+  const chartAttributes = await resolveClothingChart(accessToken, domain, sellerId, size, gender.value_name, garmentAttributes, filtrableSize);
   return [gender, ...chartAttributes];
 }
 
@@ -488,8 +503,10 @@ export async function resolveSizeSuggestion(accessToken: string, product: Produc
   const gender = genderAttribute(product.caracteristicas.genero, product.classificacao.departamento, genderDef);
   // Sem gênero resolvido não dá pra buscar a tabela (mesma trava de `resolveSizeChartAttributes`)
   // — a revisão de gênero (cadastro) resolve isso antes de chegar aqui; não é responsabilidade
-  // desta função duplicar aquele erro.
-  if (!gender?.value_name) return NOT_APPLICABLE_SIZE_SUGGESTION;
+  // desta função duplicar aquele erro. `value_id` (não só `value_name`) é exigido porque a busca
+  // de FILTRABLE_SIZE (ADR-033) precisa dele pra consultar `technical_specs`, mesma trava do
+  // `resolveSizeChartAttributes` (publicação).
+  if (!gender?.value_id || !gender.value_name) return NOT_APPLICABLE_SIZE_SUGGESTION;
 
   const currentUser = await mercadoLivreOAuthClient.fetchCurrentUser(accessToken);
   const sellerId = String(currentUser.id);
@@ -505,9 +522,10 @@ export async function resolveSizeSuggestion(accessToken: string, product: Produc
     return { applicable: true, available, current, currentMatches: current !== null && available.includes(current), allowCustomSize: false };
   }
 
-  // Roupa (ADR-032): junta tamanhos de uma tabela BRAND/STANDARD oficial (se existir, ADR-030)
-  // com os já usados na SPECIFIC do próprio vendedor (se já existir uma pra esse domínio+gênero)
-  // — nenhuma das duas bloqueia publicar, é só o que já se sabe que o Mercado Livre aceita.
+  // Roupa (ADR-032/033): junta a lista fechada de FILTRABLE_SIZE do domínio (achado real
+  // 25/09/2026 — a fonte mais confiável, existe mesmo sem nenhuma tabela criada ainda) com os
+  // tamanhos de uma tabela BRAND/STANDARD oficial (se existir, ADR-030) e os já usados na
+  // SPECIFIC do próprio vendedor (se já existir uma pra esse domínio+gênero).
   const rawSize = product.caracteristicas.tamanho_etiqueta ?? product.caracteristicas.tamanho_equivalente;
   const current = rawSize ?? null;
 
@@ -521,9 +539,20 @@ export async function resolveSizeSuggestion(accessToken: string, product: Produc
 
   const charts = [officialChart, specificCharts[0]].filter((c): c is SizeChartSummary => c !== undefined);
   const rows = await Promise.all(charts.map((chart) => api.getSizeChart(accessToken, chart.id)));
-  const available = [...new Set(rows.flatMap((detail) => availableSizeLabels(detail.rows)))];
+  const chartAvailable = rows.flatMap((detail) => availableSizeLabels(detail.rows));
 
-  return { applicable: true, available, current, currentMatches: current !== null && available.includes(current), allowCustomSize: true };
+  const requiredSpecs = await api.getDomainSizeChartAttributes(accessToken, settings.catalogDomain, {
+    valueId: gender.value_id,
+    valueName: gender.value_name,
+  });
+  const filtrableSizeValues = requiredSpecs.find((spec) => spec.id === "FILTRABLE_SIZE")?.values.map((v) => v.name) ?? [];
+
+  const available = [...new Set([...filtrableSizeValues, ...chartAvailable])];
+  // Domínio com FILTRABLE_SIZE como lista fechada: só um valor dessa lista funciona — texto
+  // livre fora dela sempre falha (achado real 25/09/2026), então não vale oferecer o campo.
+  const allowCustomSize = filtrableSizeValues.length === 0;
+
+  return { applicable: true, available, current, currentMatches: current !== null && available.includes(current), allowCustomSize };
 }
 
 export interface ShippingSuggestionOption {
@@ -613,6 +642,7 @@ async function resolveClothingChart(
   size: string,
   genderValueName: string,
   garmentAttributes: MercadoLivreAttributeCandidate[],
+  filtrableSize: { id: string; name: string } | undefined,
 ): Promise<MercadoLivreAttributeCandidate[]> {
   const criteria = [{ id: "SIZE", value: size }];
 
@@ -635,6 +665,7 @@ async function resolveClothingChart(
         genderValueName,
         sizeLabel: size,
         garmentAttributes,
+        filtrableSize,
       }),
     );
     chartId = created.id;
@@ -645,7 +676,7 @@ async function resolveClothingChart(
     const detail = await api.getSizeChart(accessToken, chartId);
     row = pickChartRow(detail.rows, criteria);
     if (!row) {
-      await api.addSizeChartRow(accessToken, chartId, buildChartRowPayload(size, garmentAttributes));
+      await api.addSizeChartRow(accessToken, chartId, buildChartRowPayload(size, garmentAttributes, filtrableSize));
       const refreshed = await api.getSizeChart(accessToken, chartId);
       row = pickChartRow(refreshed.rows, criteria);
     }

@@ -1895,3 +1895,65 @@ categoria inteira de erro, em vez de corrigir um formato de valor de cada vez co
 - Testes de unidade (`mercado-livre-publish.test.ts`, `mercado-livre.connector.test.ts`,
   `marketplace-size-suggestion.service.test.ts`) atualizados para o novo nome e para os cenários
   de roupa (sem tabela nenhuma, tabela oficial, `SPECIFIC` própria, as duas juntas).
+
+## ADR-033 — `FILTRABLE_SIZE` é lista fechada do domínio, não texto livre: exige `{id, name}` resolvido via `technical_specs`, não `{name}` solto
+
+**Status:** Aceita
+**Data:** 2026-09-25
+**Specs afetadas:** [012-conector-mercado-livre](../specs/012-conector-mercado-livre/spec.md)
+(seção 3.5, passo 4a; seção 4)
+
+### Contexto
+
+Depois da ADR-032 (tela de revisão de tamanho estendida a roupa, com opção de digitar), o
+operador digitou `"48"` — um valor limpo, sem o problema de rótulo composto do achado anterior
+(`"FR 48 / US 19"`) — e a publicação falhou de novo: `"Value 48 in attribute FILTRABLE_SIZE is
+incorrect"`, numa linha nova, sem nenhum conflito. Consultando a documentação oficial do
+Mercado Livre (`size-guide-validations`, exemplo do erro `value_is_not_in_the_list`, e
+`gerenciar-tabela-de-medida`), `FILTRABLE_SIZE` é um atributo de **lista fechada** por domínio —
+diferente de `SIZE`, que é texto livre. Um valor de lista fechada precisa do **`id`** do valor,
+obtido de `GET/POST /domains/{domain}/technical_specs?section=grids`, não só do texto (`name`).
+
+O código (`mercado-livre-api.client.ts`, `createSizeChart`/`addSizeChartRow`) sempre serializava
+`values: string[]` como `{ name }`, nunca `{ id, name }` — funciona para atributos de texto
+livre (`SIZE`, `GARMENT_*`), nunca funcionou para `FILTRABLE_SIZE`. O parser de
+`technical_specs` (`getDomainSizeChartAttributes`) também nunca capturava a lista de valores
+aceitos (`TechnicalSpecAttribute` não tinha campo `values`) — a informação pra resolver o `id`
+certo já estava disponível na mesma chamada que já buscava os atributos `GARMENT_*`, só não era
+extraída.
+
+### Decisão
+
+1. **`TechnicalSpecAttribute` ganha `values: { id, name }[]`** — o parser passa a extrair a
+   lista de valores aceitos de qualquer atributo de lista fechada, vazio para os de texto livre.
+2. **`SizeChartRowValue` (novo tipo, `mercado-livre-api.client.ts`)**: `string | { id, name }` —
+   `createSizeChart`/`addSizeChartRow` serializam string como `{ name }` (sem mudança) e objeto
+   como `{ id, name }`.
+3. **`resolveFiltrableSizeValue(requiredSpecs, size)`** (mapper, pura): acha, na lista de
+   valores de `FILTRABLE_SIZE`, o item cuja `name` bate com `size` (sem diferenciar
+   maiúsculas/espaços nas pontas). `buildChartRowPayload`/`buildChartPayload` ganham um
+   parâmetro opcional `filtrableSize` — quando presente, `FILTRABLE_SIZE` manda `{ id, name }`
+   em vez do texto solto.
+4. **Publicação (`resolveSizeChartAttributes`) valida antes de escrever**: se o domínio declara
+   `FILTRABLE_SIZE` como lista fechada e `size` não bate com nenhum valor, falha **antes** do
+   `POST` com os valores aceitos na mensagem — mesmo padrão de "erro claro antes de tentar" já
+   usado pra medida em branco e calçado sem tamanho.
+5. **Sugestão de tamanho (`resolveSizeSuggestion`, roupa)**: `available` passa a incluir a
+   lista real de `FILTRABLE_SIZE` do domínio — existe mesmo sem nenhuma tabela criada ainda,
+   então a tela mostra um `<select>` com os valores certos desde a primeira peça daquele
+   domínio, não só depois de uma tabela existir (melhoria sobre a ADR-032). Quando essa lista
+   existe, `allowCustomSize` vira `false` — texto livre fora da lista sempre falharia, então não
+   faz sentido oferecer o campo; só domínios sem `FILTRABLE_SIZE` declarado (raros) continuam
+   aceitando um tamanho digitado (comportamento original da ADR-032).
+
+Nenhuma mudança na tela de revisão (`PublishToMarketplace.tsx`) foi necessária — a interface
+`available`/`allowCustomSize` já desenhada na ADR-032 comportou o refinamento sem alteração.
+
+### Consequências
+
+- Publicar roupa numa categoria com `FILTRABLE_SIZE` de lista fechada (o caso comum) passa a
+  funcionar de primeira, sem exigir tentativa e erro — a tela já mostra os valores certos.
+- `SIZE` continua texto livre, sem essa exigência — só `FILTRABLE_SIZE` precisa do `id`.
+- Testes novos: `resolveFiltrableSizeValue` (mapper, unitário), `buildChartRowPayload`/
+  `buildChartPayload` com `filtrableSize`, bloqueio na publicação quando o tamanho não bate com
+  a lista, e `allowCustomSize`/`available` na sugestão de tamanho refletindo a lista real.
