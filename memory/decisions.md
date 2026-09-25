@@ -1641,3 +1641,62 @@ não só existir tecnicamente.
   literalmente extraído de texto visível na peça (diferente do resto do prompt, que só lê o que
   está escrito) — primeira vez que a spec 006 permite a IA *compor* uma frase nova em vez de só
   extrair/transcrever.
+
+## ADR-029 — Tabela de medidas `SPECIFIC` do Mercado Livre: linha reaproveitada por `SIZE`, não por `SIZE` + medida idêntica (reverte parte da ADR-024)
+
+**Status:** Aceita
+**Data:** 2026-09-25
+**Specs afetadas:** [012-conector-mercado-livre](../specs/012-conector-mercado-livre/spec.md)
+(seção 3.5)
+
+### Contexto
+
+Publicando uma peça (SKU de teste, blusa Pierre Balmain, tamanho 14) no Mercado Livre em
+ambiente real, a criação de linha na tabela `SPECIFIC` falhou: `"Value 14 in attribute
+FILTRABLE_SIZE is incorrect — Duplicated measure in attribute GARMENT_CHEST_WIDTH_FROM was
+found in row SIZE 14."` A tabela já tinha uma linha `SIZE "14"` (de uma peça publicada antes,
+mesmo tamanho na etiqueta) com um valor de busto diferente do desta peça — a IA reestima
+medidas a cada reavaliação (ADR-028), então duas peças "tamanho 14" facilmente têm bustos
+reais diferentes.
+
+A ADR-024 (decisão 3) tinha decidido casar a linha por `SIZE` + todos os atributos `GARMENT_*`
+idênticos, criando uma linha nova por combinação — a premissa era que cada peça é única
+(princípio X) e merece sua própria linha, mesmo compartilhando o `SIZE`. O erro real mostra que
+o Mercado Livre não aceita essa premissa: `SIZE` funciona, na prática, como chave única de
+linha para medida na tabela `SPECIFIC` — duas linhas com o mesmo `SIZE` e um `GARMENT_*`
+diferente são recusadas como "duplicadas".
+
+### Decisão
+
+**A linha passa a ser casada só por `SIZE`** (`resolveClothingChart`,
+`backend/src/plugins/marketplaces/mercado-livre-publish.ts`): achando uma linha com aquele
+`SIZE`, reaproveita — mesmo que os `GARMENT_*` da linha não sejam idênticos aos da peça atual;
+não achando nenhuma, cria uma linha nova com os `GARMENT_*` desta peça (mesmo fluxo de
+criação/`addSizeChartRow` da ADR-024, só o critério de match muda). Nunca edita uma linha
+existente — mantido da ADR-024, mesmo motivo (pode já estar associada a outro anúncio).
+
+`product.medidas` no cadastro do ERP **não muda** — continua com a medida real desta peça
+específica, fonte única de verdade interna (princípio X intacto dentro do ERP). O que muda é só
+a representação no Mercado Livre: a tabela `SPECIFIC` deles é por tamanho, não por peça, e o
+conector se adapta à granularidade real da API em vez de insistir numa granularidade que ela
+recusa.
+
+Alternativa descartada: rotular `SIZE` com sufixo por combinação de medida (ex.: "14", "14
+(2)") pra preservar uma linha por peça — rejeitada porque o comprador veria um tamanho não
+padrão no filtro de busca do Mercado Livre, pior experiência do que a medida exibida ser a da
+primeira peça publicada daquele tamanho.
+
+### Consequências
+
+- O anúncio de uma peça pode exibir, no atributo de medida do Mercado Livre, o valor registrado
+  pela **primeira** peça publicada com aquele `SIZE` naquele domínio+gênero — não
+  necessariamente a medida real desta peça. Risco aceito, mesmo espírito da ADR-028 (marketplace
+  externo tem limitação própria; o cadastro interno continua correto, a mitigação real é a
+  descrição do anúncio, que já pode citar a medida exata via `identificacao.descricao`).
+- Elimina o erro `"Duplicated measure ... found in row SIZE ..."` para peças que reusam um
+  `SIZE` já publicado com medida real diferente — sem esse fix, a publicação dessas peças
+  ficava permanentemente bloqueada.
+- `spec.md` (seção 3.5, passo 4) atualizada para descrever o novo critério, com a decisão
+  antiga (ADR-024) marcada como revertida nesse ponto específico — o restante da ADR-024
+  (extensão de `MedidasSchema`, criação de tabela, nunca editar linha existente) continua
+  valendo.

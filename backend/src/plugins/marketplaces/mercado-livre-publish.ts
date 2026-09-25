@@ -545,6 +545,16 @@ export async function resolveShippingSuggestion(
   }));
 }
 
+/**
+ * Critério de match da linha da tabela `SPECIFIC` — só `SIZE` (ADR-029). Antes matchava `SIZE` +
+ * todos os `GARMENT_*` (ADR-024), uma linha por combinação de medida real (princípio X); erro
+ * real ao vivo (25/09/2026, "Duplicated measure in attribute GARMENT_CHEST_WIDTH_FROM was found
+ * in row SIZE 14") mostrou que o Mercado Livre recusa uma segunda linha com o mesmo `SIZE` e
+ * medida diferente — `SIZE` é, na prática, a chave única de linha. Reaproveitar por `SIZE`
+ * significa que o anúncio pode exibir a medida da primeira peça daquele tamanho publicada, não
+ * necessariamente a desta peça — `product.medidas` no ERP continua com o valor real da peça,
+ * só a representação no marketplace fica por tamanho, não por peça.
+ */
 async function resolveClothingChart(
   accessToken: string,
   domain: string,
@@ -553,7 +563,7 @@ async function resolveClothingChart(
   genderValueName: string,
   garmentAttributes: MercadoLivreAttributeCandidate[],
 ): Promise<MercadoLivreAttributeCandidate[]> {
-  const criteria = [{ id: "SIZE", value: size }, ...garmentAttributes.map((a) => ({ id: a.id, value: a.value_name ?? "" }))];
+  const criteria = [{ id: "SIZE", value: size }];
 
   const existingCharts = await api.searchSizeCharts(accessToken, {
     domainId: stripSitePrefix(domain),

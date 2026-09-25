@@ -426,11 +426,16 @@ uma segunda fonte "genérica" só para o marketplace. Fluxo completo, unindo cal
    - `GET /catalog/charts/{chart_id}` → `rows: [{ id: "569686:1", attributes: [...] }]`. Para
      **calçado**, a linha certa é a cujo `SIZE` é **igual** ao tamanho da peça
      (`tamanho_etiqueta`; se não bater, `tamanho_equivalente`).
-   - Para **roupa**, a linha certa é a cuja combinação `SIZE` + todos os atributos `GARMENT_*`
-     é **idêntica** à da peça atual (peças de tamanho igual podem ter medidas reais diferentes —
-     princípio X). Achando, reaproveita; não achando, **adiciona** uma linha nova
-     (`POST /catalog/charts/{chart_id}/rows`) — nunca edita uma linha existente (pode já estar
-     associada a outro anúncio) e nunca recria a tabela.
+   - Para **roupa**, a linha certa é a cujo `SIZE` é **igual** ao tamanho da peça (ADR-029) —
+     achando, reaproveita, mesmo que os `GARMENT_*` da linha não sejam idênticos aos desta peça;
+     não achando nenhuma linha com aquele `SIZE`, **adiciona** uma linha nova
+     (`POST /catalog/charts/{chart_id}/rows`) com os `GARMENT_*` desta peça — nunca edita uma
+     linha existente (pode já estar associada a outro anúncio) e nunca recria a tabela.
+     ⚠ Decisão original (ADR-024): achar por `SIZE` + todos os `GARMENT_*` idênticos, uma linha
+     por combinação de medida real (princípio X). **Revertida pela ADR-029** (erro real ao vivo,
+     25/09/2026): o Mercado Livre recusa duas linhas com o mesmo `SIZE` e um `GARMENT_*`
+     diferente (`"Duplicated measure in attribute ... was found in row SIZE ..."`) — `SIZE` é,
+     na prática, a chave única de linha da tabela `SPECIFIC` para medidas, não uma combinação.
    - Em ambos os casos, o `GENDER` do item e o da tabela precisam ser idênticos.
 5. **Enviar no item:** `attributes[GENDER]`, `attributes[SIZE]`, `attributes[SIZE_GRID_ID]`
    (`value_name` = id da tabela) e `attributes[SIZE_GRID_ROW_ID]` (`value_name` = `id` da linha, no
