@@ -22,6 +22,7 @@ import {
   mapCondition,
   materialAttributes,
   modelAttribute,
+  plainSizeAttribute,
   normalizeFootwearSize,
   packageAttributes,
   pickAttributes,
@@ -308,6 +309,27 @@ describe("materialAttributes (spec 012, seção 3 — melhor esforço; achado re
   it("peça sem material cadastrado: lista vazia, mesmo com a categoria exigindo", () => {
     expect(materialAttributes([], [attr({ id: "SHIRT_MATERIAL" })])).toEqual([]);
   });
+
+  it("resolve value_id quando um dos materiais bate com um valor da lista da categoria (previsto em 25/09/2026 a partir do achado real do MAIN_COLOR — mesmo defeito, mesma correção)", () => {
+    expect(
+      materialAttributes(["Algodão"], [attr({ id: "SHIRT_MATERIAL", values: [{ id: "V1", name: "Algodão" }, { id: "V2", name: "Poliéster" }] })]),
+    ).toEqual([{ id: "SHIRT_MATERIAL", value_id: "V1", value_name: "Algodão" }]);
+  });
+
+  it("com vários materiais, resolve pelo primeiro que bater na lista, ignorando a ordem de declaração da lista", () => {
+    expect(
+      materialAttributes(
+        ["Elastano", "Algodão"],
+        [attr({ id: "SHIRT_MATERIAL", values: [{ id: "V1", name: "Algodão" }, { id: "V2", name: "Poliéster" }] })],
+      ),
+    ).toEqual([{ id: "SHIRT_MATERIAL", value_id: "V1", value_name: "Algodão" }]);
+  });
+
+  it("sem correspondência na lista: cai pro texto livre unindo todos os materiais, nunca aproxima pra um valor diferente (princípio I)", () => {
+    expect(materialAttributes(["Linho"], [attr({ id: "SHIRT_MATERIAL", values: [{ id: "V1", name: "Algodão" }] })])).toEqual([
+      { id: "SHIRT_MATERIAL", value_name: "Linho" },
+    ]);
+  });
 });
 
 describe("modelAttribute (spec 012, seção 3 — MODEL exigido por muitas categorias de acessórios, T043)", () => {
@@ -418,6 +440,24 @@ describe("garmentMeasureAttributes (spec 012, seção 3.5; ADR-024/ADR-030)", ()
     const result = garmentMeasureAttributes(["GARMENT_NECK_WIDTH_FROM"], medidas);
     expect(result.attributes).toEqual([]);
     expect(result.missingAttributeIds).toEqual(["GARMENT_NECK_WIDTH_FROM"]);
+  });
+});
+
+describe("plainSizeAttribute (T043 — SIZE fora da tabela de medidas, ex.: 'Cintos'; revisão preventiva 25/09/2026)", () => {
+  it("categoria sem SIZE declarado: texto livre, sem tentar resolver id", () => {
+    expect(plainSizeAttribute("Único", [])).toEqual({ id: "SIZE", value_name: "Único" });
+  });
+
+  it("SIZE sem lista de valores (texto livre confirmado): texto livre, sem id", () => {
+    expect(plainSizeAttribute("Único", [attr({ id: "SIZE" })])).toEqual({ id: "SIZE", value_name: "Único" });
+  });
+
+  it("SIZE com lista de valores e o tamanho bate: resolve value_id, por precaução (ainda não confirmado ao vivo se este SIZE avulso é lista fechada)", () => {
+    expect(plainSizeAttribute("Único", [attr({ id: "SIZE", values: [{ id: "V1", name: "Único" }] })])).toEqual({
+      id: "SIZE",
+      value_id: "V1",
+      value_name: "Único",
+    });
   });
 });
 

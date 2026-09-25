@@ -160,7 +160,14 @@ export function genderAttribute(
   return { id: "GENDER", value_id: match.id, value_name: match.name };
 }
 
-/** Marca — melhor esforço, só quando a categoria tem `BRAND` (spec 012, seção 3). */
+/**
+ * Marca — melhor esforço, só quando a categoria tem `BRAND` (spec 012, seção 3). Sempre
+ * `value_name` sem `value_id`, de propósito — diferente de `COLOR`/`MATERIAL`
+ * (`resolveListValue`), `BRAND` aceita marca não catalogada por `value_name` sozinho
+ * (confirmado empiricamente por várias publicações reais bem-sucedidas: Nike, Lacoste, Hugo
+ * Boss, Pierre Balmain, ZARA, sem nenhum erro de `BRAND` nesta sessão). Não trocar pra
+ * `resolveListValue` sem confirmar ao vivo que isso não quebra marca nova/não catalogada.
+ */
 export function brandAttribute(marcaNome: string | null, hasBrandAttribute: boolean): MercadoLivreAttributeCandidate | null {
   if (!marcaNome || !hasBrandAttribute) return null;
   return { id: "BRAND", value_name: marcaNome };
@@ -178,44 +185,81 @@ export function modelAttribute(nome: string, hasModelAttribute: boolean): Mercad
 }
 
 /**
+ * Resolve o `value_id` de um atributo de lista fechada da categoria (`COLOR`/`MAIN_COLOR`,
+ * `*_MATERIAL` — e qualquer atributo "melhor esforço" futuro do mesmo tipo), achando o item de
+ * `def.values` cuja `name` bate com um dos candidatos (sem diferenciar maiúsculas/espaços nas
+ * pontas). `undefined` sem correspondência — nunca aproxima pra um valor diferente do cadastro
+ * (princípio I); o chamador decide o texto livre de reserva nesse caso.
+ *
+ * **Usar sempre que mapear um atributo novo a partir de texto livre do cadastro.** Mandar só
+ * `value_name`, sem tentar `value_id` primeiro, foi a causa raiz de três achados reais ao vivo
+ * em 25/09/2026 — `FILTRABLE_SIZE` (ADR-033), `MAIN_COLOR` (`"Attribute [MAIN_COLOR] is not
+ * valid, item values [(null:azul claro)]"`) e `*_MATERIAL` (previsto pelo mesmo padrão antes de
+ * falhar ao vivo) — todos são lista fechada da categoria/domínio, não texto livre, e o Mercado
+ * Livre recusa um `value_id` ausente. `BRAND` é a exceção conhecida: aceita `value_name` sem
+ * `value_id` de propósito (marca nova/não catalogada) — comportamento diferente, confirmado
+ * empiricamente por várias publicações reais bem-sucedidas nesta mesma sessão (Nike, Lacoste,
+ * Hugo Boss, Pierre Balmain, ZARA), por isso `brandAttribute` não usa esta função.
+ */
+function resolveListValue(def: CategoryAttribute, candidates: string[]): { id: string; name: string } | undefined {
+  const normalized = candidates.map((c) => c.trim().toLowerCase());
+  return def.values.find((v) => normalized.includes(v.name.trim().toLowerCase()));
+}
+
+/**
  * Cor principal — melhor esforço, em `COLOR` e/ou `MAIN_COLOR`, conforme a categoria tiver.
  * Envia os dois quando a categoria tem os dois: confirmado ao vivo (T043) que algumas categorias
  * têm `COLOR` como `required` e `MAIN_COLOR` como opcional ao mesmo tempo — usar só um dos dois
  * (a escolha antiga priorizava `MAIN_COLOR`) deixava de enviar o que era exigido.
  *
  * `COLOR`/`MAIN_COLOR` são lista fechada da categoria, não texto livre — achado real ao vivo,
- * 25/09/2026: `"Attribute [MAIN_COLOR] is not valid, item values [(null:azul claro)]"`, mesmo
- * padrão do `FILTRABLE_SIZE` (ADR-033): mandar só `value_name` sem `value_id` é recusado.
- * Resolve o `value_id` achando, na lista de valores já presente em `CategoryAttribute` (mesma
- * chamada que já busca os atributos da categoria, sem requisição nova), o item cuja `name` bate
- * com `cor` (sem diferenciar maiúsculas/espaços nas pontas). Sem correspondência exata, continua
- * mandando só `value_name` como antes (melhor esforço, nunca aproxima pra um valor diferente —
- * princípio I) — a categoria pode recusar nesse caso, mesmo comportamento de hoje.
+ * 25/09/2026: `"Attribute [MAIN_COLOR] is not valid, item values [(null:azul claro)]"` (ver
+ * `resolveListValue`). Sem correspondência exata, continua mandando só `value_name` como antes
+ * — a categoria pode recusar nesse caso, mesmo comportamento de hoje.
  */
 export function colorAttributes(cor: string | null, categoryAttributes: CategoryAttribute[]): MercadoLivreAttributeCandidate[] {
   if (!cor) return [];
   const defs = categoryAttributes.filter((a) => a.id === "COLOR" || a.id === "MAIN_COLOR");
-  const normalized = cor.trim().toLowerCase();
   return defs.map((def) => {
-    const match = def.values.find((v) => v.name.trim().toLowerCase() === normalized);
+    const match = resolveListValue(def, [cor]);
     return match ? { id: def.id, value_id: match.id, value_name: match.name } : { id: def.id, value_name: cor };
   });
 }
 
 /**
- * Material/composição — melhor esforço, mesmo espírito de `colorAttributes`. Cada categoria de
- * moda tem seu próprio id específico pra isso em vez de um `MATERIAL` genérico — achado real ao
- * vivo, 25/09/2026: `"The attributes [SHIRT_MATERIAL] are required for category ..."` (Camisas).
- * Acha, entre os atributos da categoria, qualquer um chamado exatamente `MATERIAL` ou terminado
- * em `_MATERIAL` (`SHIRT_MATERIAL`, `PANTS_MATERIAL` etc.) — nunca assume um id fixo. Envia
- * `caracteristicas.material` (spec 005) como texto livre, junto — nunca tenta casar contra uma
- * lista fechada do Mercado Livre (diferente de `FILTRABLE_SIZE`, ADR-033, onde isso é exigido).
+ * Material/composição — melhor esforço, mesmo espírito de `colorAttributes` (ver
+ * `resolveListValue`). Cada categoria de moda tem seu próprio id específico pra isso em vez de
+ * um `MATERIAL` genérico — achado real ao vivo, 25/09/2026: `"The attributes [SHIRT_MATERIAL]
+ * are required for category ..."` (Camisas). Acha, entre os atributos da categoria, qualquer um
+ * chamado exatamente `MATERIAL` ou terminado em `_MATERIAL` (`SHIRT_MATERIAL`, `PANTS_MATERIAL`
+ * etc.) — nunca assume um id fixo. `caracteristicas.material` (spec 005) é uma lista (a peça
+ * pode ter mais de um material) — `resolveListValue` tenta achar qualquer um deles na lista de
+ * valores da categoria; sem nenhuma correspondência, cai pro texto livre unindo todos com
+ * vírgula.
  */
 export function materialAttributes(material: string[], categoryAttributes: CategoryAttribute[]): MercadoLivreAttributeCandidate[] {
   if (material.length === 0) return [];
-  const ids = categoryAttributes.filter((a) => a.id === "MATERIAL" || a.id.endsWith("_MATERIAL")).map((a) => a.id);
+  const defs = categoryAttributes.filter((a) => a.id === "MATERIAL" || a.id.endsWith("_MATERIAL"));
   const text = material.join(", ");
-  return ids.map((id) => ({ id, value_name: text }));
+  return defs.map((def) => {
+    const match = resolveListValue(def, material);
+    return match ? { id: def.id, value_id: match.id, value_name: match.name } : { id: def.id, value_name: text };
+  });
+}
+
+/**
+ * `SIZE` fora do sistema de tabela de medidas — categoria com `SIZE` como atributo comum, sem
+ * `catalogDomain`/tabela envolvida (confirmado ao vivo, T043: categoria "Cintos" exige `SIZE`
+ * sem fazer parte de `active_domains`). Ainda não confirmado ao vivo se esse `SIZE` avulso é
+ * lista fechada como `COLOR`/`MATERIAL` ou texto livre como o `SIZE` da tabela de medidas — por
+ * precaução (`resolveListValue`), resolve `value_id` quando a categoria declarar valores pra
+ * `SIZE` e um deles bater; sem correspondência (ou sem `values` declarado), cai pro texto livre,
+ * mesmo comportamento de antes desta função existir.
+ */
+export function plainSizeAttribute(size: string, categoryAttributes: CategoryAttribute[]): MercadoLivreAttributeCandidate {
+  const def = categoryAttributes.find((a) => a.id === "SIZE");
+  const match = def ? resolveListValue(def, [size]) : undefined;
+  return match ? { id: "SIZE", value_id: match.id, value_name: match.name } : { id: "SIZE", value_name: size };
 }
 
 /** `SIZE`, `SIZE_GRID_ID` e `SIZE_GRID_ROW_ID` — moda com tabela de medidas (spec 012, seção 3.5). */

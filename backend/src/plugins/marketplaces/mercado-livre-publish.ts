@@ -29,6 +29,7 @@ import {
   packageAttributes,
   pickAttributes,
   pickChartRow,
+  plainSizeAttribute,
   resolveFiltrableSizeValue,
   sanitizePlainText,
   sizeChartAttributes,
@@ -261,7 +262,7 @@ async function buildAttributes(
     if (gender) candidates.push(gender);
 
     const plainSize = product.caracteristicas.tamanho_etiqueta ?? product.caracteristicas.tamanho_equivalente;
-    if (plainSize) candidates.push({ id: "SIZE", value_name: plainSize });
+    if (plainSize) candidates.push(plainSizeAttribute(plainSize, categoryAttributes));
   }
 
   return pickAttributes(candidates, categoryAttributes);

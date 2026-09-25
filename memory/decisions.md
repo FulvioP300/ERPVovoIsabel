@@ -1957,6 +1957,15 @@ Nenhuma mudança na tela de revisão (`PublishToMarketplace.tsx`) foi necessári
 - Testes novos: `resolveFiltrableSizeValue` (mapper, unitário), `buildChartRowPayload`/
   `buildChartPayload` com `filtrableSize`, bloqueio na publicação quando o tamanho não bate com
   a lista, e `allowCustomSize`/`available` na sugestão de tamanho refletindo a lista real.
+- **Padrão que se repetiu** (mesmo dia, revisão retroativa em 25/09/2026): `COLOR`/`MAIN_COLOR`
+  (`colorAttributes`) e `*_MATERIAL` (`materialAttributes`) tinham exatamente o mesmo defeito —
+  atributo de lista fechada da categoria recebendo só `value_name`, nunca `value_id`. Extraído
+  um helper comum, `resolveListValue` (`mercado-livre-item.mapper.ts`), que resolve o `id` a
+  partir de `CategoryAttribute.values` — usar sempre que um atributo novo "melhor esforço" for
+  mapeado a partir de texto livre do cadastro, para não repetir esse defeito uma quarta vez.
+  `BRAND` é a exceção conhecida e documentada (aceita marca não catalogada por `value_name`
+  sozinho, confirmado por publicações reais bem-sucedidas) — não usa `resolveListValue` de
+  propósito.
 
 ## ADR-034 — Remove o aviso de medida estimada da descrição da peça
 
