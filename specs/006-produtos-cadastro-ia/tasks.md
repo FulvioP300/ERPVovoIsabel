@@ -334,6 +334,56 @@ testes automatizados originais até serem adicionados:
    como bloco atômico no `$set`, igual ao que a spec já dizia ser o comportamento pretendido)
    — teste de regressão em `backend/tests/integration/products.spec.ts`.
 
+## Nota (24/09/2026) — T027: medidas passam a poder ser estimadas pela IA (ADR-028)
+
+Usuário testou o mesmo modelo fora do ERP, pedindo pra "estimar as medidas da peça para um
+e-commerce" — resposta completa, com aviso de conferir com fita métrica. No cadastro por IA,
+`medidas.*` sempre voltava `null`. Não era bug: a regra 6 do prompt de sistema (spec, seção
+8.3) e o princípio I da constituição mandam a IA nunca aproximar — e medida de foto nunca tem
+"confiança razoável" (sem escala na imagem), então a IA sempre devolvia `null`, corretamente
+seguindo a regra que demos.
+
+**Decisão do usuário**: exceção só para `medidas.*` — IA passa a estimar, e o aviso
+("medidas estimadas, conferir com fita métrica antes de publicar") vai em
+`identificacao.descricao`, não em `ai_metadata.fields[...].confidence` (metadado não é visto
+sem um badge dedicado; o texto que o operador já lê, sim). Registrado como
+[ADR-028](../../memory/decisions.md#adr-028--exceção-ao-princípio-i-ia-pode-estimar-medidas-de-peça-avisando-na-descrição)
+e como exceção explícita no princípio I da constituição (versão 1.4 → 1.5,
+`constitution_update_checklist.md` seguido: versão incrementada, exceção documentada no próprio
+princípio, specs 005/006 revisadas).
+
+- `memory/constitution.md`: princípio I ganha o parágrafo de exceção.
+- Spec (seção 7.1, nova; 8.3 regra 6 referencia a exceção; regra 9 nova detalhando; seção 10
+  ganha critério de aceite dedicado).
+- `openai-compatible.adapter.ts`: `DEFAULT_SYSTEM_PROMPT` ganha a regra 9, mirrorando a spec
+  (fonte única de verdade continua sendo o `spec.md`, seção 8.3).
+- Nenhuma mudança de schema (`medidas.*` já eram `nullableNumber()`, spec 005) nem de
+  `ai-intake.service.ts` (a exceção é só de prompt — `analyzeProduct`/`reanalyzeProduct` não
+  mudam, os dois herdam o comportamento novo automaticamente por já reaproveitarem o mesmo
+  prompt de sistema).
+- **Validado de ponta a ponta contra o provedor real, caso negativo e positivo:**
+  - **Negativo**: reavaliação de um produto de teste (foto real, mas que não era uma peça de
+    roupa — uma ilustração genérica usada só pra testar upload de arquivo grande) devolveu
+    `medidas` todas `null`, com um aviso correto em `condicao.observacoes` ("Imagem não
+    corresponde a uma peça de vestuário") — confirma que a regra 9 não força estimativa quando
+    não há peça nenhuma pra medir.
+  - **Positivo (24/09/2026, mesmo dia)**: o usuário forneceu as duas fotos reais da blusa Pierre
+    Balmain que motivou esta mudança (frente + etiqueta). Cadastrada como fixture real de dev
+    (`BVI-BLUS-000001`, categoria BLUS) — as fotos originais (14MB/17MB) excederam
+    `MAX_IMAGE_SIZE_BYTES` (5MB, spec 007) e precisaram ser comprimidas antes do upload
+    (~600–780KB, 2000px, sem perda visível de legibilidade da etiqueta). `POST
+    /:id/reanalyze` devolveu, contra o provedor real: `medidas` preenchida
+    (`comprimento: 65, busto: 100, largura_ombro: 40, comprimento_manga: 58`, campos de parte de
+    baixo como `cintura`/`quadril` em `0`, nunca confundidos com medida real);
+    `identificacao.descricao` com a frase de aviso exigida pela regra 9 ("As medidas informadas
+    são estimadas a partir das fotos e precisam ser conferidas com fita métrica antes de
+    publicar"); `ai_metadata.fields` com confiança baixa (0.4) nas medidas — sinal duplicado
+    (texto + metadado), mesmo só o texto ser a defesa formal (ADR-028); marca/composição/lavagem
+    continuaram sendo lidas da etiqueta com confiança alta (0.9+), confirmando que a regra 9 não
+    interferiu nas regras 1/6 existentes. Sugestão aplicada ao produto (`PATCH`) — fixture fica
+    disponível em dev pra testes futuros da feature, com medida estimada real e aviso na
+    descrição.
+
 ## Dependências entre tarefas
 
 ```

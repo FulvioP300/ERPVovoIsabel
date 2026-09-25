@@ -1572,3 +1572,72 @@ manter sozinha. O usuário pediu campos de formulário para essa configuração.
   existir).
 - T046/T052 ficam parcialmente supersedidas por esta ADR (T052 é refeita com o novo desenho); T051
   (valores reais) passa a ser "a dona do brechó preenche a tela", não mais "edita o `.env`".
+
+
+## ADR-028 — Exceção ao princípio I: IA pode estimar medidas de peça, avisando na descrição
+
+**Status:** Aceita
+**Data:** 2026-09-24
+**Specs afetadas:** [006-produtos-cadastro-ia](../specs/006-produtos-cadastro-ia/spec.md)
+(seções 7, 8.3, 9), [005-produtos-cadastro-manual](../specs/005-produtos-cadastro-manual/spec.md)
+(seção 2, `identificacao.descricao`); [constituição](constitution.md), princípio I
+
+### Contexto
+
+Testando o cadastro por IA com uma blusa (spec 013 recém em produção), o usuário reportou que
+os campos de `medidas.*` sempre voltavam `null` — mesmo pedindo pra IA "estimar as medidas da
+peça para um e-commerce" via um prompt direto no mesmo modelo (fora do ERP), que respondeu com
+uma tabela completa de estimativas, cada uma com o aviso de que são aproximadas e precisam ser
+conferidas com fita métrica antes de publicar.
+
+Investigação: não era bug. A regra 6 do prompt de sistema (spec 006, seção 8.3) e o princípio I
+da constituição instruem a IA a **nunca** aproximar, sempre `null` quando não determinável "com
+razoável confiança" — e medida de peça a partir de foto nunca tem essa confiança (não existe
+escala/referência na imagem), então a IA, seguindo a regra à risca, sempre retornava `null` pra
+`medidas.*`. O comportamento que o usuário queria (estimar, com aviso) já existe no modelo — só
+estava bloqueado pela nossa própria regra geral, desenhada pra evitar a IA inventar marca,
+categoria ou composição (onde um palpite errado é mais perigoso que uma medida aproximada e
+sinalizada).
+
+### Decisão
+
+1. **Exceção pontual, só para `medidas.*`**, documentada explicitamente no princípio I da
+   constituição (nunca implícita) — todo outro campo continua proibido de aproximar.
+2. **O aviso de "medida estimada" vive em `identificacao.descricao`**, não em
+   `ai_metadata.fields[...].confidence` nem em nenhum metadado à parte — decisão explícita do
+   usuário: o texto que o operador já lê é onde o aviso precisa aparecer, não um badge que pode
+   passar despercebido. `ai_metadata.fields` continua registrando confiança por campo quando o
+   provedor devolver, mas não é o mecanismo que carrega este aviso específico.
+3. **Prompt de sistema (spec 006, seção 8.3)** ganha uma regra nova, escopada só a `medidas.*`:
+   a IA pode estimar com base no tipo de peça/corte/proporções visíveis, mesmo sem instrumento
+   de medição na foto; toda vez que estimar pelo menos uma medida, é obrigada a incluir em
+   `identificacao.descricao` uma frase de aviso (texto exato não fixado no prompt — a IA
+   redige, desde que o sentido "medidas estimadas, conferir com fita métrica antes de publicar"
+   apareça). As demais 8 regras do prompt (marca, categoria, composição, etc.) não mudam.
+4. **Sem campo novo, sem mudança de schema** — `medidas.*` já são `nullableNumber()` (spec 005);
+   passam a poder vir preenchidas pela IA além de `null`, isso já era permitido estruturalmente.
+5. **Vale tanto para cadastro novo (`/analyze`) quanto para reavaliação (`/reanalyze`, spec 006
+   seção 9)** — os dois usam o mesmo prompt/`analyzeProduct`, sem caminho separado.
+
+Alternativa descartada: sinalizar via `confidence` baixo em `ai_metadata.fields` (mecanismo já
+existente, exigiria só mudar a regra do prompt, sem mexer em `descricao`) — rejeitada pelo
+usuário porque um metadado de confiança não aparece na tela sem um badge dedicado (que hoje só
+cobre 6 campos curados, spec 006 seção 7, nenhum deles medida), e o aviso precisa ser visto,
+não só existir tecnicamente.
+
+### Consequências
+
+- Medida de peça cadastrada por IA agora quase sempre vem preenchida (estimada), não mais quase
+  sempre `null` — cadastro fica mais rápido, inclusive pra categorias do Mercado Livre que
+  exigem medida real pra publicar (spec 012, seção 3.5) — mas a estimativa **não substitui**
+  conferência física antes de publicar; o aviso na descrição é a defesa contra isso, não um
+  bloqueio técnico (a peça pode ser salva e até publicada com medida nunca conferida — decisão
+  consciente do usuário, mesmo espírito de outras defesas "confiar no humano revisar", princípio
+  II).
+- Risco aceito: cliente final pode receber peça de tamanho diferente do anunciado se o operador
+  não conferir a medida estimada antes de publicar. Mitigado só pelo aviso textual, sem trava de
+  sistema — reavaliar se isso gerar problema real (princípio V, não antecipar).
+- `identificacao.descricao` passa a poder conter um trecho gerado pela IA sem ter sido
+  literalmente extraído de texto visível na peça (diferente do resto do prompt, que só lê o que
+  está escrito) — primeira vez que a spec 006 permite a IA *compor* uma frase nova em vez de só
+  extrair/transcrever.

@@ -1,8 +1,8 @@
 # Constituição do Projeto — ERP da Vovó Isabel
 
-**Versão:** 1.4
+**Versão:** 1.5
 **Data de ratificação:** 2026-08-21
-**Última alteração:** 2026-09-14
+**Última alteração:** 2026-09-24
 **Fonte:** Especificação Funcional e Técnica — Brechó da Vovó Isabel (v1.0, 20/08/2026)
 
 Este documento define os princípios inegociáveis do projeto. Toda spec em `specs/` e toda
@@ -26,6 +26,17 @@ arbitrárias, alterar usuários, criar permissões, modificar estoque diretament
 produtos, alterar preços sem confirmação humana, ou inventar categorias fora da taxonomia
 permitida. Quando um dado não puder ser determinado, a IA retorna `null` — nunca um valor
 inventado ou aproximado ("provavelmente X").
+
+**Exceção — medidas de peça (spec 006, seção 7.1; decisão do usuário, 24/09/2026):** só para os
+campos de `medidas.*` (spec 005), a IA pode estimar um valor em vez de retornar `null`, mesmo
+sem instrumento de medição visível na foto (uma peça fotografada nunca tem escala confiável) —
+uma estimativa de medida é útil o bastante pro cadastro pra justificar o risco, diferente de uma
+marca ou categoria inventada. Toda vez que estimar, a IA é obrigada a incluir em
+`identificacao.descricao` uma frase avisando que as medidas são estimadas e precisam ser
+conferidas com fita métrica antes de publicar — o aviso vive no texto que o operador já lê,
+nunca só como metadado à parte que pode passar despercebido. Nenhum outro campo (marca,
+categoria, composição, estado, tamanho da etiqueta etc.) tem essa exceção — continuam sob a
+regra geral acima, `null` quando não determinável com confiança.
 
 ### II. Human in the loop é obrigatório
 Nenhum produto gerado por IA é publicado ou persistido automaticamente. O operador sempre
